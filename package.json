@@ -1,0 +1,130 @@
+{
+  "name": "whatsapp-manager-local",
+  "version": "1.0.13",
+  "description": "WhatsApp Manager Minimalista",
+  "main": "electron/main.js",
+  "scripts": {
+    "version:bump:patch": "node scripts/bump-version.js patch",
+    "start": "node server.js",
+    "dev": "node ./node_modules/vite/bin/vite.js",
+    "build": "node ./node_modules/vite/bin/vite.js build",
+    "mobile:build": "npm run build",
+    "mobile:sync": "npm run mobile:build && npx cap sync",
+    "mobile:add:android": "npx cap add android",
+    "mobile:add:ios": "npx cap add ios",
+    "mobile:open:android": "npx cap open android",
+    "mobile:open:ios": "npx cap open ios",
+    "mobile:run:android": "npm run mobile:sync && npx cap run android",
+    "fix:linux": "npm_config_cache=/tmp/.npm npm rebuild sqlite3 && find node_modules/.bin -type f -exec chmod +x {} +",
+    "export:saft-empresas": "node scripts/saft-empresas-export.js",
+    "goff:saft": "node scripts/goff-obrigacoes-robot.js --mode saft",
+    "goff:iva": "node scripts/goff-obrigacoes-robot.js --mode iva",
+    "goff:dmrat": "node scripts/goff-obrigacoes-robot.js --mode dmrat",
+    "goff:dmrss": "node scripts/goff-obrigacoes-robot.js --mode dmrss",
+    "electron:dev": "electron .",
+    "electron:pack": "npm run build && electron-builder --dir",
+    "electron:deps": "electron-builder install-app-deps",
+    "predist:win": "npm run version:bump:patch",
+    "dist:win": "npm run build && electron-builder --win zip --x64 --config.npmRebuild=false",
+    "predist:win:portable": "npm run version:bump:patch",
+    "dist:win:portable": "npm run build && electron-builder --win portable --x64 --config.npmRebuild=false",
+    "predist:win:zip": "npm run version:bump:patch",
+    "dist:win:zip": "npm run build && electron-builder --win zip --x64 --config.npmRebuild=false"
+  },
+  "dependencies": {
+    "@capacitor/app": "^7.1.2",
+    "@capacitor/core": "^7.6.0",
+    "@capacitor/device": "^7.0.4",
+    "@capacitor/local-notifications": "^7.0.6",
+    "@capacitor/push-notifications": "^7.0.6",
+    "@whiskeysockets/baileys": "^7.0.0-rc.9",
+    "axios": "^1.6.0",
+    "body-parser": "^1.20.2",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "firebase-admin": "^13.7.0",
+    "lucide-react": "^0.263.1",
+    "nodemailer": "^8.0.1",
+    "playwright": "^1.58.2",
+    "qrcode": "^1.5.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.30.3",
+    "recharts": "^2.15.4",
+    "sqlite3": "^5.1.6",
+    "telegram": "^2.26.22",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^7.6.0",
+    "@capacitor/cli": "^7.6.0",
+    "@capacitor/ios": "^7.6.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "autoprefixer": "^10.4.14",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "postcss": "^8.4.24",
+    "tailwindcss": "^3.3.2",
+    "vite": "^4.3.9"
+  },
+  "build": {
+    "appId": "pt.mpr.wapro",
+    "productName": "WA PRO",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "backend/**",
+      "src/**",
+      "services/**",
+      "components/**",
+      "pages/**",
+      "public/**",
+      "scripts/**",
+      "electron/**",
+      "server.js",
+      "App.tsx",
+      "index.tsx",
+      "index.css",
+      "types.ts",
+      "tailwind.config.js",
+      "postcss.config.js",
+      "vite.config.js",
+      "vite.config.ts",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "installerIcon": "public/icon.ico",
+      "uninstallerIcon": "public/icon.ico",
+      "installerHeaderIcon": "public/icon.ico"
+    },
+    "artifactName": "WA-PRO-v${version}-${os}-${arch}.${ext}"
+  }
+}
