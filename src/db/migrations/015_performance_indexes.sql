@@ -1,6 +1,6 @@
 -- Performance indexes for queries identified in the audit
--- Messages: conversation lookup and timestamp ordering
-CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
+-- Messages: timestamp ordering and direction lookup
+-- NOTE: messages.conversation_id does not exist in current schema, skipped
 CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_direction ON messages(direction, from_number);
 
@@ -19,7 +19,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_updated_at ON tasks(updated_at DESC);
 
 -- Internal chat: timestamp ordering and member lookups
-CREATE INDEX IF NOT EXISTS idx_internal_messages_timestamp ON internal_messages(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_internal_messages_timestamp ON internal_messages(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_internal_conv_members_conv ON internal_conversation_members(conversation_id);
 
 -- Calls: user and timestamp
