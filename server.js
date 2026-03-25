@@ -196,6 +196,7 @@ function isChatCorePath(pathname = '') {
     if (!path) return false;
     if (path === '/webhook' || path === '/webhook/whatsapp') return true;
     if (path.startsWith('/api/chat')) return true;
+    if (path.startsWith('/api/avatars/')) return true;
     if (path === '/api/contacts' || path === '/api/messages' || path === '/api/send') return true;
     if (path === '/api/conversations/local' || path === '/api/conversations/sync') return true;
     return false;
@@ -212,10 +213,12 @@ async function proxyToChatCore(req, res) {
     const isMediaProxyRequest =
         /^\/api\/chat\/messages\/[^/]+\/media$/i.test(req.path) ||
         /^\/api\/messages\/[^/]+\/media$/i.test(req.path);
+    const isAvatarRequest = /^\/api\/avatars\//.test(req.path) || /\/avatar$/.test(req.path);
     const isBinaryRequest =
         req.path === '/api/chat/whatsapp/qr/image' ||
         req.path === '/api/whatsapp/qr/image' ||
-        isMediaProxyRequest;
+        isMediaProxyRequest ||
+        isAvatarRequest;
     const method = String(req.method || 'GET').toUpperCase();
 
     try {

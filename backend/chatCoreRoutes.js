@@ -1056,7 +1056,7 @@ function registerChatCoreRoutes(app, deps) {
 
 
   // Atualizar nome de contacto de um cliente
-  app.patch('/api/customers/:id/contact-name', async (req, res) => {
+  app.patch(['/api/customers/:id/contact-name', '/api/chat/customers/:id/contact-name'], async (req, res) => {
     const customerId = String(req.params.id || '').trim();
     if (!customerId) {
       return res.status(400).json({ success: false, error: 'ID do cliente é obrigatório.' });
@@ -1078,7 +1078,7 @@ function registerChatCoreRoutes(app, deps) {
   });
 
   // Servir avatar/foto de perfil do WhatsApp
-  app.get('/api/customers/:id/avatar', async (req, res) => {
+  app.get(['/api/customers/:id/avatar', '/api/chat/customers/:id/avatar'], async (req, res) => {
     const customerId = String(req.params.id || '').trim();
     if (!customerId) return res.status(400).end();
     try {

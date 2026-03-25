@@ -1036,7 +1036,7 @@ const Inbox: React.FC = () => {
   const handleSaveContactName = useCallback(async (customerId: string, newName: string) => {
     setSavingContactNameId(customerId);
     try {
-      const res = await fetch(`/api/customers/${encodeURIComponent(customerId)}/contact-name`, {
+      const res = await fetch(`/api/chat/customers/${encodeURIComponent(customerId)}/contact-name`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contactName: newName }),
