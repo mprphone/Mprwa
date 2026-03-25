@@ -258,6 +258,9 @@ const Inbox: React.FC = () => {
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const [showContactsModal, setShowContactsModal] = useState(false);
   const [contactsSearchTerm, setContactsSearchTerm] = useState('');
+  const [editingContactNameId, setEditingContactNameId] = useState<string | null>(null);
+  const [editingContactNameValue, setEditingContactNameValue] = useState('');
+  const [savingContactNameId, setSavingContactNameId] = useState<string | null>(null);
   
   // Call Log State
   const [showCallModal, setShowCallModal] = useState(false);
@@ -1026,6 +1029,26 @@ const Inbox: React.FC = () => {
   const refreshChatContacts = useCallback(async () => {
     const contacts = await fetchChatContacts().catch(() => []);
     setChatContacts(Array.isArray(contacts) ? contacts : []);
+  }, []);
+
+  const handleSaveContactName = useCallback(async (customerId: string, newName: string) => {
+    setSavingContactNameId(customerId);
+    try {
+      const res = await fetch(`/api/customers/${encodeURIComponent(customerId)}/contact-name`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contactName: newName }),
+      });
+      if (!res.ok) throw new Error('Falha ao guardar');
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === customerId ? { ...c, contactName: newName } : c))
+      );
+    } catch (error) {
+      console.error('[Contacts] Erro ao guardar nome:', error);
+    } finally {
+      setSavingContactNameId(null);
+      setEditingContactNameId(null);
+    }
   }, []);
 
   const loadData = async (): Promise<Conversation[]> => {
@@ -2697,9 +2720,17 @@ const Inbox: React.FC = () => {
         const normalizedPhone = normalizePhoneDigits(rawPhone);
         const blockedInfo = normalizedPhone ? blockedByDigits.get(normalizedPhone) : null;
 
+        const companyRaw = String(customer.company || '').trim();
+        const nameRaw = String(customer.name || '').trim();
+        const contactNameRaw = String(customer.contactName || '').trim();
+        const companyName = companyRaw || nameRaw || '--';
+        const contactName = contactNameRaw || '';
+
         return {
           id: customerId,
           label,
+          companyName,
+          contactName,
           phone: rawPhone || '--',
           rawPhone,
           normalizedPhone,
@@ -2712,7 +2743,7 @@ const Inbox: React.FC = () => {
         };
       })
       .filter((row) => row.rawPhone)
-      .sort((left, right) => left.label.localeCompare(right.label, 'pt', { sensitivity: 'base' }));
+      .sort((left, right) => left.companyName.localeCompare(right.companyName, 'pt', { sensitivity: 'base' }));
 
     return rows;
   }, [customers, chatContacts]);
@@ -2723,6 +2754,8 @@ const Inbox: React.FC = () => {
       if (!term) return true;
       return (
         row.label.toLowerCase().includes(term) ||
+        row.companyName.toLowerCase().includes(term) ||
+        row.contactName.toLowerCase().includes(term) ||
         row.phone.toLowerCase().includes(term) ||
         row.rawPhone.toLowerCase().includes(term) ||
         row.ownerName.toLowerCase().includes(term) ||
@@ -3362,7 +3395,7 @@ const Inbox: React.FC = () => {
 
       {showContactsModal && (
         <div className="fixed inset-0 z-50 bg-black/35 flex items-center justify-center p-4">
-          <div className="w-full max-w-4xl max-h-[85vh] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl">
+          <div className="w-full max-w-5xl max-h-[85vh] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl">
             <div className="border-b border-gray-200 px-4 py-3 flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-base font-semibold text-gray-900">Contactos</h3>
@@ -3392,10 +3425,11 @@ const Inbox: React.FC = () => {
             </div>
 
             <div className="max-h-[60vh] overflow-auto">
-              <table className="w-full min-w-[760px]">
+              <table className="w-full min-w-[860px]">
                 <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
                   <tr className="text-left">
-                    <th className="px-4 py-2 text-[11px] uppercase tracking-wide text-gray-500">Nome</th>
+                    <th className="px-4 py-2 text-[11px] uppercase tracking-wide text-gray-500">Empresa</th>
+                    <th className="px-4 py-2 text-[11px] uppercase tracking-wide text-gray-500">Nome Contacto</th>
                     <th className="px-4 py-2 text-[11px] uppercase tracking-wide text-gray-500">Telefone</th>
                     <th className="px-4 py-2 text-[11px] uppercase tracking-wide text-gray-500">Bloqueado</th>
                     <th className="px-4 py-2 text-[11px] uppercase tracking-wide text-gray-500">Resp. interno</th>
@@ -3405,7 +3439,53 @@ const Inbox: React.FC = () => {
                 <tbody>
                   {filteredContactsRows.map((row) => (
                     <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="px-4 py-2 text-sm text-gray-900">{row.label}</td>
+                      <td className="px-4 py-2 text-sm text-gray-900">{row.companyName}</td>
+                      <td className="px-4 py-2 text-sm text-gray-700">
+                        {editingContactNameId === row.id ? (
+                          <form
+                            className="flex items-center gap-1"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              void handleSaveContactName(row.id, editingContactNameValue);
+                            }}
+                          >
+                            <input
+                              type="text"
+                              autoFocus
+                              value={editingContactNameValue}
+                              onChange={(e) => setEditingContactNameValue(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Escape') setEditingContactNameId(null); }}
+                              className="w-full rounded border border-gray-300 px-2 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-whatsapp-500"
+                              disabled={savingContactNameId === row.id}
+                            />
+                            <button
+                              type="submit"
+                              disabled={savingContactNameId === row.id}
+                              className="rounded border border-whatsapp-200 bg-whatsapp-50 px-2 py-0.5 text-xs font-semibold text-whatsapp-700 hover:bg-whatsapp-100 disabled:opacity-50"
+                            >
+                              {savingContactNameId === row.id ? '...' : '✓'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingContactNameId(null)}
+                              className="rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-100"
+                            >
+                              ✕
+                            </button>
+                          </form>
+                        ) : (
+                          <span
+                            className="cursor-pointer hover:text-whatsapp-700 hover:underline"
+                            title="Clique para editar"
+                            onClick={() => {
+                              setEditingContactNameId(row.id);
+                              setEditingContactNameValue(row.contactName);
+                            }}
+                          >
+                            {row.contactName || <span className="text-gray-400 italic">--</span>}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-2 text-sm font-mono text-gray-700">{row.phone}</td>
                       <td className="px-4 py-2 text-xs">
                         {row.isBlocked ? (
@@ -3440,7 +3520,7 @@ const Inbox: React.FC = () => {
                   ))}
                   {filteredContactsRows.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
+                      <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-500">
                         Nenhum contacto encontrado para este filtro.
                       </td>
                     </tr>

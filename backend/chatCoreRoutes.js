@@ -1054,6 +1054,28 @@ function registerChatCoreRoutes(app, deps) {
   });
 
 
+  // Atualizar nome de contacto de um cliente
+  app.patch('/api/customers/:id/contact-name', async (req, res) => {
+    const customerId = String(req.params.id || '').trim();
+    if (!customerId) {
+      return res.status(400).json({ success: false, error: 'ID do cliente é obrigatório.' });
+    }
+    const body = req.body || {};
+    const contactName = String(body.contactName ?? body.contact_name ?? '').trim();
+
+    try {
+      const existing = await dbGetAsync('SELECT id, name, company, contact_name FROM customers WHERE id = ? LIMIT 1', [customerId]);
+      if (!existing) {
+        return res.status(404).json({ success: false, error: 'Cliente não encontrado.' });
+      }
+      await dbRunAsync('UPDATE customers SET contact_name = ?, updated_at = ? WHERE id = ?', [contactName, nowIso(), customerId]);
+      logChatCore?.('customer_contact_name_updated', { customerId, contactName });
+      return res.json({ success: true, contactName });
+    } catch (error) {
+      return res.status(500).json({ success: false, error: String(error?.message || error) });
+    }
+  });
+
   // Rota para Listar Mensagens (Chat Específico)
   app.get(['/api/messages', '/api/chat/messages'], async (req, res) => {
     const phone = req.query.phone;
