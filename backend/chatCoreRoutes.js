@@ -38,6 +38,7 @@ function registerChatCoreRoutes(app, deps) {
     emitChatEvent,
     logChatCore,
     sendMobilePushNotification,
+    fetchAvatarOnDemand,
   } = deps;
 
   const normalizePhoneDigits = (value) => String(value || '').replace(/\D/g, '');
@@ -1100,16 +1101,29 @@ function registerChatCoreRoutes(app, deps) {
   });
 
   // Servir avatar por número de telefone (para sidebar)
-  app.get('/api/avatars/:phone', (req, res) => {
+  app.get('/api/avatars/:phone', async (req, res) => {
     const digits = String(req.params.phone || '').replace(/\D/g, '');
     if (!digits || digits.length < 7) return res.status(400).end();
     const avatarPath = require('path').join(process.cwd(), 'chat_media', 'avatars', `${digits}.jpg`);
     const fs = require('fs');
     try {
+      // Try local file first
       if (fs.existsSync(avatarPath)) {
-        res.set('Cache-Control', 'public, max-age=86400');
-        res.set('Content-Type', 'image/jpeg');
-        return fs.createReadStream(avatarPath).pipe(res);
+        const stat = fs.statSync(avatarPath);
+        if (stat.size > 0) {
+          res.set('Cache-Control', 'public, max-age=86400');
+          res.set('Content-Type', 'image/jpeg');
+          return fs.createReadStream(avatarPath).pipe(res);
+        }
+      }
+      // If not found locally, try to fetch on-demand from WhatsApp
+      if (typeof fetchAvatarOnDemand === 'function') {
+        const fetched = await fetchAvatarOnDemand(digits);
+        if (fetched && fs.existsSync(fetched)) {
+          res.set('Cache-Control', 'public, max-age=86400');
+          res.set('Content-Type', 'image/jpeg');
+          return fs.createReadStream(fetched).pipe(res);
+        }
       }
     } catch (_) { /* ignore */ }
     return res.status(404).end();

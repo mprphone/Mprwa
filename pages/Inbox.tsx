@@ -554,6 +554,8 @@ const Inbox: React.FC = () => {
     if (phone) return phone;
     return contactName || name || company || '';
   };
+  const ownBusinessNames = new Set(['mpr negocios', 'mpr negócios', 'mpr geral', 'mpr']);
+  const isOwnBusinessName = (value?: string | null) => ownBusinessNames.has(String(value || '').toLowerCase().trim());
   const resolveChatContactPrimaryLabel = (row?: ChatContactRow | null) => {
     const contactName = String(row?.customer_contact_name || '').trim();
     const customerName = String(row?.customer_name || '').trim();
@@ -561,7 +563,7 @@ const Inbox: React.FC = () => {
     const phone = String(row?.from_number || '').trim();
     const hasCompany = company && !looksLikePhoneLabel(company);
     const hasCustomerName = customerName && !looksLikePhoneLabel(customerName);
-    const hasContactName = contactName && !looksLikePhoneLabel(contactName);
+    const hasContactName = contactName && !looksLikePhoneLabel(contactName) && !isOwnBusinessName(contactName);
     if (hasContactName && hasCompany && contactName.toLowerCase() !== company.toLowerCase()) return `${contactName} - ${company}`;
     if (hasCustomerName && hasCompany && customerName.toLowerCase() !== company.toLowerCase()) return `${customerName} - ${company}`;
     if (hasContactName) return contactName;
@@ -2615,7 +2617,7 @@ const Inbox: React.FC = () => {
       const customerName = String(row.customer_name || '').trim();
       const company = String(row.customer_company || '').trim();
 
-      if (contactName && !looksLikePhoneLabel(contactName)) {
+      if (contactName && !looksLikePhoneLabel(contactName) && !isOwnBusinessName(contactName)) {
         map[conversationId] = contactName;
         return;
       }

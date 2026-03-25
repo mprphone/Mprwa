@@ -778,16 +778,36 @@ if (isBaileysProviderEnabled() && !IS_BACKOFFICE_ONLY) {
     const AVATARS_DIR = path.resolve(process.cwd(), 'chat_media', 'avatars');
     fs.mkdirSync(AVATARS_DIR, { recursive: true });
 
+    // Own WhatsApp numbers to exclude from contact name sync
+    const getOwnWhatsAppDigits = () => {
+        const ownDigits = new Set();
+        for (const [, gw] of baileysGateways) {
+            try {
+                const health = gw.getHealth?.();
+                const meId = String(health?.meId || '').trim();
+                const digits = meId.split('@')[0]?.split(':')[0]?.replace(/\D/g, '') || '';
+                if (digits.length >= 7) ownDigits.add(digits);
+            } catch (_) { /* ignore */ }
+        }
+        return ownDigits;
+    };
+
+    const BUSINESS_PROFILE_NAMES = new Set(['mpr negocios', 'mpr negócios', 'mpr geral', 'mpr']);
+
     const handleContactsUpsert = async (contacts, accountId, gateway) => {
+        const ownDigits = getOwnWhatsAppDigits();
         for (const contact of contacts) {
             try {
                 const digits = String(contact.jid || '').split('@')[0].replace(/\D/g, '');
                 if (!digits || digits.length < 7) continue;
+                // Skip our own WhatsApp numbers
+                if (ownDigits.has(digits)) continue;
                 const phone = normalizePhone(digits);
                 if (!phone) continue;
 
                 const savedName = contact.savedName || '';
-                if (savedName) {
+                // Skip if name is a business profile name
+                if (savedName && !BUSINESS_PROFILE_NAMES.has(savedName.toLowerCase().trim())) {
                     const existing = await dbGetAsync(
                         `SELECT id, contact_name FROM customers WHERE replace(replace(replace(ifnull(phone,''),'+',''),' ',''),'-','') = ? LIMIT 1`,
                         [digits]
@@ -825,6 +845,42 @@ if (isBaileysProviderEnabled() && !IS_BACKOFFICE_ONLY) {
                 logChatCore('contacts_upsert_process_error', { error: String(err?.message || err), accountId });
             }
         }
+    };
+
+    // Fetch avatar on-demand: tries all connected gateways
+    const fetchAvatarOnDemand = async (phoneDigits) => {
+        const digits = String(phoneDigits || '').replace(/\D/g, '');
+        if (!digits || digits.length < 7) return null;
+        const avatarPath = path.join(AVATARS_DIR, `${digits}.jpg`);
+        try {
+            const stat = await fs.promises.stat(avatarPath).catch(() => null);
+            const isStale = !stat || (Date.now() - stat.mtimeMs > 7 * 24 * 60 * 60 * 1000);
+            if (!isStale) return avatarPath;
+        } catch (_) { /* continue to fetch */ }
+        // Try each connected gateway to fetch the profile picture
+        for (const [, gw] of baileysGateways) {
+            try {
+                if (!gw?.fetchProfilePictureUrl) continue;
+                const picUrl = await gw.fetchProfilePictureUrl(digits);
+                if (!picUrl) continue;
+                const https = require('https');
+                const http = require('http');
+                const fetcher = picUrl.startsWith('https') ? https : http;
+                await new Promise((resolve, reject) => {
+                    fetcher.get(picUrl, (res) => {
+                        if (res.statusCode !== 200) { res.resume(); return resolve(null); }
+                        const ws = fs.createWriteStream(avatarPath);
+                        res.pipe(ws);
+                        ws.on('finish', resolve);
+                        ws.on('error', reject);
+                    }).on('error', () => resolve(null));
+                });
+                // Check the file was actually written
+                const written = await fs.promises.stat(avatarPath).catch(() => null);
+                if (written && written.size > 0) return avatarPath;
+            } catch (_) { /* try next gateway */ }
+        }
+        return null;
     };
 
     BAILEYS_ACCOUNT_CONFIGS.forEach((account) => {
@@ -1996,6 +2052,7 @@ if (!IS_BACKOFFICE_ONLY) {
         emitChatEvent,
         logChatCore,
         sendMobilePushNotification: (payload) => mobilePushService.sendInboundMessageNotification(payload),
+        fetchAvatarOnDemand: typeof fetchAvatarOnDemand === 'function' ? fetchAvatarOnDemand : null,
     });
 }
 

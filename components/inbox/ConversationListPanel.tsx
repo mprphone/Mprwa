@@ -177,12 +177,25 @@ const ConversationListPanel: React.FC<ConversationListPanelProps> = ({
               className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${selectedConvId === conv.id ? 'bg-whatsapp-50' : ''}`}
             >
               <div className="flex gap-3">
-                <img
-                  src={`/api/avatars/${normalizePhoneDigits(customer?.phone || fallbackPhone)}`}
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                  className="w-10 h-10 rounded-full object-cover flex-shrink-0 mt-0.5"
-                  alt=""
-                />
+                {(() => {
+                  const avatarDigits = normalizePhoneDigits(customer?.phone || fallbackPhone);
+                  const initials = conversationTitle.replace(/[^a-zA-ZÀ-ÿ]/g, ' ').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';
+                  return (
+                    <div className="w-10 h-10 rounded-full flex-shrink-0 mt-0.5 relative">
+                      <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs font-semibold">
+                        {initials}
+                      </div>
+                      {avatarDigits.length >= 7 && (
+                        <img
+                          src={`/api/avatars/${avatarDigits}`}
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          className="w-10 h-10 rounded-full object-cover absolute inset-0"
+                          alt=""
+                        />
+                      )}
+                    </div>
+                  );
+                })()}
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start mb-1">
                     <h3 className="font-semibold text-gray-900 truncate">{conversationTitle}</h3>
