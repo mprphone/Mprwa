@@ -413,9 +413,17 @@ function createConversationRepository(deps) {
         return digits.length >= 7 && digits.length >= Math.max(7, raw.length - 3);
     }
 
+    const BUSINESS_PROFILE_NAMES = ['mpr negocios', 'mpr negócios', 'mpr geral'];
+
+    function looksLikeBusinessProfileName(value) {
+        const lower = String(value || '').trim().toLowerCase();
+        if (!lower) return false;
+        return BUSINESS_PROFILE_NAMES.includes(lower);
+    }
+
     async function ensureCustomerForPhone(rawPhone, options = {}) {
         const preferredName = String(options?.preferredName || '').trim();
-        const preferredContactName = preferredName && !looksLikePhoneLabel(preferredName) ? preferredName : '';
+        const preferredContactName = preferredName && !looksLikePhoneLabel(preferredName) && !looksLikeBusinessProfileName(preferredName) ? preferredName : '';
         const preferredCompany = String(options?.preferredCompany || '').trim();
 
         const existing = await findLocalCustomerByPhone(rawPhone);
@@ -425,7 +433,7 @@ function createConversationRepository(deps) {
             const currentContactName = String(existing?.contactName || '').trim();
             const updateContactName =
                 preferredContactName &&
-                preferredContactName.toLowerCase() !== currentContactName.toLowerCase();
+                (!currentContactName || looksLikeBusinessProfileName(currentContactName));
             if (updateName || updateCompany || updateContactName) {
                 return upsertLocalCustomer({
                     id: existing.id,

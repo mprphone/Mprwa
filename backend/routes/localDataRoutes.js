@@ -2635,6 +2635,8 @@ function registerLocalDataRoutes(context) {
         maybeQueueInternalAssistantReply,
         deleteInternalChatPlaceholderUserIfOrphan,
         ensureDirectConversationBetweenUsers,
+        internalChatSupabaseHistorySyncRunning_get: () => internalChatSupabaseHistorySyncRunning,
+        internalChatSupabaseHistorySyncRunning_set: (v) => { internalChatSupabaseHistorySyncRunning = v; },
         sendInternalSystemMessage,
         upsertTrackedSupabasePedido,
         bootstrapSupabasePedidosStatusWatcher,

@@ -632,7 +632,7 @@ const Inbox: React.FC = () => {
       if (activeConversationId) {
         void loadMessages(activeConversationId);
       }
-    }, 3000);
+    }, 1500);
     return () => clearInterval(interval);
   }, []);
 

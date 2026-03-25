@@ -782,13 +782,14 @@ if (isBaileysProviderEnabled() && !IS_BACKOFFICE_ONLY) {
             autoReconnect: true,
             reconnectDelayMs: 4000,
             onInboundMessage: async (payload) => {
+                const isOutbound = Boolean(payload?.fromMe);
                 await persistInboundWhatsAppMessage({
                     fromNumber: payload?.fromNumber,
                     body: payload?.body,
                     waId: payload?.waId,
                     rawType: payload?.rawType || 'unknown',
-                    direction: payload?.fromMe ? 'outbound' : 'inbound',
-                    preferredName: payload?.pushName || '',
+                    direction: isOutbound ? 'outbound' : 'inbound',
+                    preferredName: isOutbound ? '' : (payload?.pushName || ''),
                     mediaKind: payload?.mediaKind || '',
                     mediaPath: payload?.mediaPath || '',
                     mediaMimeType: payload?.mediaMimeType || '',

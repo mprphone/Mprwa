@@ -28,6 +28,8 @@ function registerInternalChatRoutes(context, helpers) {
         syncInternalChatHistoryFromSupabase,
         maybeQueueInternalAssistantReply,
         deleteInternalChatPlaceholderUserIfOrphan,
+        internalChatSupabaseHistorySyncRunning_get,
+        internalChatSupabaseHistorySyncRunning_set,
     } = helpers;
 
     app.get('/api/internal-chat/presence', async (req, res) => {
@@ -71,7 +73,7 @@ function registerInternalChatRoutes(context, helpers) {
                 });
             }
 
-            if (internalChatSupabaseHistorySyncRunning) {
+            if (internalChatSupabaseHistorySyncRunning_get()) {
                 return res.status(202).json({
                     success: true,
                     running: true,
@@ -86,7 +88,7 @@ function registerInternalChatRoutes(context, helpers) {
             const forceFull = parseBoolean(req.body?.forceFull);
             const maxRows = Math.min(50000, Math.max(200, Number(req.body?.maxRows || 20000) || 20000));
 
-            internalChatSupabaseHistorySyncRunning = true;
+            internalChatSupabaseHistorySyncRunning_set(true);
             try {
                 const summary = await syncInternalChatHistoryFromSupabase({
                     actorUserId,
@@ -99,10 +101,10 @@ function registerInternalChatRoutes(context, helpers) {
                     ...summary,
                 });
             } finally {
-                internalChatSupabaseHistorySyncRunning = false;
+                internalChatSupabaseHistorySyncRunning_set(false);
             }
         } catch (error) {
-            internalChatSupabaseHistorySyncRunning = false;
+            internalChatSupabaseHistorySyncRunning_set(false);
             const details = error?.message || error;
             console.error('[Internal Chat] Erro ao importar histórico do Supabase:', details);
             return res.status(500).json({ success: false, error: details });

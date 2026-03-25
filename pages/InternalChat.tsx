@@ -69,6 +69,7 @@ const PEDIDO_TIPOS = [
 const QUICK_CHAT_EMOJIS = ['😀', '😂', '🙂', '😉', '😍', '🙏', '👍', '✅', '📌', '🎉', '🔥', '❤️'];
 const QUICK_REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '🙏', '🔥', '🎉', '✅', '👏', '👀'];
 const INTERNAL_CHAT_HIDDEN_CONVERSATIONS_KEY = 'wa_pro_internal_chat_hidden_conversations_v1';
+const INTERNAL_CHAT_SELECTED_CONV_KEY = 'wa_pro_internal_chat_selected_conv';
 
 function loadHiddenConversationIdsForUser(userId: string): string[] {
   if (typeof window === 'undefined' || !window.localStorage) return [];
@@ -108,7 +109,17 @@ function saveHiddenConversationIdsForUser(userId: string, ids: string[]) {
 const InternalChat: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [conversations, setConversations] = useState<InternalConversationRow[]>([]);
-  const [selectedConversationId, setSelectedConversationId] = useState<string>('');
+  const [selectedConversationId, setSelectedConversationIdRaw] = useState<string>(() => {
+    if (typeof window === 'undefined' || !window.localStorage) return '';
+    return window.localStorage.getItem(INTERNAL_CHAT_SELECTED_CONV_KEY) || '';
+  });
+  const setSelectedConversationId = (id: string) => {
+    setSelectedConversationIdRaw(id);
+    try {
+      if (id) window.localStorage.setItem(INTERNAL_CHAT_SELECTED_CONV_KEY, id);
+      else window.localStorage.removeItem(INTERNAL_CHAT_SELECTED_CONV_KEY);
+    } catch { /* sem bloqueio */ }
+  };
   const [messages, setMessages] = useState<InternalMessageRow[]>([]);
   const [members, setMembers] = useState<InternalConversationMember[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -604,7 +615,8 @@ const InternalChat: React.FC = () => {
 
   useEffect(() => {
     if (!currentUserId) return;
-    setIsLoading(true);
+    const hasRestoredConv = !!selectedConversationId;
+    if (!hasRestoredConv) setIsLoading(true);
     void loadBase().finally(() => setIsLoading(false));
 
     const interval = window.setInterval(() => {
