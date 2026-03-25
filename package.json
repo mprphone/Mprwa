@@ -1,6 +1,6 @@
 {
   "name": "whatsapp-manager-local",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "description": "WhatsApp Manager Minimalista",
   "main": "electron/main.js",
   "scripts": {
@@ -52,7 +52,6 @@
     "react-router-dom": "^6.30.3",
     "recharts": "^2.15.4",
     "sqlite3": "^5.1.6",
-    "telegram": "^2.26.22",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

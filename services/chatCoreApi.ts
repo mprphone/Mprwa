@@ -12,18 +12,16 @@ export type ChatContactRow = {
   owner_id?: string | null;
   status?: string;
   unread_count?: number;
-  channel?: 'whatsapp' | 'telegram' | string;
+  channel?: 'whatsapp' | string;
   is_blocked?: number | boolean;
   blocked_id?: number | null;
   blocked_reason?: string | null;
   blocked_at?: string | null;
-  telegram_verified?: number | boolean;
-  telegram_checked_at?: string | null;
 };
 
 export type BlockedContactRow = {
   id: number;
-  channel: 'whatsapp' | 'telegram' | string;
+  channel: 'whatsapp' | string;
   contactKey: string;
   reason?: string | null;
   createdBy?: string | null;
@@ -51,42 +49,8 @@ export type ChatMessageRow = {
   media_meta_json?: string | null;
 };
 
-export type TelegramUserAuthStatus = {
-  configured: boolean;
-  hasSession: boolean;
-  authorized: boolean;
-  pendingAuth?: {
-    phoneNumber?: string;
-    requiresPassword?: boolean;
-    createdAt?: string;
-  } | null;
-  account?: {
-    userId?: string | null;
-    username?: string | null;
-    firstName?: string | null;
-    lastName?: string | null;
-    phone?: string | null;
-    displayName?: string | null;
-  } | null;
-  authError?: string;
-};
-
-export type TelegramContactStatusRow = {
-  customerId?: string | null;
-  phoneE164: string;
-  phoneDigits: string;
-  hasTelegram: boolean;
-  telegramUserId?: string | null;
-  telegramUsername?: string | null;
-  telegramFirstName?: string | null;
-  telegramLastName?: string | null;
-  telegramPhone?: string | null;
-  source?: string;
-  checkedAt?: string | null;
-};
-
 export type WhatsAppProviderHealth = {
-  provider: 'cloud' | 'baileys' | string;
+  provider: 'baileys' | string;
   configured: boolean;
   accountId?: string | null;
   accounts?: WhatsAppAccountHealth[];
@@ -323,115 +287,6 @@ export async function deleteChatMessage(messageId: string, actorUserId?: string 
   }
 }
 
-export async function fetchTelegramUserHealth(): Promise<TelegramUserAuthStatus> {
-  const response = await fetch('/api/chat/telegram/user/health', { headers: { Accept: 'application/json' } });
-  const payload = await safeJson<{ success?: boolean } & TelegramUserAuthStatus & { error?: unknown }>(response);
-  if (!response.ok || !payload.success) {
-    throw new Error(parseError(payload, response.status, 'Falha ao obter estado Telegram User API'));
-  }
-  return {
-    configured: !!payload.configured,
-    hasSession: !!payload.hasSession,
-    authorized: !!payload.authorized,
-    pendingAuth: payload.pendingAuth || null,
-    account: payload.account || null,
-    authError: payload.authError,
-  };
-}
-
-export async function telegramUserSendCode(phoneNumber: string): Promise<{ alreadyAuthorized?: boolean; isCodeViaApp?: boolean }> {
-  const response = await fetch('/api/chat/telegram/user/auth/send-code', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phoneNumber }),
-  });
-  const payload = await safeJson<{ success?: boolean; alreadyAuthorized?: boolean; isCodeViaApp?: boolean; error?: unknown }>(response);
-  if (!response.ok || !payload.success) {
-    throw new Error(parseError(payload, response.status, 'Falha ao pedir código Telegram'));
-  }
-  return {
-    alreadyAuthorized: !!payload.alreadyAuthorized,
-    isCodeViaApp: payload.isCodeViaApp === true,
-  };
-}
-
-export async function telegramUserVerifyCode(phoneNumber: string, code: string): Promise<{ requiresPassword?: boolean; authorized?: boolean }> {
-  const response = await fetch('/api/chat/telegram/user/auth/verify-code', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phoneNumber, code }),
-  });
-  const payload = await safeJson<{ success?: boolean; requiresPassword?: boolean; authorized?: boolean; error?: unknown }>(response);
-  if (!response.ok || !payload.success) {
-    throw new Error(parseError(payload, response.status, 'Falha ao validar código Telegram'));
-  }
-  return {
-    requiresPassword: payload.requiresPassword === true,
-    authorized: payload.authorized === true,
-  };
-}
-
-export async function telegramUserVerifyPassword(password: string): Promise<void> {
-  const response = await fetch('/api/chat/telegram/user/auth/verify-password', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password }),
-  });
-  const payload = await safeJson<{ success?: boolean; error?: unknown }>(response);
-  if (!response.ok || !payload.success) {
-    throw new Error(parseError(payload, response.status, 'Falha ao validar palavra-passe Telegram'));
-  }
-}
-
-export async function fetchTelegramContactStatuses(): Promise<{
-  auth: TelegramUserAuthStatus;
-  data: TelegramContactStatusRow[];
-}> {
-  const response = await fetch('/api/chat/telegram/user/contacts/status', {
-    headers: { Accept: 'application/json' },
-  });
-  const payload = await safeJson<{
-    success?: boolean;
-    auth?: TelegramUserAuthStatus;
-    data?: TelegramContactStatusRow[];
-    error?: unknown;
-  }>(response);
-  if (!response.ok || !payload.success) {
-    throw new Error(parseError(payload, response.status, 'Falha ao obter estados de contacto Telegram'));
-  }
-  return {
-    auth: payload.auth || { configured: false, hasSession: false, authorized: false },
-    data: Array.isArray(payload.data) ? payload.data : [],
-  };
-}
-
-export async function checkTelegramContacts(items: Array<{ customerId?: string; phone: string; label?: string }>): Promise<{
-  total: number;
-  telegramCount: number;
-  results: TelegramContactStatusRow[];
-}> {
-  const response = await fetch('/api/chat/telegram/user/contacts/check', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ items }),
-  });
-  const payload = await safeJson<{
-    success?: boolean;
-    total?: number;
-    telegramCount?: number;
-    results?: TelegramContactStatusRow[];
-    error?: unknown;
-  }>(response);
-  if (!response.ok || !payload.success) {
-    throw new Error(parseError(payload, response.status, 'Falha ao verificar contactos Telegram'));
-  }
-  return {
-    total: Number(payload.total || 0),
-    telegramCount: Number(payload.telegramCount || 0),
-    results: Array.isArray(payload.results) ? payload.results : [],
-  };
-}
-
 export async function fetchWhatsAppHealth(accountId?: string | null): Promise<WhatsAppProviderHealth> {
   const query = new URLSearchParams();
   const normalizedAccount = String(accountId || '').trim();
@@ -443,7 +298,7 @@ export async function fetchWhatsAppHealth(accountId?: string | null): Promise<Wh
     throw new Error(parseError(payload, response.status, 'Falha ao obter estado WhatsApp'));
   }
   return {
-    provider: String(payload.provider || 'cloud'),
+    provider: String(payload.provider || 'baileys'),
     configured: !!payload.configured,
     accountId: String(payload.accountId || '').trim() || null,
     accounts: Array.isArray(payload.accounts) ? payload.accounts : [],
@@ -472,7 +327,7 @@ export async function connectWhatsAppProvider(accountId?: string | null): Promis
     throw new Error(parseError(payload, response.status, 'Falha ao ligar WhatsApp'));
   }
   return payload.state || {
-    provider: 'cloud',
+    provider: 'baileys',
     configured: false,
     status: 'unknown',
     connected: false,
@@ -503,7 +358,7 @@ export async function disconnectWhatsAppProvider(options?: { logout?: boolean; c
     throw new Error(parseError(payload, response.status, 'Falha ao desligar WhatsApp'));
   }
   return payload.state || {
-    provider: 'cloud',
+    provider: 'baileys',
     configured: false,
     status: 'unknown',
     connected: false,

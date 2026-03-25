@@ -23,7 +23,7 @@ function trim(value, fallback = '') {
 
 function loadEnvConfig() {
     const config = {
-        WHATSAPP_PROVIDER: trim(process.env.WHATSAPP_PROVIDER, 'cloud').toLowerCase(),
+        WHATSAPP_PROVIDER: trim(process.env.WHATSAPP_PROVIDER, 'baileys').toLowerCase(),
         TOKEN: trim(process.env.WHATSAPP_TOKEN),
         VERIFY_TOKEN: trim(process.env.VERIFY_TOKEN),
         PHONE_NUMBER_ID: trim(process.env.PHONE_NUMBER_ID),
@@ -33,13 +33,6 @@ function loadEnvConfig() {
         WHATSAPP_BAILEYS_NAME_CONFLICT_ACCOUNT: trim(process.env.WHATSAPP_BAILEYS_NAME_CONFLICT_ACCOUNT),
         WHATSAPP_BAILEYS_PRINT_QR: toBool(process.env.WHATSAPP_BAILEYS_PRINT_QR, false),
         WHATSAPP_BAILEYS_AUTO_START: toBool(process.env.WHATSAPP_BAILEYS_AUTO_START, true),
-        TELEGRAM_BOT_TOKEN: trim(process.env.TELEGRAM_BOT_TOKEN),
-        TELEGRAM_WEBHOOK_SECRET: trim(process.env.TELEGRAM_WEBHOOK_SECRET),
-        TELEGRAM_WEBHOOK_PATH: trim(process.env.TELEGRAM_WEBHOOK_PATH, '/webhook/telegram'),
-        TELEGRAM_USER_API_ID: toInt(process.env.TELEGRAM_USER_API_ID || process.env.TELEGRAM_API_ID, 0),
-        TELEGRAM_USER_API_HASH: trim(process.env.TELEGRAM_USER_API_HASH || process.env.TELEGRAM_API_HASH),
-        TELEGRAM_USER_SESSION: trim(process.env.TELEGRAM_USER_SESSION),
-        TELEGRAM_USER_CHECK_INTERVAL_MS: Math.max(5000, toInt(process.env.TELEGRAM_USER_CHECK_INTERVAL_MS, 5000)),
 
         SAFT_EMAIL: trim(process.env.EMAIL_SAFT || process.env.Email_saft),
         SAFT_PASSWORD: trim(process.env.SENHA_SAFT || process.env.Senha_saft),
@@ -122,28 +115,9 @@ function loadEnvConfig() {
     config.SMTP_TLS = toBool(process.env.SMTP_TLS, config.SMTP_PORT === 465);
 
     const warnings = [];
-    if (!['cloud', 'baileys'].includes(config.WHATSAPP_PROVIDER)) {
-        warnings.push(`WHATSAPP_PROVIDER inválido (${config.WHATSAPP_PROVIDER}). Será usado "cloud".`);
-        config.WHATSAPP_PROVIDER = 'cloud';
-    }
-    if (config.WHATSAPP_PROVIDER === 'cloud') {
-        if (!config.TOKEN) warnings.push('WHATSAPP_PROVIDER=cloud mas WHATSAPP_TOKEN não definido.');
-        if (!config.PHONE_NUMBER_ID) warnings.push('WHATSAPP_PROVIDER=cloud mas PHONE_NUMBER_ID não definido.');
-    }
-    if (config.ENABLE_WEBHOOK_AUTOREPLY) {
-        if (config.WHATSAPP_PROVIDER === 'cloud') {
-            if (!config.TOKEN) warnings.push('ENABLE_WEBHOOK_AUTOREPLY=true mas WHATSAPP_TOKEN não definido.');
-            if (!config.PHONE_NUMBER_ID) warnings.push('ENABLE_WEBHOOK_AUTOREPLY=true mas PHONE_NUMBER_ID não definido.');
-        }
-    }
-    if (config.TELEGRAM_WEBHOOK_SECRET && !config.TELEGRAM_BOT_TOKEN) {
-        warnings.push('TELEGRAM_WEBHOOK_SECRET definido mas TELEGRAM_BOT_TOKEN não configurado.');
-    }
-    if ((config.TELEGRAM_USER_API_ID && !config.TELEGRAM_USER_API_HASH) || (!config.TELEGRAM_USER_API_ID && config.TELEGRAM_USER_API_HASH)) {
-        warnings.push('Configuração Telegram User API incompleta (TELEGRAM_USER_API_ID/TELEGRAM_USER_API_HASH devem estar ambos definidos).');
-    }
-    if (toInt(process.env.TELEGRAM_USER_CHECK_INTERVAL_MS, 5000) < 5000) {
-        warnings.push('TELEGRAM_USER_CHECK_INTERVAL_MS abaixo do mínimo seguro; será usado 5000ms.');
+    if (config.WHATSAPP_PROVIDER !== 'baileys') {
+        warnings.push(`WHATSAPP_PROVIDER inválido (${config.WHATSAPP_PROVIDER}). Será usado "baileys".`);
+        config.WHATSAPP_PROVIDER = 'baileys';
     }
     if ((config.SUPABASE_URL && !config.SUPABASE_KEY) || (!config.SUPABASE_URL && config.SUPABASE_KEY)) {
         warnings.push('Configuração Supabase incompleta (SUPABASE_URL/SUPABASE_KEY devem estar ambos definidos).');

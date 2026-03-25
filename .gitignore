@@ -1,2 +1,51 @@
 node_modules/
+node_modules_*/
+
+# Database
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
+whatsapp.db.before_*
+
+# WhatsApp auth sessions
+.baileys_auth/
+.baileys_auth_2/
+
+# Environment / secrets
+.env
+.env.*
+.env.bak.*
+!.env.example
+
+# Releases & builds
+release/
+dist/
+
+# Backups
+backups/
+
+# Media & user data (runtime)
+chat_media/
+internal_chat_media/
+customer_documents/
+exports/
+
+# Logs
+*.log
+.pm2/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+
+# Android build artifacts
+android/.gradle/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+
+# Well-known (ACME/SSL)
+.well-known/

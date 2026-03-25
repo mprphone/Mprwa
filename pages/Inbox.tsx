@@ -20,14 +20,6 @@ import {
   fetchWhatsAppHealth,
   WhatsAppAccountHealth,
   unblockChatContact,
-  fetchTelegramContactStatuses,
-  checkTelegramContacts,
-  fetchTelegramUserHealth,
-  telegramUserSendCode,
-  telegramUserVerifyCode,
-  telegramUserVerifyPassword,
-  TelegramContactStatusRow,
-  TelegramUserAuthStatus,
 } from '../services/chatCoreApi';
 import { fetchOccurrences } from '../services/occurrencesApi';
 import type { OccurrenceRow } from '../services/occurrencesApi';
@@ -261,27 +253,11 @@ const Inbox: React.FC = () => {
   const [whatsappProviderMode, setWhatsappProviderMode] = useState<'cloud' | 'baileys' | 'unknown'>('baileys');
   const [whatsAppAccounts, setWhatsAppAccounts] = useState<WhatsAppAccountHealth[]>([]);
   const [isUpdatingWhatsAppAccount, setIsUpdatingWhatsAppAccount] = useState(false);
-  const [telegramUserAuth, setTelegramUserAuth] = useState<TelegramUserAuthStatus>({
-    configured: false,
-    hasSession: false,
-    authorized: false,
-  });
-  const [telegramStatusByDigits, setTelegramStatusByDigits] = useState<Record<string, TelegramContactStatusRow>>({});
-  const [isConnectingTelegramUser, setIsConnectingTelegramUser] = useState(false);
-  const [isCheckingTelegramContacts, setIsCheckingTelegramContacts] = useState(false);
   const [startingContactId, setStartingContactId] = useState<string | null>(null);
   const [isContactBlockBusy, setIsContactBlockBusy] = useState(false);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const [showContactsModal, setShowContactsModal] = useState(false);
   const [contactsSearchTerm, setContactsSearchTerm] = useState('');
-  const [contactsTelegramOnly, setContactsTelegramOnly] = useState(false);
-  const [showTelegramAuthModal, setShowTelegramAuthModal] = useState(false);
-  const [telegramAuthStep, setTelegramAuthStep] = useState<'phone' | 'code' | 'password'>('phone');
-  const [telegramAuthPhone, setTelegramAuthPhone] = useState('');
-  const [telegramAuthCode, setTelegramAuthCode] = useState('');
-  const [telegramAuthPassword, setTelegramAuthPassword] = useState('');
-  const [telegramAuthInfo, setTelegramAuthInfo] = useState('');
-  const [telegramAuthError, setTelegramAuthError] = useState('');
   
   // Call Log State
   const [showCallModal, setShowCallModal] = useState(false);
@@ -316,7 +292,6 @@ const Inbox: React.FC = () => {
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [conversationSearch, setConversationSearch] = useState('');
-  const [telegramOnly, setTelegramOnly] = useState(false);
   const [managedTemplates, setManagedTemplates] = useState<Array<{
     id: string;
     name: string;
@@ -352,6 +327,8 @@ const Inbox: React.FC = () => {
   const [detailsMessage, setDetailsMessage] = useState<Message | null>(null);
   const [financasAutologinBusyCustomerId, setFinancasAutologinBusyCustomerId] = useState<string | null>(null);
   const [segSocialAutologinBusyCustomerId, setSegSocialAutologinBusyCustomerId] = useState<string | null>(null);
+  const [inboundToast, setInboundToast] = useState<{ from: string; body: string; convId: string } | null>(null);
+  const inboundToastTimerRef = useRef<number | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageComposerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -370,6 +347,7 @@ const Inbox: React.FC = () => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const lastNotificationSoundAtRef = useRef(0);
   const messageSnapshotRef = useRef<Record<string, { lastInboundId: string; lastInboundAt: string }>>({});
+  const chatContactsRef = useRef<ChatContactRow[]>([]);
 
   const selectedConversation = conversations.find(c => c.id === selectedConvId);
   const selectedCustomerId = selectedCustomerIdOverride || selectedConversation?.customerId || null;
@@ -505,6 +483,10 @@ const Inbox: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    chatContactsRef.current = chatContacts;
+  }, [chatContacts]);
+
+  useEffect(() => {
     const unlockAudio = () => {
       const ctx = ensureNotificationAudioContext();
       if (!ctx) return;
@@ -604,42 +586,8 @@ const Inbox: React.FC = () => {
     });
   };
 
-  const mergeTelegramStatusRows = useCallback((rows: TelegramContactStatusRow[]) => {
-    setTelegramStatusByDigits((previous) => {
-      const next = { ...previous };
-      (Array.isArray(rows) ? rows : []).forEach((row) => {
-        const digits = normalizePhoneDigits(row.phoneDigits || row.phoneE164 || '');
-        if (!digits) return;
-        next[digits] = row;
-      });
-      return next;
-    });
-  }, []);
 
-  const refreshTelegramStatuses = useCallback(async () => {
-    try {
-      const payload = await fetchTelegramContactStatuses();
-      setTelegramUserAuth(payload.auth || { configured: false, hasSession: false, authorized: false });
-      const nextMap: Record<string, TelegramContactStatusRow> = {};
-      (payload.data || []).forEach((row) => {
-        const digits = normalizePhoneDigits(row.phoneDigits || row.phoneE164 || '');
-        if (!digits) return;
-        nextMap[digits] = row;
-      });
-      setTelegramStatusByDigits(nextMap);
-    } catch (_) {
-      // mantém funcionamento do inbox sem bloquear UI
-    }
-  }, []);
 
-  const refreshTelegramAuth = useCallback(async () => {
-    try {
-      const health = await fetchTelegramUserHealth();
-      setTelegramUserAuth(health);
-    } catch (_) {
-      // sem bloqueio
-    }
-  }, []);
 
   const relatedCustomersForSelectedNumber = useMemo(() => {
     if (!selectedConversation) return [] as Customer[];
@@ -841,10 +789,32 @@ const Inbox: React.FC = () => {
       }, 120);
     };
 
+    const notifyDesktopInbound = (ssePayload: Record<string, unknown>) => {
+      const eventConvId = String(ssePayload.conversationId || '').trim();
+      if (document.visibilityState === 'visible' && eventConvId && eventConvId === selectedConvRef.current) return;
+      const fromPhone = String(ssePayload.from || '').replace(/\D/g, '');
+      const bodyText = String(ssePayload.body || '').trim();
+      if (!bodyText) return;
+      const contact = chatContactsRef.current.find((c) => {
+        const contactPhone = String(c.from_number || '').replace(/\D/g, '');
+        return (contactPhone && fromPhone.endsWith(contactPhone)) || contactPhone.endsWith(fromPhone);
+      });
+      const senderName =
+        String(contact?.customer_contact_name || '').trim() ||
+        String(contact?.customer_name || '').trim() ||
+        String(contact?.customer_company || '').trim() ||
+        fromPhone ||
+        'Cliente';
+
+      setInboundToast({ from: senderName, body: bodyText.slice(0, 200), convId: eventConvId });
+      if (inboundToastTimerRef.current) window.clearTimeout(inboundToastTimerRef.current);
+      inboundToastTimerRef.current = window.setTimeout(() => setInboundToast(null), 6000);
+    };
+
     const connect = () => {
       source = new EventSource('/api/chat/stream');
       source.onmessage = (event) => {
-        let payload: { type?: string } = {};
+        let payload: Record<string, unknown> = {};
         try {
           payload = JSON.parse(event.data || '{}');
         } catch (error) {
@@ -852,6 +822,9 @@ const Inbox: React.FC = () => {
         }
         const eventType = String(payload.type || '').trim();
         if (!eventType || eventType === 'heartbeat' || eventType === 'connected') return;
+        if (eventType === 'inbound_received') {
+          notifyDesktopInbound(payload);
+        }
         scheduleRefresh();
       };
       source.onerror = () => {
@@ -1057,13 +1030,12 @@ const Inbox: React.FC = () => {
 
   const loadData = async (): Promise<Conversation[]> => {
     const requestId = ++loadDataRequestRef.current;
-    const [convs, custs, tCount, contacts, allTasksData, telegramStatuses, whatsappHealth, whatsappAccountsList] = await Promise.all([
+    const [convs, custs, tCount, contacts, allTasksData, whatsappHealth, whatsappAccountsList] = await Promise.all([
       mockService.getConversations(),
       mockService.getCustomers(),
       mockService.getTemplateCountMonth(),
       fetchChatContacts().catch(() => []),
       mockService.getTasks(),
-      fetchTelegramContactStatuses().catch(() => null),
       fetchWhatsAppHealth().catch(() => null),
       fetchWhatsAppAccounts().catch(() => []),
     ]);
@@ -1100,194 +1072,13 @@ const Inbox: React.FC = () => {
       }))
       .filter((account) => account.accountId);
     setWhatsAppAccounts(normalizedAccounts);
-    if (telegramStatuses) {
-      setTelegramUserAuth(telegramStatuses.auth || { configured: false, hasSession: false, authorized: false });
-      const nextMap: Record<string, TelegramContactStatusRow> = {};
-      (telegramStatuses.data || []).forEach((row) => {
-        const digits = normalizePhoneDigits(row.phoneDigits || row.phoneE164 || '');
-        if (!digits) return;
-        nextMap[digits] = row;
-      });
-      setTelegramStatusByDigits(nextMap);
-    }
     return Array.isArray(convs) ? convs : [];
   };
 
-  const handleConnectTelegramUser = async () => {
-    if (isConnectingTelegramUser) return;
-    setIsConnectingTelegramUser(true);
-    setTelegramAuthError('');
-    setTelegramAuthInfo('');
-    try {
-      const currentHealth = await fetchTelegramUserHealth();
-      setTelegramUserAuth(currentHealth);
 
-      if (!currentHealth.configured) {
-        window.alert('Telegram User API não está configurada no servidor. Define TELEGRAM_USER_API_ID e TELEGRAM_USER_API_HASH no .env.');
-        return;
-      }
 
-      if (currentHealth.authorized) {
-        window.alert('A conta Telegram já está ligada.');
-        return;
-      }
 
-      const pendingPhone = String(currentHealth.pendingAuth?.phoneNumber || '').trim();
-      setTelegramAuthPhone(pendingPhone);
-      setTelegramAuthCode('');
-      setTelegramAuthPassword('');
 
-      if (currentHealth.pendingAuth?.requiresPassword) {
-        setTelegramAuthStep('password');
-        setTelegramAuthInfo('Autenticação pendente: esta conta exige palavra-passe 2FA.');
-      } else if (pendingPhone) {
-        setTelegramAuthStep('code');
-        setTelegramAuthInfo(`Já existe código pendente para ${pendingPhone}.`);
-      } else {
-        setTelegramAuthStep('phone');
-        setTelegramAuthInfo('Introduz o número da conta Telegram para receber o código.');
-      }
-
-      setShowTelegramAuthModal(true);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Falha ao abrir ligação da conta Telegram.';
-      window.alert(message);
-      await refreshTelegramAuth();
-    } finally {
-      setIsConnectingTelegramUser(false);
-    }
-  };
-
-  const handleTelegramAuthSendCode = async () => {
-    const phone = String(telegramAuthPhone || '').trim();
-    if (!phone) {
-      setTelegramAuthError('Indica o número da conta Telegram.');
-      return;
-    }
-
-    setIsConnectingTelegramUser(true);
-    setTelegramAuthError('');
-    setTelegramAuthInfo('');
-    try {
-      const send = await telegramUserSendCode(phone);
-      if (send.alreadyAuthorized) {
-        setShowTelegramAuthModal(false);
-        await refreshTelegramStatuses();
-        window.alert('Conta Telegram já estava autenticada.');
-        return;
-      }
-      setTelegramAuthPhone(phone);
-      setTelegramAuthCode('');
-      setTelegramAuthStep('code');
-      setTelegramAuthInfo(
-        send.isCodeViaApp
-          ? 'Código enviado pela app Telegram.'
-          : 'Código enviado por SMS/Telegram.'
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Falha ao pedir código Telegram.';
-      setTelegramAuthError(message);
-    } finally {
-      setIsConnectingTelegramUser(false);
-    }
-  };
-
-  const handleTelegramAuthVerifyCode = async () => {
-    const phone = String(telegramAuthPhone || '').trim();
-    const code = String(telegramAuthCode || '').trim();
-    if (!phone) {
-      setTelegramAuthError('Número inválido.');
-      return;
-    }
-    if (!code) {
-      setTelegramAuthError('Indica o código recebido.');
-      return;
-    }
-
-    setIsConnectingTelegramUser(true);
-    setTelegramAuthError('');
-    setTelegramAuthInfo('');
-    try {
-      const verify = await telegramUserVerifyCode(phone, code);
-      if (verify.requiresPassword) {
-        setTelegramAuthPassword('');
-        setTelegramAuthStep('password');
-        setTelegramAuthInfo('Esta conta tem 2FA. Introduz a palavra-passe do Telegram.');
-        return;
-      }
-
-      setShowTelegramAuthModal(false);
-      await refreshTelegramStatuses();
-      window.alert('Conta Telegram ligada com sucesso.');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Falha ao validar código Telegram.';
-      setTelegramAuthError(message);
-    } finally {
-      setIsConnectingTelegramUser(false);
-    }
-  };
-
-  const handleTelegramAuthVerifyPassword = async () => {
-    const password = String(telegramAuthPassword || '').trim();
-    if (!password) {
-      setTelegramAuthError('Indica a palavra-passe 2FA.');
-      return;
-    }
-
-    setIsConnectingTelegramUser(true);
-    setTelegramAuthError('');
-    setTelegramAuthInfo('');
-    try {
-      await telegramUserVerifyPassword(password);
-      setShowTelegramAuthModal(false);
-      await refreshTelegramStatuses();
-      window.alert('Conta Telegram ligada com sucesso.');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Falha ao validar palavra-passe 2FA.';
-      setTelegramAuthError(message);
-    } finally {
-      setIsConnectingTelegramUser(false);
-    }
-  };
-
-  const handleCheckTelegramContacts = async () => {
-    if (isCheckingTelegramContacts) return;
-
-    const rowsToCheck = filteredContactsRows.filter((row) => row.rawPhone);
-    if (!rowsToCheck.length) {
-      window.alert('Não há contactos com telefone para verificar.');
-      return;
-    }
-
-    setIsCheckingTelegramContacts(true);
-    try {
-      const health = await fetchTelegramUserHealth();
-      setTelegramUserAuth(health);
-      if (!health.configured) {
-        window.alert('Telegram User API não está configurada no servidor.');
-        return;
-      }
-      if (!health.authorized) {
-        window.alert('Liga primeiro a conta Telegram no botão "Ligar Telegram".');
-        return;
-      }
-
-      const items = rowsToCheck.map((row) => ({
-        customerId: row.id,
-        phone: row.rawPhone,
-        label: row.label,
-      }));
-      const summary = await checkTelegramContacts(items);
-      mergeTelegramStatusRows(summary.results || []);
-      await loadData();
-      window.alert(`Verificação concluída: ${summary.telegramCount}/${summary.total} contactos têm Telegram.`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Falha ao verificar contactos Telegram.';
-      window.alert(message);
-    } finally {
-      setIsCheckingTelegramContacts(false);
-    }
-  };
 
   const loadTemplates = async () => {
     const templates = await mockService.getManagedTemplates('template');
@@ -1867,47 +1658,6 @@ const Inbox: React.FC = () => {
     loadData();
   };
 
-  const handleRequestTelegramContact = async () => {
-    if (!selectedCustomer) return;
-
-    const customerDigits = normalizePhoneDigits(selectedCustomer.phone || '');
-    const conversationDigits = extractPhoneDigitsFromConversationId(selectedConversation?.id);
-    const chatId = conversationDigits || customerDigits;
-    if (!chatId) {
-      alert('Não foi possível identificar o chat Telegram desta conversa.');
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/chat/telegram/request-contact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chatId,
-          createdBy: CURRENT_USER_ID || null,
-          prompt: 'Para associarmos os teus contactos, partilha o teu número no botão abaixo.',
-        }),
-      });
-      const payload = await response.json().catch(() => ({} as { success?: boolean; error?: unknown }));
-      if (!response.ok || !payload?.success) {
-        const details =
-          typeof payload?.error === 'string'
-            ? payload.error
-            : payload?.error
-              ? JSON.stringify(payload.error)
-              : `Falha ao pedir contacto Telegram (${response.status}).`;
-        throw new Error(details);
-      }
-
-      if (selectedConvId) {
-        await loadMessages(selectedConvId);
-      }
-      await loadData();
-      alert('Pedido de contacto enviado no Telegram.');
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Falha ao pedir contacto Telegram.');
-    }
-  };
 
   const handleTriggerFinancasAutologin = async () => {
     const customer = selectedCustomer;
@@ -2782,56 +2532,14 @@ const Inbox: React.FC = () => {
     return { byConversationId, byCustomerId, byPhoneDigits };
   }, [chatContacts]);
 
-  const telegramConversations = useMemo(() => {
-    const byConversationId = new Set<string>();
-    const byCustomerId = new Set<string>();
-    const byPhoneDigits = new Set<string>();
-
-    chatContacts.forEach((contact) => {
-      const channel = String(contact.channel || '').trim().toLowerCase();
-      if (channel !== 'telegram') return;
-
-      const conversationId = String(contact.conversation_id || '').trim();
-      if (conversationId) byConversationId.add(conversationId);
-
-      const customerId = String(contact.customer_id || '').trim();
-      if (customerId) byCustomerId.add(customerId);
-
-      const digits = normalizePhoneDigits(String(contact.from_number || ''));
-      if (digits) byPhoneDigits.add(digits);
-    });
-
-    return { byConversationId, byCustomerId, byPhoneDigits };
-  }, [chatContacts]);
-
   const conversationChannelById = useMemo(() => {
-    const map: Record<string, 'whatsapp' | 'telegram'> = {};
-
+    const map: Record<string, 'whatsapp'> = {};
     conversations.forEach((conversation) => {
       const conversationId = String(conversation.id || '').trim();
-      if (!conversationId) return;
-
-      const conversationDigits = extractPhoneDigitsFromConversationId(conversationId);
-      const isTelegram =
-        telegramConversations.byConversationId.has(conversationId) ||
-        telegramConversations.byCustomerId.has(String(conversation.customerId || '').trim()) ||
-        (conversationDigits ? telegramConversations.byPhoneDigits.has(conversationDigits) : false);
-      map[conversationId] = isTelegram ? 'telegram' : 'whatsapp';
+      if (conversationId) map[conversationId] = 'whatsapp';
     });
-
-    chatContacts.forEach((contact) => {
-      const conversationId = String(contact.conversation_id || '').trim();
-      if (!conversationId) return;
-      const channel = String(contact.channel || '').trim().toLowerCase();
-      if (channel === 'telegram') {
-        map[conversationId] = 'telegram';
-      } else if (!map[conversationId]) {
-        map[conversationId] = 'whatsapp';
-      }
-    });
-
     return map;
-  }, [conversations, chatContacts, telegramConversations]);
+  }, [conversations]);
 
   const conversationDisplayNameById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -2907,7 +2615,7 @@ const Inbox: React.FC = () => {
     if (!blockedRows.length) return new Set<string>();
 
     const blockedSignatures = blockedRows.map((row) => ({
-      channel: String(row.channel || '').trim().toLowerCase() === 'telegram' ? 'telegram' : 'whatsapp',
+      channel: 'whatsapp' as const,
       digits: normalizePhoneDigits(String(row.from_number || '')),
       conversationId: String(row.conversation_id || '').trim(),
     }));
@@ -2916,7 +2624,7 @@ const Inbox: React.FC = () => {
     conversations.forEach((conversation) => {
       const conversationId = String(conversation.id || '').trim();
       if (!conversationId) return;
-      const channel = conversationChannelById[conversationId] === 'telegram' ? 'telegram' : 'whatsapp';
+      const channel = 'whatsapp';
       const conversationDigits =
         extractPhoneDigitsFromConversationId(conversationId) ||
         normalizePhoneDigits(
@@ -2944,10 +2652,7 @@ const Inbox: React.FC = () => {
       return String(row.conversation_id || '').trim() === conversationId;
     }) || null;
 
-    const channel =
-      String(directContact?.channel || conversationChannelById[conversationId] || '').trim().toLowerCase() === 'telegram'
-        ? 'telegram'
-        : 'whatsapp';
+    const channel = 'whatsapp';
     const contactKey =
       normalizePhoneDigits(String(directContact?.from_number || '')) ||
       extractPhoneDigitsFromConversationId(conversationId) ||
@@ -2968,46 +2673,14 @@ const Inbox: React.FC = () => {
     };
   }, [selectedConversation, chatContacts, conversationChannelById, selectedCustomer?.phone, blockedConversationIds]);
 
-  const telegramCustomerIds = useMemo(() => {
-    const ids = new Set<string>();
-
-    conversations.forEach((conversation) => {
-      const customerId = String(conversation.customerId || '').trim();
-      if (!customerId) return;
-
-      if (telegramConversations.byConversationId.has(conversation.id)) {
-        ids.add(customerId);
-        return;
-      }
-
-      if (telegramConversations.byCustomerId.has(customerId)) {
-        ids.add(customerId);
-        return;
-      }
-
-      const convDigits = extractPhoneDigitsFromConversationId(conversation.id);
-      if (convDigits && telegramConversations.byPhoneDigits.has(convDigits)) {
-        ids.add(customerId);
-      }
-    });
-
-    customers.forEach((customer) => {
-      if (isTelegramCustomer(customer)) {
-        ids.add(String(customer.id || '').trim());
-      }
-    });
-
-    return ids;
-  }, [conversations, customers, telegramConversations]);
-
   const contactsRows = useMemo(() => {
-    const blockedByDigits = new Map<string, { channel: 'whatsapp' | 'telegram'; reason: string | null }>();
+    const blockedByDigits = new Map<string, { channel: 'whatsapp'; reason: string | null }>();
     chatContacts.forEach((contact) => {
       const isBlocked = contact?.is_blocked === true || Number(contact?.is_blocked || 0) === 1;
       if (!isBlocked) return;
       const digits = normalizePhoneDigits(String(contact.from_number || ''));
       if (!digits) return;
-      const channel = String(contact.channel || '').trim().toLowerCase() === 'telegram' ? 'telegram' : 'whatsapp';
+      const channel = 'whatsapp' as const;
       const reason = String(contact.blocked_reason || '').trim() || null;
       if (!blockedByDigits.has(digits)) {
         blockedByDigits.set(digits, { channel, reason });
@@ -3022,23 +2695,14 @@ const Inbox: React.FC = () => {
         const hasPhone = Boolean(rawPhone);
         const ownerName = USERS.find((user) => user.id === customer.ownerId)?.name || '--';
         const normalizedPhone = normalizePhoneDigits(rawPhone);
-        const telegramStatus = normalizedPhone ? telegramStatusByDigits[normalizedPhone] : undefined;
-        const hasTelegramByVerification = telegramStatus?.hasTelegram === true;
-        const hasTelegram = hasTelegramByVerification || telegramCustomerIds.has(customerId) || isTelegramCustomer(customer);
-        const primaryValue = hasTelegram ? formatTelegramChatId(rawPhone) : rawPhone;
         const blockedInfo = normalizedPhone ? blockedByDigits.get(normalizedPhone) : null;
 
         return {
           id: customerId,
           label,
-          phone: primaryValue || '--',
+          phone: rawPhone || '--',
           rawPhone,
           normalizedPhone,
-          hasTelegram,
-          hasTelegramByVerification,
-          telegramCheckedAt: telegramStatus?.checkedAt || null,
-          telegramUsername: telegramStatus?.telegramUsername || null,
-          telegramUserId: telegramStatus?.telegramUserId || null,
           isBlocked: Boolean(blockedInfo),
           blockedChannel: blockedInfo?.channel || null,
           blockedReason: blockedInfo?.reason || null,
@@ -3047,16 +2711,15 @@ const Inbox: React.FC = () => {
           nif: String(customer.nif || '').trim(),
         };
       })
-      .filter((row) => row.rawPhone || row.hasTelegram)
+      .filter((row) => row.rawPhone)
       .sort((left, right) => left.label.localeCompare(right.label, 'pt', { sensitivity: 'base' }));
 
     return rows;
-  }, [customers, telegramCustomerIds, telegramStatusByDigits, chatContacts]);
+  }, [customers, chatContacts]);
 
   const filteredContactsRows = useMemo(() => {
     const term = String(contactsSearchTerm || '').trim().toLowerCase();
     return contactsRows.filter((row) => {
-      if (contactsTelegramOnly && !row.hasTelegram) return false;
       if (!term) return true;
       return (
         row.label.toLowerCase().includes(term) ||
@@ -3067,7 +2730,7 @@ const Inbox: React.FC = () => {
         row.nif.toLowerCase().includes(term)
       );
     });
-  }, [contactsRows, contactsSearchTerm, contactsTelegramOnly]);
+  }, [contactsRows, contactsSearchTerm]);
 
   const conversationHasRealMessages = (conversation: Conversation): boolean => {
     if (conversationsWithMessages.byConversationId.has(conversation.id)) return true;
@@ -3075,16 +2738,6 @@ const Inbox: React.FC = () => {
 
     const convDigits = extractPhoneDigitsFromConversationId(conversation.id);
     if (convDigits && conversationsWithMessages.byPhoneDigits.has(convDigits)) return true;
-
-    return false;
-  };
-
-  const isTelegramConversation = (conversation: Conversation): boolean => {
-    if (telegramConversations.byConversationId.has(conversation.id)) return true;
-    if (telegramConversations.byCustomerId.has(conversation.customerId)) return true;
-
-    const convDigits = extractPhoneDigitsFromConversationId(conversation.id);
-    if (convDigits && telegramConversations.byPhoneDigits.has(convDigits)) return true;
 
     return false;
   };
@@ -3102,7 +2755,6 @@ const Inbox: React.FC = () => {
   const filteredConversations = conversations.filter(c => {
     const conversationId = String(c.id || '').trim();
     if (blockedConversationIds.has(conversationId)) return false;
-    if (telegramOnly && !isTelegramConversation(c)) return false;
     if (activeTab === 'mine') return userOwnsConversation(c) && c.status !== ConversationStatus.CLOSED && conversationHasRealMessages(c);
     if (activeTab === 'triage') return c.ownerId === null && c.status !== ConversationStatus.CLOSED && conversationHasRealMessages(c);
     if (activeTab === 'waiting') return c.status !== ConversationStatus.CLOSED && conversationHasRealMessages(c);
@@ -3133,21 +2785,16 @@ const Inbox: React.FC = () => {
   const inboxUnreadTotal = filteredConversations.reduce((sum, conversation) => {
     return sum + Math.max(0, Number(conversation.unreadCount || 0));
   }, 0);
-  const telegramConversationCount = conversations.filter((conversation) => {
-    if (conversation.status === ConversationStatus.CLOSED) return false;
-    if (!conversationHasRealMessages(conversation)) return false;
-    return isTelegramConversation(conversation);
-  }).length;
     
   const customerOwner = selectedCustomer 
     ? USERS.find(u => u.id === selectedCustomer.ownerId) 
     : null;
     
   // Check if customer is "unknown" (temp logic: if name equals phone or generic ID).
-  // For Telegram contacts, phone stores chat_id and should not trigger unknown warning.
+  // Phone stores chat_id in some legacy configurations.
   const isUnknownCustomer =
     !selectedCustomer ||
-    (!isTelegramCustomer(selectedCustomer) &&
+    (!false &&
       String(selectedCustomer.name || '').trim() === String(selectedCustomer.phone || '').trim());
 
 
@@ -3183,6 +2830,37 @@ const Inbox: React.FC = () => {
 
   return (
     <div className="h-[calc(100vh-4rem)] w-full p-4 md:p-6 flex flex-col gap-4">
+      {inboundToast && (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            if (inboundToast.convId) {
+              setSelectedConvId(inboundToast.convId);
+            }
+            setInboundToast(null);
+          }}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (inboundToast.convId) setSelectedConvId(inboundToast.convId); setInboundToast(null); } }}
+          className="fixed top-4 right-4 z-[9999] max-w-sm w-full animate-slide-in-right cursor-pointer rounded-xl border border-green-400/30 bg-gradient-to-r from-green-900/95 to-emerald-800/95 px-4 py-3 shadow-2xl backdrop-blur-sm transition-opacity hover:opacity-90"
+        >
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-green-500/20 text-green-300">
+              <MessageCircle size={16} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-green-100 truncate">{inboundToast.from}</p>
+              <p className="mt-0.5 text-xs text-green-200/80 line-clamp-2">{inboundToast.body}</p>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setInboundToast(null); }}
+              className="ml-1 flex-shrink-0 text-green-300/60 hover:text-green-100"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
       <div className="rounded-2xl border border-slate-700/20 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-900 p-4 text-white shadow-sm md:p-5">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[320px_1fr_360px] md:items-center">
           <div>
@@ -3215,8 +2893,6 @@ const Inbox: React.FC = () => {
         selectedConvId={selectedConvId}
         activeTab={activeTab}
         templateCount={templateCount}
-        telegramOnly={telegramOnly}
-        telegramCount={telegramConversationCount}
         conversationSearch={conversationSearch}
         conversations={filteredConversations}
         conversationDisplayNameById={conversationDisplayNameById}
@@ -3230,7 +2906,6 @@ const Inbox: React.FC = () => {
         onOpenNewChat={() => setShowNewChatModal(true)}
         onConversationSearchChange={setConversationSearch}
         onTabChange={setActiveTab}
-        onToggleTelegramOnly={() => setTelegramOnly((previous) => !previous)}
       />
 
       {/* Middle Column: Chat */}
@@ -3446,7 +3121,6 @@ const Inbox: React.FC = () => {
             conversationDisplayName={selectedConversationLabel}
             customerOwner={customerOwner}
             isUnknownCustomer={isUnknownCustomer}
-            isTelegramConversation={selectedConversation ? isTelegramConversation(selectedConversation) : false}
             conversationChannel={selectedConversationContactInfo?.channel || 'whatsapp'}
             isContactBlocked={selectedConversationContactInfo?.isBlocked === true}
             blockedReason={selectedConversationContactInfo?.blockedReason || null}
@@ -3483,7 +3157,6 @@ const Inbox: React.FC = () => {
             }
             onSaveCustomerNotes={handleSaveCustomerNotes}
             onOpenCallModal={() => setShowCallModal(true)}
-            onRequestTelegramContact={handleRequestTelegramContact}
             onBlockContact={() => {
               void handleBlockSelectedContact();
             }}
@@ -3694,25 +3367,10 @@ const Inbox: React.FC = () => {
               <div>
                 <h3 className="text-base font-semibold text-gray-900">Contactos</h3>
                 <p className="text-xs text-gray-500">
-                  Lista de clientes com contacto e indicação de uso de Telegram (histórico + validação por número).
+                  Lista de clientes com contacto WhatsApp.
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <span
-                  className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-                    telegramUserAuth.authorized
-                      ? 'border-emerald-300 bg-emerald-100 text-emerald-700'
-                      : telegramUserAuth.configured
-                        ? 'border-amber-300 bg-amber-100 text-amber-700'
-                        : 'border-gray-200 bg-gray-100 text-gray-600'
-                  }`}
-                >
-                  {telegramUserAuth.authorized
-                    ? 'Telegram ligado'
-                    : telegramUserAuth.configured
-                      ? 'Telegram por ligar'
-                      : 'Telegram não configurado'}
-                </span>
                 <button
                   type="button"
                   onClick={() => setShowContactsModal(false)}
@@ -3731,41 +3389,6 @@ const Inbox: React.FC = () => {
                 placeholder="Pesquisar por nome, telefone, NIF ou responsável..."
                 className="w-full md:flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-whatsapp-500"
               />
-              <button
-                type="button"
-                onClick={() => setContactsTelegramOnly((previous) => !previous)}
-                className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
-                  contactsTelegramOnly
-                    ? 'border-sky-300 bg-sky-100 text-sky-700'
-                    : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                Só Telegram
-              </button>
-              <button
-                type="button"
-                onClick={() => { void handleConnectTelegramUser(); }}
-                disabled={isConnectingTelegramUser}
-                className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
-                  isConnectingTelegramUser
-                    ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
-                    : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                }`}
-              >
-                {isConnectingTelegramUser ? 'A ligar...' : 'Ligar Telegram'}
-              </button>
-              <button
-                type="button"
-                onClick={() => { void handleCheckTelegramContacts(); }}
-                disabled={isCheckingTelegramContacts}
-                className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
-                  isCheckingTelegramContacts
-                    ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
-                    : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                }`}
-              >
-                {isCheckingTelegramContacts ? 'A verificar...' : 'Verificar Telegram'}
-              </button>
             </div>
 
             <div className="max-h-[60vh] overflow-auto">
@@ -3774,9 +3397,7 @@ const Inbox: React.FC = () => {
                   <tr className="text-left">
                     <th className="px-4 py-2 text-[11px] uppercase tracking-wide text-gray-500">Nome</th>
                     <th className="px-4 py-2 text-[11px] uppercase tracking-wide text-gray-500">Telefone</th>
-                    <th className="px-4 py-2 text-[11px] uppercase tracking-wide text-gray-500">Telegram</th>
                     <th className="px-4 py-2 text-[11px] uppercase tracking-wide text-gray-500">Bloqueado</th>
-                    <th className="px-4 py-2 text-[11px] uppercase tracking-wide text-gray-500">Última verificação</th>
                     <th className="px-4 py-2 text-[11px] uppercase tracking-wide text-gray-500">Resp. interno</th>
                     <th className="px-4 py-2 text-[11px] uppercase tracking-wide text-gray-500 text-right">Ação</th>
                   </tr>
@@ -3787,35 +3408,18 @@ const Inbox: React.FC = () => {
                       <td className="px-4 py-2 text-sm text-gray-900">{row.label}</td>
                       <td className="px-4 py-2 text-sm font-mono text-gray-700">{row.phone}</td>
                       <td className="px-4 py-2 text-xs">
-                        {row.hasTelegram ? (
-                          <span className="inline-flex rounded-full border border-sky-300 bg-sky-100 px-2 py-0.5 font-semibold text-sky-700">
-                            Sim
-                          </span>
-                        ) : (
-                          <span className="inline-flex rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 font-semibold text-gray-600">
-                            Não
-                          </span>
-                        )}
-                        {row.telegramUsername ? (
-                          <p className="mt-1 text-[11px] text-gray-500">@{row.telegramUsername}</p>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-2 text-xs">
                         {row.isBlocked ? (
                           <span
                             className="inline-flex rounded-full border border-red-200 bg-red-50 px-2 py-0.5 font-semibold text-red-700"
                             title={row.blockedReason || 'Contacto bloqueado'}
                           >
-                            {row.blockedChannel === 'telegram' ? 'Telegram' : 'WhatsApp'}
+                            WhatsApp
                           </span>
                         ) : (
                           <span className="inline-flex rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 font-semibold text-gray-600">
                             Não
                           </span>
                         )}
-                      </td>
-                      <td className="px-4 py-2 text-xs text-gray-600">
-                        {row.telegramCheckedAt ? formatDateTimePt(row.telegramCheckedAt) : '--'}
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-700">{row.ownerName}</td>
                       <td className="px-4 py-2 text-right">
@@ -3836,7 +3440,7 @@ const Inbox: React.FC = () => {
                   ))}
                   {filteredContactsRows.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">
+                      <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
                         Nenhum contacto encontrado para este filtro.
                       </td>
                     </tr>
@@ -3848,136 +3452,6 @@ const Inbox: React.FC = () => {
         </div>
       )}
 
-      {showTelegramAuthModal && (
-        <div className="fixed inset-0 z-[60] bg-black/45 flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-2xl">
-            <div className="border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-              <h3 className="text-base font-semibold text-gray-900">Ligar Conta Telegram</h3>
-              <button
-                type="button"
-                onClick={() => setShowTelegramAuthModal(false)}
-                className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
-              >
-                Fechar
-              </button>
-            </div>
-
-            <div className="px-4 py-4 space-y-3">
-              {telegramAuthInfo ? (
-                <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
-                  {telegramAuthInfo}
-                </div>
-              ) : null}
-              {telegramAuthError ? (
-                <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                  {telegramAuthError}
-                </div>
-              ) : null}
-
-              {(telegramAuthStep === 'phone' || telegramAuthStep === 'code' || telegramAuthStep === 'password') && (
-                <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Número Telegram
-                  </label>
-                  <input
-                    type="text"
-                    value={telegramAuthPhone}
-                    onChange={(event) => setTelegramAuthPhone(event.target.value)}
-                    placeholder="+3519XXXXXXXX"
-                    disabled={telegramAuthStep !== 'phone' || isConnectingTelegramUser}
-                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
-                      telegramAuthStep !== 'phone'
-                        ? 'border-gray-200 bg-gray-100 text-gray-500'
-                        : 'border-gray-300 bg-white text-gray-800 focus:ring-blue-500'
-                    }`}
-                  />
-                </div>
-              )}
-
-              {telegramAuthStep === 'code' && (
-                <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Código recebido
-                  </label>
-                  <input
-                    type="text"
-                    value={telegramAuthCode}
-                    onChange={(event) => setTelegramAuthCode(event.target.value)}
-                    placeholder="12345"
-                    disabled={isConnectingTelegramUser}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setTelegramAuthStep('phone')}
-                    disabled={isConnectingTelegramUser}
-                    className="mt-2 text-xs text-blue-700 hover:underline disabled:text-gray-400"
-                  >
-                    Alterar número / reenviar código
-                  </button>
-                </div>
-              )}
-
-              {telegramAuthStep === 'password' && (
-                <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Palavra-passe 2FA
-                  </label>
-                  <input
-                    type="password"
-                    value={telegramAuthPassword}
-                    onChange={(event) => setTelegramAuthPassword(event.target.value)}
-                    placeholder="Palavra-passe Telegram"
-                    disabled={isConnectingTelegramUser}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="border-t border-gray-200 px-4 py-3 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowTelegramAuthModal(false)}
-                disabled={isConnectingTelegramUser}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:text-gray-400"
-              >
-                Cancelar
-              </button>
-              {telegramAuthStep === 'phone' && (
-                <button
-                  type="button"
-                  onClick={() => { void handleTelegramAuthSendCode(); }}
-                  disabled={isConnectingTelegramUser}
-                  className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400"
-                >
-                  {isConnectingTelegramUser ? 'A enviar...' : 'Enviar código'}
-                </button>
-              )}
-              {telegramAuthStep === 'code' && (
-                <button
-                  type="button"
-                  onClick={() => { void handleTelegramAuthVerifyCode(); }}
-                  disabled={isConnectingTelegramUser}
-                  className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400"
-                >
-                  {isConnectingTelegramUser ? 'A validar...' : 'Validar código'}
-                </button>
-              )}
-              {telegramAuthStep === 'password' && (
-                <button
-                  type="button"
-                  onClick={() => { void handleTelegramAuthVerifyPassword(); }}
-                  disabled={isConnectingTelegramUser}
-                  className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400"
-                >
-                  {isConnectingTelegramUser ? 'A validar...' : 'Concluir login'}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -4025,15 +3499,7 @@ const resolveRelatedCustomerName = (customerId: string, customers: Customer[]) =
   return nif ? `${label} (${nif})` : label;
 };
 
-const isTelegramCustomer = (customer: Customer | null | undefined) => {
-  if (!customer) return false;
-  const company = String(customer.company || '').trim().toLowerCase();
-  if (company === 'telegram') return true;
-  const name = String(customer.name || '').trim().toLowerCase();
-  return name.startsWith('telegram ');
-};
 
-const formatTelegramChatId = (value?: string | null) => String(value || '').trim().replace(/^\+/, '');
 
 type InboxCustomerProfilePanelProps = {
   customer: Customer;
@@ -4079,8 +3545,8 @@ const InboxCustomerProfilePanel: React.FC<InboxCustomerProfilePanelProps> = ({
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 text-sm">
       <div className="grid grid-cols-2 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs">
         <ProfileField
-          label={isTelegramCustomer(customer) ? 'ID Telegram' : 'Telefone'}
-          value={isTelegramCustomer(customer) ? formatTelegramChatId(customer.phone) : customer.phone}
+          label={'Telefone'}
+          value={customer.phone}
         />
         <ProfileField label="Email" value={customer.email} />
         <ProfileField label="NIF" value={customer.nif} />

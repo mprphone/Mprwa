@@ -1,0 +1,5 @@
+{
+  "name": "WhatsApp Manager MVP - Windows Server",
+  "description": "Internal dashboard for WhatsApp Business management designed for Windows Server 2016 (IIS + Node.js) deployment.",
+  "requestFramePermissions": []
+}

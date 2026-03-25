@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">WA PRO Mobile</string>
+    <string name="title_activity_main">WA PRO Mobile</string>
+    <string name="package_name">pt.mpr.wapro.mobile</string>
+    <string name="custom_url_scheme">pt.mpr.wapro.mobile</string>
+</resources>
