@@ -212,6 +212,24 @@ function createBaileysGateway(options = {}) {
     const inboundMediaDir = path.resolve(
         String(options.inboundMediaDir || path.resolve(process.cwd(), 'chat_media', 'inbound')).trim()
     );
+    const inboundMediaSkipVideo = ['1', 'true', 'yes', 'on'].includes(
+        String(
+            options.inboundMediaSkipVideo ??
+            process.env.WHATSAPP_INBOUND_MEDIA_SKIP_VIDEO ??
+            ''
+        )
+            .trim()
+            .toLowerCase()
+    );
+    const inboundMediaDisable = ['1', 'true', 'yes', 'on'].includes(
+        String(
+            options.inboundMediaDisable ??
+            process.env.WHATSAPP_INBOUND_MEDIA_DISABLE ??
+            ''
+        )
+            .trim()
+            .toLowerCase()
+    );
 
     let socket = null;
     let saveCreds = async () => {};
@@ -283,6 +301,14 @@ function createBaileysGateway(options = {}) {
         return `${digits}@s.whatsapp.net`;
     };
 
+    const shouldPersistInboundMedia = (kind) => {
+        const normalized = String(kind || '').trim().toLowerCase();
+        if (!normalized) return false;
+        if (inboundMediaDisable) return false;
+        if (inboundMediaSkipVideo && normalized === 'video') return false;
+        return true;
+    };
+
     const persistInboundMediaToDisk = async ({ rawMessage, mediaPayload, waId }) => {
         if (!rawMessage?.message || !mediaPayload?.kind) return null;
         await fs.promises.mkdir(inboundMediaDir, { recursive: true });
@@ -314,6 +340,42 @@ function createBaileysGateway(options = {}) {
             mediaMimeType: mediaPayload.mimeType || '',
             mediaSize: Number.isFinite(Number(stats?.size)) ? Number(stats.size) : null,
         };
+    };
+
+    const MEDIA_KIND_TO_KEY = {
+        image: 'imageMessage',
+        video: 'videoMessage',
+        document: 'documentMessage',
+        audio: 'audioMessage',
+        sticker: 'stickerMessage',
+    };
+
+    const downloadInboundMediaStream = async ({ waId, fromNumber, mediaKind, mediaMeta }) => {
+        const kind = String(mediaKind || '').trim().toLowerCase();
+        const messageKey = MEDIA_KIND_TO_KEY[kind];
+        if (!messageKey) throw new Error('Tipo de media inválido.');
+        if (!mediaMeta || typeof mediaMeta !== 'object') throw new Error('Media meta indisponível.');
+        await start();
+        const activeSocket = await waitForConnected(30000);
+        const fromDigits = normalizeDigits(fromNumber);
+        const message = {
+            key: {
+                id: String(waId || Date.now()).trim(),
+                remoteJid: fromDigits ? `${fromDigits}@s.whatsapp.net` : undefined,
+                fromMe: false,
+            },
+            message: {
+                [messageKey]: mediaMeta,
+            },
+        };
+        return downloadMediaMessage(
+            message,
+            'stream',
+            {},
+            {
+                reuploadRequest: activeSocket?.updateMediaMessage,
+            }
+        );
     };
 
     const handleInboundUpsert = async (upsertEvent) => {
@@ -360,11 +422,18 @@ function createBaileysGateway(options = {}) {
                 let persistedMedia = null;
                 if (inboundMedia) {
                     try {
-                        persistedMedia = await persistInboundMediaToDisk({
-                            rawMessage: message,
-                            mediaPayload: inboundMedia,
-                            waId: message?.key?.id,
-                        });
+                        if (shouldPersistInboundMedia(inboundMedia.kind)) {
+                            persistedMedia = await persistInboundMediaToDisk({
+                                rawMessage: message,
+                                mediaPayload: inboundMedia,
+                                waId: message?.key?.id,
+                            });
+                        } else {
+                            log('baileys_inbound_media_skipped', {
+                                waId: String(message?.key?.id || '').trim() || null,
+                                kind: inboundMedia.kind,
+                            });
+                        }
                     } catch (mediaError) {
                         log('baileys_inbound_media_error', {
                             error: String(mediaError?.message || mediaError),
@@ -695,6 +764,7 @@ function createBaileysGateway(options = {}) {
         sendText,
         sendImage,
         sendDocument,
+        downloadInboundMediaStream,
         getHealth,
         getQrPayload,
         fetchProfilePictureUrl,

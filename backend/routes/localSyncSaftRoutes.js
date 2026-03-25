@@ -2649,7 +2649,8 @@ Regras:
         isFinancasAutologinRunningRef: { get value() { return isFinancasAutologinRunning; }, set value(v) { isFinancasAutologinRunning = v; } },
         // document helpers
         hasConfiguredCustomerFolder, normalizeRelativeFolderPath,
-        ensureWritableFolderTree, guessMimeType,
+        resolveDocsTargetFolder, ensureWritableFolderTree,
+        guessMimeType,
         normalizeCustomerIngestDocumentType,
         extractCustomerDocumentWithGemini, buildIngestDocumentFileName,
         findLocalCustomerByNifDigits, buildSuggestedCustomerFromExtraction,

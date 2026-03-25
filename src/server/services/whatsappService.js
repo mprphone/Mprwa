@@ -205,6 +205,19 @@ function createWhatsAppService(deps) {
         });
     }
 
+    async function downloadInboundMediaStream({ accountId = '', waId = '', fromNumber = '', mediaKind = '', mediaMeta = null } = {}) {
+        const { accountId: resolvedAccountId, gateway } = getBaileysGatewayForAccount(accountId);
+        if (!gateway || typeof gateway.downloadInboundMediaStream !== 'function') {
+            throw new Error(`Conta WhatsApp não inicializada: ${resolvedAccountId}`);
+        }
+        return gateway.downloadInboundMediaStream({
+            waId,
+            fromNumber,
+            mediaKind,
+            mediaMeta,
+        });
+    }
+
     return {
         isBaileysProviderEnabled,
         resolveWhatsAppAccountId,
@@ -218,6 +231,7 @@ function createWhatsAppService(deps) {
         sendWhatsAppDocumentLink,
         sendWhatsAppTextMessage,
         sendWhatsAppMenuMessage,
+        downloadInboundMediaStream,
     };
 }
 

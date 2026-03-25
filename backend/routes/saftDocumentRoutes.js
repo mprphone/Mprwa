@@ -14,12 +14,18 @@ function registerSaftDocumentRoutes(context, helpers) {
         nowIso, API_PUBLIC_BASE_URL,
     } = context;
     const {
-        hasConfiguredCustomerFolder, normalizeRelativeFolderPath,
-        ensureWritableFolderTree, guessMimeType,
+        hasConfiguredCustomerFolder,
+        normalizeRelativeFolderPath,
+        resolveDocsTargetFolder,
+        ensureWritableFolderTree,
+        guessMimeType,
         normalizeCustomerIngestDocumentType,
-        extractCustomerDocumentWithGemini, buildIngestDocumentFileName,
-        findLocalCustomerByNifDigits, buildSuggestedCustomerFromExtraction,
-        mergeManagers, buildPublicBaseUrl: buildPublicBaseUrlHelper,
+        extractCustomerDocumentWithGemini,
+        buildIngestDocumentFileName,
+        findLocalCustomerByNifDigits,
+        buildSuggestedCustomerFromExtraction,
+        mergeManagers,
+        buildPublicBaseUrl: buildPublicBaseUrlHelper,
         CUSTOMER_INGEST_DOC_TYPES,
     } = helpers;
 

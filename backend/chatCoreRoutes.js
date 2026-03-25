@@ -39,6 +39,7 @@ function registerChatCoreRoutes(app, deps) {
     logChatCore,
     sendMobilePushNotification,
     fetchAvatarOnDemand,
+    downloadInboundMediaStream,
   } = deps;
 
   const normalizePhoneDigits = (value) => String(value || '').replace(/\D/g, '');
@@ -496,6 +497,9 @@ function registerChatCoreRoutes(app, deps) {
     );
     const mediaSizeValue = Number(row.media_size);
     return {
+      waId: String(row.wa_id || '').trim() || null,
+      fromNumber: String(row.from_number || '').trim() || null,
+      accountId: String(row.account_id || '').trim() || null,
       mediaKind,
       mediaPath: mediaPath || null,
       mediaMimeType,
@@ -1137,12 +1141,14 @@ function registerChatCoreRoutes(app, deps) {
     const params = [];
     const where = [];
 
-    if (phone) {
-      where.push(`replace(replace(replace(ifnull(from_number, ''), '+', ''), ' ', ''), '-', '') = ?`);
-      params.push(String(phone).replace(/\D/g, ''));
+    const phoneDigits = String(phone || '').replace(/\D/g, '');
+    if (phoneDigits) {
+      // Fast path: from_number já é guardado só com dígitos
+      where.push(`ifnull(from_number, '') = ?`);
+      params.push(phoneDigits);
     }
     if (accountId) {
-      where.push(`ifnull(account_id, '') = ?`);
+      where.push(`account_id = ?`);
       params.push(accountId);
     }
     if (where.length > 0) {
@@ -1152,7 +1158,18 @@ function registerChatCoreRoutes(app, deps) {
     sql += ' ORDER BY id DESC LIMIT 50';
 
     try {
-      const rows = await dbAllAsync(sql, params);
+      let rows = await dbAllAsync(sql, params);
+      // Fallback lento para dados antigos com +/espaços no from_number
+      if (phoneDigits && (!rows || rows.length === 0)) {
+        let slowSql = 'SELECT * FROM messages WHERE replace(replace(replace(ifnull(from_number, \'\'), \'+\', \'\'), \' \', \'\'), \'-\', \'\') = ?';
+        const slowParams = [phoneDigits];
+        if (accountId) {
+          slowSql += ' AND ifnull(account_id, \'\') = ?';
+          slowParams.push(accountId);
+        }
+        slowSql += ' ORDER BY id DESC LIMIT 50';
+        rows = await dbAllAsync(slowSql, slowParams);
+      }
       res.json({ data: (Array.isArray(rows) ? rows : []).reverse() });
     } catch (error) {
       res.status(400).json({ error: error?.message || error });
@@ -1625,7 +1642,7 @@ function registerChatCoreRoutes(app, deps) {
       } else if (target.kind === 'db') {
         const messageRow = await dbGetAsync(
           `SELECT
-             id, wa_id,
+             id, wa_id, from_number, account_id,
              media_kind, media_path, media_mime_type, media_file_name, media_size,
              media_provider, media_remote_id, media_remote_url, media_meta_json
            FROM messages
@@ -1637,7 +1654,7 @@ function registerChatCoreRoutes(app, deps) {
       } else {
         const messageRow = await dbGetAsync(
           `SELECT
-             id, wa_id,
+             id, wa_id, from_number, account_id,
              media_kind, media_path, media_mime_type, media_file_name, media_size,
              media_provider, media_remote_id, media_remote_url, media_meta_json
            FROM messages
@@ -1683,6 +1700,35 @@ function registerChatCoreRoutes(app, deps) {
             .on('error', (streamError) => {
               if (!res.headersSent) {
                 res.status(500).json({ success: false, error: streamError?.message || streamError });
+              } else {
+                res.end();
+              }
+            })
+            .pipe(res);
+          return;
+        } catch (_) {
+          // fallback para media remoto, se existir
+        }
+      }
+
+      if (
+        media.mediaProvider === 'baileys' &&
+        typeof downloadInboundMediaStream === 'function' &&
+        media.mediaMeta &&
+        media.fromNumber
+      ) {
+        try {
+          const inboundStream = await downloadInboundMediaStream({
+            accountId: media.accountId || '',
+            waId: media.waId || '',
+            fromNumber: media.fromNumber,
+            mediaKind: media.mediaKind,
+            mediaMeta: media.mediaMeta,
+          });
+          inboundStream
+            .on('error', (streamError) => {
+              if (!res.headersSent) {
+                res.status(502).json({ success: false, error: streamError?.message || streamError });
               } else {
                 res.end();
               }

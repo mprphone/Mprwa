@@ -580,6 +580,7 @@ const {
     sendWhatsAppDocumentLink,
     sendWhatsAppTextMessage,
     sendWhatsAppMenuMessage,
+    downloadInboundMediaStream,
 } = createWhatsAppService({
     activeProvider: ACTIVE_WHATSAPP_PROVIDER,
     accountConfigs: BAILEYS_ACCOUNT_CONFIGS,
@@ -1926,6 +1927,7 @@ registerLocalDataRoutes({
     SUPABASE_FUNCIONARIOS_SOURCE,
     SUPABASE_CLIENTS_SOURCE,
     fetchSupabaseTable,
+    fetchSupabaseTableWithFilters,
     resolveSupabaseTableName,
     normalizeDigits,
     normalizeLookupText,
@@ -2056,6 +2058,7 @@ if (!IS_BACKOFFICE_ONLY) {
         logChatCore,
         sendMobilePushNotification: (payload) => mobilePushService.sendInboundMessageNotification(payload),
         fetchAvatarOnDemand: typeof fetchAvatarOnDemand === 'function' ? fetchAvatarOnDemand : null,
+        downloadInboundMediaStream: typeof downloadInboundMediaStream === 'function' ? downloadInboundMediaStream : null,
     });
 }
 

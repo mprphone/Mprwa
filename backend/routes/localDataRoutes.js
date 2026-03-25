@@ -51,6 +51,7 @@ function registerLocalDataRoutes(context) {
         SUPABASE_FUNCIONARIOS_SOURCE,
         SUPABASE_CLIENTS_SOURCE,
         fetchSupabaseTable,
+        fetchSupabaseTableWithFilters,
         resolveSupabaseTableName,
         normalizeDigits = (value) => String(value || '').replace(/\D+/g, ''),
         normalizeLookupText = (value) =>

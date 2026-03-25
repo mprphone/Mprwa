@@ -8,6 +8,29 @@ function openDatabase(dbPath) {
             console.log('Conectado ao banco SQLite.');
         }
     });
+    db.serialize(() => {
+        const walEnabled = String(process.env.SQLITE_WAL || '1').trim() !== '0';
+        const rawBusyTimeout = Number(process.env.SQLITE_BUSY_TIMEOUT_MS || 5000);
+        const busyTimeoutMs = Number.isFinite(rawBusyTimeout)
+            ? Math.max(1000, Math.min(30000, Math.floor(rawBusyTimeout)))
+            : 5000;
+        const pragmas = [
+            'PRAGMA foreign_keys=ON',
+            `PRAGMA busy_timeout=${busyTimeoutMs}`,
+        ];
+        if (walEnabled) {
+            pragmas.push('PRAGMA journal_mode=WAL');
+            pragmas.push('PRAGMA synchronous=NORMAL');
+        } else {
+            pragmas.push('PRAGMA journal_mode=DELETE');
+            pragmas.push('PRAGMA synchronous=FULL');
+        }
+        db.exec(`${pragmas.join('; ')};`, (pragmaError) => {
+            if (pragmaError) {
+                console.error('Erro ao aplicar PRAGMAs SQLite:', pragmaError.message || pragmaError);
+            }
+        });
+    });
     return db;
 }
 

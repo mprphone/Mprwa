@@ -9,7 +9,8 @@ function registerPedidosPontoRoutes(context, helpers) {
         app, dbRunAsync, dbGetAsync, dbAllAsync, writeAuditLog,
         SUPABASE_URL, SUPABASE_KEY,
         SUPABASE_FUNCIONARIOS_SOURCE,
-        fetchSupabaseTable, resolveSupabaseTableName, nowIso,
+        fetchSupabaseTable, fetchSupabaseTableWithFilters, resolveSupabaseTableName, nowIso,
+        parseSourceId = (_id, explicitSourceId) => String(explicitSourceId || '').trim(),
     } = context;
 
     const {
@@ -106,6 +107,85 @@ function registerPedidosPontoRoutes(context, helpers) {
 
     const normalizePinValue = (value) => String(value === undefined || value === null ? '' : value).replace(/\s+/g, '').trim();
 
+    const FUNCIONARIOS_CACHE_TTL_MS = (() => {
+        const raw = Number(process.env.SUPABASE_FUNCIONARIOS_CACHE_TTL_MS || 180000);
+        if (!Number.isFinite(raw) || raw <= 0) return 0;
+        return Math.max(30000, Math.min(15 * 60 * 1000, raw));
+    })();
+    const FUNCIONARIOS_FULL_SCAN_FALLBACK = String(process.env.SUPABASE_FUNCIONARIOS_FULL_SCAN_FALLBACK || '1')
+        .trim()
+        .toLowerCase() !== '0';
+    const funcionarioLookupCache = new Map();
+    const funcionariosListCache = {
+        expiresAt: 0,
+        rows: null,
+        pending: null,
+    };
+
+    function getCacheEntry(cache, key) {
+        if (!FUNCIONARIOS_CACHE_TTL_MS) return undefined;
+        const entry = cache.get(key);
+        if (!entry) return undefined;
+        if (entry.expiresAt <= Date.now()) {
+            cache.delete(key);
+            return undefined;
+        }
+        return entry.value;
+    }
+
+    function setCacheEntry(cache, key, value) {
+        if (!FUNCIONARIOS_CACHE_TTL_MS) return;
+        cache.set(key, { value, expiresAt: Date.now() + FUNCIONARIOS_CACHE_TTL_MS });
+    }
+
+    async function fetchFuncionariosRowsCached(tableName) {
+        if (!FUNCIONARIOS_CACHE_TTL_MS || !tableName) {
+            const rowsRaw = await fetchSupabaseTable(tableName);
+            return Array.isArray(rowsRaw) ? rowsRaw : [];
+        }
+        const now = Date.now();
+        if (funcionariosListCache.rows && funcionariosListCache.expiresAt > now) {
+            return funcionariosListCache.rows;
+        }
+        if (funcionariosListCache.pending) {
+            return funcionariosListCache.pending;
+        }
+        funcionariosListCache.pending = (async () => {
+            try {
+                const rowsRaw = await fetchSupabaseTable(tableName);
+                const rows = Array.isArray(rowsRaw) ? rowsRaw : [];
+                funcionariosListCache.rows = rows;
+                funcionariosListCache.expiresAt = Date.now() + FUNCIONARIOS_CACHE_TTL_MS;
+                return rows;
+            } finally {
+                funcionariosListCache.pending = null;
+            }
+        })();
+        return funcionariosListCache.pending;
+    }
+
+    async function fetchFuncionarioByFilter(tableName, column, value) {
+        if (typeof fetchSupabaseTableWithFilters !== 'function') return null;
+        const normalizedValue = String(value || '').trim();
+        if (!normalizedValue) return null;
+        const cacheKey = `${tableName}|${column}|${normalizedValue}`;
+        const cached = getCacheEntry(funcionarioLookupCache, cacheKey);
+        if (cached !== undefined) return cached;
+        try {
+            const rows = await fetchSupabaseTableWithFilters(
+                tableName,
+                { [column]: normalizedValue },
+                { limit: 1 }
+            );
+            const row = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+            setCacheEntry(funcionarioLookupCache, cacheKey, row);
+            return row;
+        } catch (error) {
+            setCacheEntry(funcionarioLookupCache, cacheKey, null);
+            return null;
+        }
+    }
+
     const pickSupabaseFuncionarioPin = (funcionarioRow) => {
         const candidates = [
             funcionarioRow?.pin,
@@ -149,32 +229,61 @@ function registerPedidosPontoRoutes(context, helpers) {
                 ? await resolveSupabaseTableName(registosPontoTableRequested, ['public.registos_ponto', 'registos_ponto'])
                 : registosPontoTableRequested;
 
-        const funcionariosRowsRaw = await fetchSupabaseTable(funcionariosTable).catch((err) => {
-            throw new Error(`Falha ao ler funcionários no Supabase: ${err?.message || err}`);
-        });
-        const funcionariosRows = Array.isArray(funcionariosRowsRaw) ? funcionariosRowsRaw : [];
-
         const actorEmail = String(actorUser?.email || '').trim().toLowerCase();
         const actorSourceId = String(parseSourceId(actorId, actorUser?.source_id) || '').trim();
         const sourceCandidates = Array.from(
             new Set([actorSourceId, String(actorUser?.source_id || '').trim(), actorId].filter(Boolean))
         );
 
-        const byEmail = actorEmail
-            ? funcionariosRows.find((row) => String(row?.email || '').trim().toLowerCase() === actorEmail)
-            : null;
+        const canFilterFuncionarios = typeof fetchSupabaseTableWithFilters === 'function';
+        let funcionarioMatch = null;
 
-        let funcionarioMatch = byEmail || null;
-        if (!funcionarioMatch && sourceCandidates.length > 0) {
-            funcionarioMatch = funcionariosRows.find((row) => {
-                const rowCandidates = [
-                    String(row?.user_id || '').trim(),
-                    String(row?.source_id || '').trim(),
-                    String(row?.local_user_id || '').trim(),
-                    String(row?.id || '').trim(),
-                ].filter(Boolean);
-                return rowCandidates.some((candidate) => sourceCandidates.includes(candidate));
+        if (canFilterFuncionarios) {
+            const lookups = [];
+            if (actorEmail) lookups.push({ column: 'email', value: actorEmail });
+            for (const candidate of sourceCandidates) {
+                lookups.push({ column: 'source_id', value: candidate });
+                lookups.push({ column: 'user_id', value: candidate });
+                lookups.push({ column: 'local_user_id', value: candidate });
+                lookups.push({ column: 'id', value: candidate });
+            }
+
+            const seen = new Set();
+            for (const lookup of lookups) {
+                if (!lookup?.value) continue;
+                const key = `${lookup.column}:${lookup.value}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                const row = await fetchFuncionarioByFilter(funcionariosTable, lookup.column, lookup.value);
+                if (row) {
+                    funcionarioMatch = row;
+                    break;
+                }
+            }
+        }
+
+        if (!funcionarioMatch && (!canFilterFuncionarios || FUNCIONARIOS_FULL_SCAN_FALLBACK)) {
+            const funcionariosRowsRaw = await fetchFuncionariosRowsCached(funcionariosTable).catch((err) => {
+                throw new Error(`Falha ao ler funcionários no Supabase: ${err?.message || err}`);
             });
+            const funcionariosRows = Array.isArray(funcionariosRowsRaw) ? funcionariosRowsRaw : [];
+
+            const byEmail = actorEmail
+                ? funcionariosRows.find((row) => String(row?.email || '').trim().toLowerCase() === actorEmail)
+                : null;
+
+            funcionarioMatch = byEmail || null;
+            if (!funcionarioMatch && sourceCandidates.length > 0) {
+                funcionarioMatch = funcionariosRows.find((row) => {
+                    const rowCandidates = [
+                        String(row?.user_id || '').trim(),
+                        String(row?.source_id || '').trim(),
+                        String(row?.local_user_id || '').trim(),
+                        String(row?.id || '').trim(),
+                    ].filter(Boolean);
+                    return rowCandidates.some((candidate) => sourceCandidates.includes(candidate));
+                });
+            }
         }
 
         const funcionarioId = String(funcionarioMatch?.id || '').trim();
