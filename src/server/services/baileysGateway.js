@@ -206,6 +206,7 @@ function createBaileysGateway(options = {}) {
     const reconnectDelayMs = Math.max(1000, Number(options.reconnectDelayMs || 4000));
 
     const onInboundMessage = typeof options.onInboundMessage === 'function' ? options.onInboundMessage : null;
+    const onContactsUpsert = typeof options.onContactsUpsert === 'function' ? options.onContactsUpsert : null;
     const onStateChange = typeof options.onStateChange === 'function' ? options.onStateChange : null;
     const onLog = typeof options.onLog === 'function' ? options.onLog : null;
     const inboundMediaDir = path.resolve(
@@ -428,6 +429,21 @@ function createBaileysGateway(options = {}) {
         nextSocket.ev.on('messages.upsert', (event) => {
             void handleInboundUpsert(event);
         });
+
+        if (onContactsUpsert) {
+            nextSocket.ev.on('contacts.upsert', (contacts) => {
+                try {
+                    const mapped = (Array.isArray(contacts) ? contacts : []).map((c) => ({
+                        jid: String(c?.id || '').trim(),
+                        savedName: String(c?.name || '').trim() || null,
+                        pushName: String(c?.notify || '').trim() || null,
+                    })).filter((c) => c.jid && c.jid.includes('@s.whatsapp.net'));
+                    if (mapped.length > 0) onContactsUpsert(mapped);
+                } catch (err) {
+                    log('baileys_contacts_upsert_error', { error: String(err?.message || err) });
+                }
+            });
+        }
 
         nextSocket.ev.on('connection.update', (update) => {
             const connection = String(update?.connection || '').trim().toLowerCase();
@@ -662,6 +678,17 @@ function createBaileysGateway(options = {}) {
         };
     }
 
+    async function fetchProfilePictureUrl(phoneDigits) {
+        if (!socket || !state.connected) return null;
+        try {
+            const jid = `${String(phoneDigits || '').replace(/\D/g, '')}@s.whatsapp.net`;
+            const url = await socket.profilePictureUrl(jid, 'image').catch(() => null);
+            return url || null;
+        } catch (_) {
+            return null;
+        }
+    }
+
     return {
         start,
         stop,
@@ -670,6 +697,7 @@ function createBaileysGateway(options = {}) {
         sendDocument,
         getHealth,
         getQrPayload,
+        fetchProfilePictureUrl,
     };
 }
 

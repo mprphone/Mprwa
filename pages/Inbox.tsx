@@ -3439,7 +3439,17 @@ const Inbox: React.FC = () => {
                 <tbody>
                   {filteredContactsRows.map((row) => (
                     <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="px-4 py-2 text-sm text-gray-900">{row.companyName}</td>
+                      <td className="px-4 py-2 text-sm text-gray-900">
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={`/api/avatars/${row.normalizedPhone}`}
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                            className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                            alt=""
+                          />
+                          <span className="truncate">{row.companyName}</span>
+                        </div>
+                      </td>
                       <td className="px-4 py-2 text-sm text-gray-700">
                         {editingContactNameId === row.id ? (
                           <form
@@ -3474,16 +3484,18 @@ const Inbox: React.FC = () => {
                             </button>
                           </form>
                         ) : (
-                          <span
-                            className="cursor-pointer hover:text-whatsapp-700 hover:underline"
-                            title="Clique para editar"
+                          <button
+                            type="button"
+                            className="flex items-center gap-1.5 text-left hover:text-whatsapp-700 group w-full"
+                            title="Clique para editar o nome do contacto"
                             onClick={() => {
                               setEditingContactNameId(row.id);
                               setEditingContactNameValue(row.contactName);
                             }}
                           >
-                            {row.contactName || <span className="text-gray-400 italic">--</span>}
-                          </span>
+                            <span>{row.contactName || <span className="text-gray-400 italic">--</span>}</span>
+                            <svg className="w-3.5 h-3.5 text-gray-400 group-hover:text-whatsapp-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                          </button>
                         )}
                       </td>
                       <td className="px-4 py-2 text-sm font-mono text-gray-700">{row.phone}</td>

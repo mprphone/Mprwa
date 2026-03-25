@@ -1076,6 +1076,45 @@ function registerChatCoreRoutes(app, deps) {
     }
   });
 
+  // Servir avatar/foto de perfil do WhatsApp
+  app.get('/api/customers/:id/avatar', async (req, res) => {
+    const customerId = String(req.params.id || '').trim();
+    if (!customerId) return res.status(400).end();
+    try {
+      const customer = await dbGetAsync('SELECT phone FROM customers WHERE id = ? LIMIT 1', [customerId]);
+      if (!customer?.phone) return res.status(404).end();
+      const digits = String(customer.phone).replace(/\D/g, '');
+      const avatarPath = require('path').join(process.cwd(), 'chat_media', 'avatars', `${digits}.jpg`);
+      const fs = require('fs');
+      try {
+        await fs.promises.access(avatarPath, fs.constants.R_OK);
+        res.set('Cache-Control', 'public, max-age=86400');
+        res.set('Content-Type', 'image/jpeg');
+        return fs.createReadStream(avatarPath).pipe(res);
+      } catch (_) {
+        return res.status(404).end();
+      }
+    } catch (error) {
+      return res.status(500).end();
+    }
+  });
+
+  // Servir avatar por número de telefone (para sidebar)
+  app.get('/api/avatars/:phone', (req, res) => {
+    const digits = String(req.params.phone || '').replace(/\D/g, '');
+    if (!digits || digits.length < 7) return res.status(400).end();
+    const avatarPath = require('path').join(process.cwd(), 'chat_media', 'avatars', `${digits}.jpg`);
+    const fs = require('fs');
+    try {
+      if (fs.existsSync(avatarPath)) {
+        res.set('Cache-Control', 'public, max-age=86400');
+        res.set('Content-Type', 'image/jpeg');
+        return fs.createReadStream(avatarPath).pipe(res);
+      }
+    } catch (_) { /* ignore */ }
+    return res.status(404).end();
+  });
+
   // Rota para Listar Mensagens (Chat Específico)
   app.get(['/api/messages', '/api/chat/messages'], async (req, res) => {
     const phone = req.query.phone;

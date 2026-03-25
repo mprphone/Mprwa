@@ -775,12 +775,69 @@ function normalizeBoolean(rawValue, fallback = true) {
 }
 
 if (isBaileysProviderEnabled() && !IS_BACKOFFICE_ONLY) {
+    const AVATARS_DIR = path.resolve(process.cwd(), 'chat_media', 'avatars');
+    fs.mkdirSync(AVATARS_DIR, { recursive: true });
+
+    const handleContactsUpsert = async (contacts, accountId, gateway) => {
+        for (const contact of contacts) {
+            try {
+                const digits = String(contact.jid || '').split('@')[0].replace(/\D/g, '');
+                if (!digits || digits.length < 7) continue;
+                const phone = normalizePhone(digits);
+                if (!phone) continue;
+
+                const savedName = contact.savedName || '';
+                if (savedName) {
+                    const existing = await dbGetAsync(
+                        `SELECT id, contact_name FROM customers WHERE replace(replace(replace(ifnull(phone,''),'+',''),' ',''),'-','') = ? LIMIT 1`,
+                        [digits]
+                    );
+                    if (existing && !existing.contact_name) {
+                        await dbRunAsync('UPDATE customers SET contact_name = ?, updated_at = ? WHERE id = ?', [savedName, nowIso(), existing.id]);
+                        logChatCore('contact_name_from_whatsapp', { customerId: existing.id, savedName, accountId });
+                    }
+                }
+
+                // Fetch and save profile picture
+                const avatarPath = path.join(AVATARS_DIR, `${digits}.jpg`);
+                try {
+                    const stat = await fs.promises.stat(avatarPath).catch(() => null);
+                    const isStale = !stat || (Date.now() - stat.mtimeMs > 7 * 24 * 60 * 60 * 1000); // refresh weekly
+                    if (isStale && gateway?.fetchProfilePictureUrl) {
+                        const picUrl = await gateway.fetchProfilePictureUrl(digits);
+                        if (picUrl) {
+                            const https = require('https');
+                            const http = require('http');
+                            const fetcher = picUrl.startsWith('https') ? https : http;
+                            await new Promise((resolve, reject) => {
+                                fetcher.get(picUrl, (res) => {
+                                    if (res.statusCode !== 200) { res.resume(); return resolve(null); }
+                                    const ws = fs.createWriteStream(avatarPath);
+                                    res.pipe(ws);
+                                    ws.on('finish', resolve);
+                                    ws.on('error', reject);
+                                }).on('error', () => resolve(null));
+                            });
+                        }
+                    }
+                } catch (_avatarErr) { /* non-critical */ }
+            } catch (err) {
+                logChatCore('contacts_upsert_process_error', { error: String(err?.message || err), accountId });
+            }
+        }
+    };
+
     BAILEYS_ACCOUNT_CONFIGS.forEach((account) => {
         const gateway = createBaileysGateway({
             authDir: account.authDir,
             printQRInTerminal: account.printQRInTerminal,
             autoReconnect: true,
             reconnectDelayMs: 4000,
+            onContactsUpsert: (contacts) => {
+                void handleContactsUpsert(contacts, account.id, gateway).catch((err) => {
+                    logChatCore('contacts_upsert_error', { error: String(err?.message || err), accountId: account.id });
+                });
+            },
             onInboundMessage: async (payload) => {
                 const isOutbound = Boolean(payload?.fromMe);
                 await persistInboundWhatsAppMessage({

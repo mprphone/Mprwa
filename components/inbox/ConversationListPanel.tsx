@@ -176,12 +176,20 @@ const ConversationListPanel: React.FC<ConversationListPanelProps> = ({
               onClick={() => onSelectConversation(conv.id)}
               className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${selectedConvId === conv.id ? 'bg-whatsapp-50' : ''}`}
             >
-              <div className="flex justify-between items-start mb-1">
-                <h3 className="font-semibold text-gray-900 truncate">{conversationTitle}</h3>
-                <span className="text-xs text-gray-500 whitespace-nowrap">
-                  {new Date(conv.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              </div>
+              <div className="flex gap-3">
+                <img
+                  src={`/api/avatars/${normalizePhoneDigits(customer?.phone || fallbackPhone)}`}
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  className="w-10 h-10 rounded-full object-cover flex-shrink-0 mt-0.5"
+                  alt=""
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start mb-1">
+                    <h3 className="font-semibold text-gray-900 truncate">{conversationTitle}</h3>
+                    <span className="text-xs text-gray-500 whitespace-nowrap ml-2">
+                      {new Date(conv.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
               <p className="text-sm text-gray-600 truncate">{conversationSubtitle}</p>
               <div className="flex items-center gap-2 mt-2">
                 <span
@@ -215,6 +223,8 @@ const ConversationListPanel: React.FC<ConversationListPanelProps> = ({
                     title={`Responsável: ${owner?.name}`}
                   />
                 )}
+              </div>
+                </div>
               </div>
             </div>
           );
