@@ -12,6 +12,25 @@ import {
   syncChatConversation,
   uploadChatTempMedia,
 } from './chatCoreApi';
+import {
+  consultarSegSocialValoresApuradosMensalmenteApi,
+  consultarSegSocialValoresComunicadosApi,
+  enviarSegSocialValoresRemuneracaoApi,
+  findLatestSegSocialSubUserPasswordApi,
+  syncSegSocialPasswordsFromSaftApi,
+  triggerFinancasAutologinApi,
+  triggerSegSocialAutologinApi,
+  triggerSegSocialSubUserSetupApi,
+  type CustomerAutologinResult,
+  type SaftSegSocialPasswordSyncResult,
+  type SegSocialSubUserPasswordLookupResult,
+  type SegSocialSubUserSetupResult,
+} from './segSocialCustomerApi';
+
+export type {
+  SaftSegSocialPasswordSyncResult,
+  SaftSegSocialPasswordSyncSummary,
+} from './segSocialCustomerApi';
 
 // --- Initial Mock Data ---
 
@@ -177,29 +196,6 @@ const INITIAL_TRIGGERS: AutoResponseTrigger[] = [
 const LOCAL_CUSTOMERS_KEY = 'wa_pro_local_customers_v1';
 const LOCAL_USERS_KEY = 'wa_pro_local_users_v1';
 const SESSION_USER_KEY = 'wa_pro_session_user_id';
-
-export type SaftSegSocialPasswordSyncSummary = {
-  requested: number;
-  eligible: number;
-  skippedWithSubuser: number;
-  skippedNonEnterprise: number;
-  skippedNoNif: number;
-  skippedNoSaftMatch: number;
-  skippedNoSegSocialPassword: number;
-  unchanged: number;
-  updated: number;
-  errors: string[];
-  warnings: string[];
-  updatedCustomers: Array<{ id: string; name: string; nif: string; niss: string; validUntil: string }>;
-  rawPath?: string;
-};
-
-export type SaftSegSocialPasswordSyncResult = {
-  success: boolean;
-  message: string;
-  summary: SaftSegSocialPasswordSyncSummary;
-  customers?: Customer[];
-};
 
 class MockService {
   private users = USERS;
@@ -1285,7 +1281,7 @@ class MockService {
   async triggerFinancasAutologin(
     customerId: string,
     options?: { actorUserId?: string; headless?: boolean; closeAfterSubmit?: boolean }
-  ): Promise<{ success: boolean; message: string; loginState?: string; headless?: boolean }> {
+  ): Promise<CustomerAutologinResult> {
     if (!this.isBrowser()) {
       throw new Error('Autologin disponível apenas no browser.');
     }
@@ -1295,51 +1291,17 @@ class MockService {
       throw new Error('Cliente inválido para autologin.');
     }
 
-    const response = await fetch(`/api/customers/${encodeURIComponent(targetId)}/autologin/financas`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        actorUserId: String(options?.actorUserId || this.getCurrentUserId() || '').trim() || null,
-        headless: options?.headless ?? false,
-        closeAfterSubmit: options?.closeAfterSubmit ?? false,
-      }),
+    return triggerFinancasAutologinApi(targetId, {
+      actorUserId: String(options?.actorUserId || this.getCurrentUserId() || '').trim() || null,
+      headless: options?.headless ?? false,
+      closeAfterSubmit: options?.closeAfterSubmit ?? false,
     });
-
-    const payload = await response.json().catch(() => ({})) as {
-      success?: boolean;
-      message?: unknown;
-      error?: unknown;
-      code?: unknown;
-      loginState?: unknown;
-      headless?: unknown;
-    };
-
-    if (!response.ok || !payload.success) {
-      const errorText =
-        typeof payload.error === 'string'
-          ? payload.error
-          : payload.error
-            ? JSON.stringify(payload.error)
-            : `Falha no autologin Portal das Finanças (${response.status}).`;
-      const enrichedError = new Error(errorText) as Error & { code?: string };
-      if (payload.code !== undefined && payload.code !== null && String(payload.code).trim()) {
-        enrichedError.code = String(payload.code).trim();
-      }
-      throw enrichedError;
-    }
-
-    return {
-      success: true,
-      message: String(payload.message || 'Autologin iniciado.'),
-      loginState: payload.loginState ? String(payload.loginState) : undefined,
-      headless: typeof payload.headless === 'boolean' ? payload.headless : undefined,
-    };
   }
 
   async triggerSegSocialAutologin(
     customerId: string,
     options?: { actorUserId?: string; headless?: boolean; closeAfterSubmit?: boolean }
-  ): Promise<{ success: boolean; message: string; loginState?: string; headless?: boolean }> {
+  ): Promise<CustomerAutologinResult> {
     if (!this.isBrowser()) {
       throw new Error('Autologin disponível apenas no browser.');
     }
@@ -1349,51 +1311,17 @@ class MockService {
       throw new Error('Cliente inválido para autologin.');
     }
 
-    const response = await fetch(`/api/customers/${encodeURIComponent(targetId)}/autologin/seg-social`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        actorUserId: String(options?.actorUserId || this.getCurrentUserId() || '').trim() || null,
-        headless: options?.headless ?? false,
-        closeAfterSubmit: options?.closeAfterSubmit ?? false,
-      }),
+    return triggerSegSocialAutologinApi(targetId, {
+      actorUserId: String(options?.actorUserId || this.getCurrentUserId() || '').trim() || null,
+      headless: options?.headless ?? false,
+      closeAfterSubmit: options?.closeAfterSubmit ?? false,
     });
-
-    const payload = await response.json().catch(() => ({})) as {
-      success?: boolean;
-      message?: unknown;
-      error?: unknown;
-      code?: unknown;
-      loginState?: unknown;
-      headless?: unknown;
-    };
-
-    if (!response.ok || !payload.success) {
-      const errorText =
-        typeof payload.error === 'string'
-          ? payload.error
-          : payload.error
-            ? JSON.stringify(payload.error)
-            : `Falha no autologin Segurança Social Direta (${response.status}).`;
-      const enrichedError = new Error(errorText) as Error & { code?: string };
-      if (payload.code !== undefined && payload.code !== null && String(payload.code).trim()) {
-        enrichedError.code = String(payload.code).trim();
-      }
-      throw enrichedError;
-    }
-
-    return {
-      success: true,
-      message: String(payload.message || 'Autologin iniciado.'),
-      loginState: payload.loginState ? String(payload.loginState) : undefined,
-      headless: typeof payload.headless === 'boolean' ? payload.headless : undefined,
-    };
   }
 
   async triggerSegSocialSubUserSetup(
     customerId: string,
     options?: { actorUserId?: string; headless?: boolean; closeAfterSubmit?: boolean; subEmail?: string }
-  ): Promise<{ success: boolean; message: string; stage?: string; headless?: boolean }> {
+  ): Promise<SegSocialSubUserSetupResult> {
     if (!this.isBrowser()) {
       throw new Error('Automação disponível apenas no browser.');
     }
@@ -1403,46 +1331,12 @@ class MockService {
       throw new Error('Cliente inválido para criação de subutilizador.');
     }
 
-    const response = await fetch(`/api/customers/${encodeURIComponent(targetId)}/seg-social/subuser/setup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        actorUserId: String(options?.actorUserId || this.getCurrentUserId() || '').trim() || null,
-        headless: options?.headless ?? false,
-        closeAfterSubmit: options?.closeAfterSubmit ?? false,
-        subEmail: String(options?.subEmail || 'geral@mpr.pt').trim(),
-      }),
+    return triggerSegSocialSubUserSetupApi(targetId, {
+      actorUserId: String(options?.actorUserId || this.getCurrentUserId() || '').trim() || null,
+      headless: options?.headless ?? false,
+      closeAfterSubmit: options?.closeAfterSubmit ?? false,
+      subEmail: String(options?.subEmail || 'geral@mpr.pt').trim(),
     });
-
-    const payload = await response.json().catch(() => ({})) as {
-      success?: boolean;
-      message?: unknown;
-      error?: unknown;
-      code?: unknown;
-      stage?: unknown;
-      headless?: unknown;
-    };
-
-    if (!response.ok || !payload.success) {
-      const errorText =
-        typeof payload.error === 'string'
-          ? payload.error
-          : payload.error
-            ? JSON.stringify(payload.error)
-            : `Falha ao iniciar criação de subutilizador SS (${response.status}).`;
-      const enrichedError = new Error(errorText) as Error & { code?: string };
-      if (payload.code !== undefined && payload.code !== null && String(payload.code).trim()) {
-        enrichedError.code = String(payload.code).trim();
-      }
-      throw enrichedError;
-    }
-
-    return {
-      success: true,
-      message: String(payload.message || 'Assistente de subutilizador iniciado.'),
-      stage: payload.stage ? String(payload.stage) : undefined,
-      headless: typeof payload.headless === 'boolean' ? payload.headless : undefined,
-    };
   }
 
   async syncSegSocialPasswordsFromSaft(options?: {
@@ -1455,73 +1349,26 @@ class MockService {
       throw new Error('Sincronização SAFT disponível apenas no browser.');
     }
 
-    const response = await fetch('/api/customers/sync/saft-ss-passwords', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        customerId: String(options?.customerId || '').trim() || undefined,
-        actorUserId: String(options?.actorUserId || this.getCurrentUserId() || '').trim() || null,
-        headless: options?.headless ?? true,
-        syncToSupabase: options?.syncToSupabase ?? true,
-      }),
+    const result = await syncSegSocialPasswordsFromSaftApi({
+      customerId: String(options?.customerId || '').trim() || undefined,
+      actorUserId: String(options?.actorUserId || this.getCurrentUserId() || '').trim() || null,
+      headless: options?.headless ?? true,
+      syncToSupabase: options?.syncToSupabase ?? true,
     });
-
-    const payload = await response.json().catch(() => ({})) as {
-      success?: boolean;
-      message?: unknown;
-      summary?: Partial<SaftSegSocialPasswordSyncSummary>;
-      customers?: Customer[];
-      error?: unknown;
-    };
-
-    if (!response.ok || !payload.success) {
-      const errorText =
-        typeof payload.error === 'string'
-          ? payload.error
-          : payload.error
-            ? JSON.stringify(payload.error)
-            : `Falha ao sincronizar senhas SS a partir do SAFTonline (${response.status}).`;
-      throw new Error(errorText);
-    }
 
     this.supabaseImportDone = false;
     this.supabaseImportPromise = null;
     await this.ensureSupabaseImport();
-    const updatedCustomers = Array.isArray(payload.customers)
-      ? payload.customers.filter((customer) => this.isValidCustomer(customer))
+    const updatedCustomers = Array.isArray(result.customers)
+      ? result.customers.filter((customer) => this.isValidCustomer(customer))
       : [];
     if (updatedCustomers.length > 0) {
       this.replaceCustomersFromServer(updatedCustomers);
       this.persistLocalEntities();
     }
 
-    const summary = payload.summary || {};
     return {
-      success: true,
-      message: String(payload.message || 'Sincronização SAFT concluída.'),
-      summary: {
-        requested: Number(summary.requested || 0),
-        eligible: Number(summary.eligible || 0),
-        skippedWithSubuser: Number(summary.skippedWithSubuser || 0),
-        skippedNonEnterprise: Number(summary.skippedNonEnterprise || 0),
-        skippedNoNif: Number(summary.skippedNoNif || 0),
-        skippedNoSaftMatch: Number(summary.skippedNoSaftMatch || 0),
-        skippedNoSegSocialPassword: Number(summary.skippedNoSegSocialPassword || 0),
-        unchanged: Number(summary.unchanged || 0),
-        updated: Number(summary.updated || 0),
-        errors: Array.isArray(summary.errors) ? summary.errors.map(String) : [],
-        warnings: Array.isArray(summary.warnings) ? summary.warnings.map(String) : [],
-        updatedCustomers: Array.isArray(summary.updatedCustomers)
-          ? summary.updatedCustomers.map((item) => ({
-              id: String(item?.id || ''),
-              name: String(item?.name || ''),
-              nif: String(item?.nif || ''),
-              niss: String(item?.niss || ''),
-              validUntil: String(item?.validUntil || ''),
-            }))
-          : [],
-        rawPath: String(summary.rawPath || ''),
-      },
+      ...result,
       customers: updatedCustomers,
     };
   }
@@ -1532,136 +1379,33 @@ class MockService {
     sinceDays?: number;
     maxMessages?: number;
     sinceIso?: string;
-  }): Promise<{
-    found: boolean;
-    password: string;
-    uid?: string;
-    from?: string;
-    subject?: string;
-    date?: string;
-  }> {
+  }): Promise<SegSocialSubUserPasswordLookupResult> {
     if (!this.isBrowser()) {
       throw new Error('Leitura de email disponível apenas no browser.');
     }
 
-    const search = new URLSearchParams();
-    if (params?.username) search.set('username', String(params.username).trim());
-    if (params?.email) search.set('email', String(params.email).trim());
-    if (params?.sinceIso) search.set('sinceIso', String(params.sinceIso).trim());
-    search.set('sinceDays', String(Math.max(1, Number(params?.sinceDays || 14) || 14)));
-    search.set('maxMessages', String(Math.max(1, Number(params?.maxMessages || 50) || 50)));
-
-    const response = await fetch(`/api/email/seg-social/latest-subuser-password?${search.toString()}`);
-    const payload = await response.json().catch(() => ({})) as {
-      success?: boolean;
-      found?: boolean;
-      error?: unknown;
-      result?: {
-        password?: unknown;
-        uid?: unknown;
-        from?: unknown;
-        subject?: unknown;
-        date?: unknown;
-      } | null;
-    };
-
-    if (!response.ok || !payload.success) {
-      const errorText =
-        typeof payload.error === 'string'
-          ? payload.error
-          : payload.error
-            ? JSON.stringify(payload.error)
-            : `Falha ao consultar email da Segurança Social (${response.status}).`;
-      throw new Error(errorText);
-    }
-
-    const result = payload.result || null;
-    return {
-      found: Boolean(payload.found && result?.password),
-      password: String(result?.password || '').trim(),
-      uid: result?.uid !== undefined ? String(result.uid || '') : undefined,
-      from: result?.from !== undefined ? String(result.from || '') : undefined,
-      subject: result?.subject !== undefined ? String(result.subject || '') : undefined,
-      date: result?.date !== undefined ? String(result.date || '') : undefined,
-    };
+    return findLatestSegSocialSubUserPasswordApi(params);
   }
 
   async enviarSegSocialValoresRemuneracao(customerId: string, payload: Record<string, unknown>, params?: Record<string, unknown>): Promise<unknown> {
     if (!this.isBrowser()) {
       throw new Error('Interoperabilidade disponível apenas no browser.');
     }
-    const targetId = String(customerId || '').trim();
-    if (!targetId) throw new Error('Cliente inválido para interoperabilidade da Segurança Social.');
-
-    const search = new URLSearchParams();
-    Object.entries(params || {}).forEach(([key, value]) => {
-      if (value === undefined || value === null || String(value).trim() === '') return;
-      search.set(key, String(value));
-    });
-    const suffix = search.toString() ? `?${search.toString()}` : '';
-    const response = await fetch(`/api/customers/${encodeURIComponent(targetId)}/seg-social/interoperabilidade/valores-remuneracao${suffix}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload || {}),
-    });
-    return this.parseSegSocialInteroperabilityResponse(response);
+    return enviarSegSocialValoresRemuneracaoApi(customerId, payload, params);
   }
 
   async consultarSegSocialValoresComunicados(customerId: string, params?: Record<string, unknown>): Promise<unknown> {
     if (!this.isBrowser()) {
       throw new Error('Interoperabilidade disponível apenas no browser.');
     }
-    const targetId = String(customerId || '').trim();
-    if (!targetId) throw new Error('Cliente inválido para interoperabilidade da Segurança Social.');
-
-    const search = new URLSearchParams();
-    Object.entries(params || {}).forEach(([key, value]) => {
-      if (value === undefined || value === null || String(value).trim() === '') return;
-      search.set(key, String(value));
-    });
-    const suffix = search.toString() ? `?${search.toString()}` : '';
-    const response = await fetch(`/api/customers/${encodeURIComponent(targetId)}/seg-social/interoperabilidade/valores-comunicados${suffix}`);
-    return this.parseSegSocialInteroperabilityResponse(response);
+    return consultarSegSocialValoresComunicadosApi(customerId, params);
   }
 
   async consultarSegSocialValoresApuradosMensalmente(customerId: string, params?: Record<string, unknown>): Promise<unknown> {
     if (!this.isBrowser()) {
       throw new Error('Interoperabilidade disponível apenas no browser.');
     }
-    const targetId = String(customerId || '').trim();
-    if (!targetId) throw new Error('Cliente inválido para interoperabilidade da Segurança Social.');
-
-    const search = new URLSearchParams();
-    Object.entries(params || {}).forEach(([key, value]) => {
-      if (value === undefined || value === null || String(value).trim() === '') return;
-      search.set(key, String(value));
-    });
-    const suffix = search.toString() ? `?${search.toString()}` : '';
-    const response = await fetch(`/api/customers/${encodeURIComponent(targetId)}/seg-social/interoperabilidade/valores-apurados-mensalmente${suffix}`);
-    return this.parseSegSocialInteroperabilityResponse(response);
-  }
-
-  private async parseSegSocialInteroperabilityResponse(response: Response): Promise<unknown> {
-    const payload = await response.json().catch(() => ({})) as {
-      success?: boolean;
-      error?: unknown;
-      code?: unknown;
-      data?: unknown;
-    };
-    if (!response.ok || !payload.success) {
-      const errorText =
-        typeof payload.error === 'string'
-          ? payload.error
-          : payload.error
-            ? JSON.stringify(payload.error)
-            : `Falha na interoperabilidade da Segurança Social (${response.status}).`;
-      const enrichedError = new Error(errorText) as Error & { code?: string };
-      if (payload.code !== undefined && payload.code !== null && String(payload.code).trim()) {
-        enrichedError.code = String(payload.code).trim();
-      }
-      throw enrichedError;
-    }
-    return payload;
+    return consultarSegSocialValoresApuradosMensalmenteApi(customerId, params);
   }
 
   async createCustomer(
