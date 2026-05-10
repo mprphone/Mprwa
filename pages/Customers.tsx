@@ -13,6 +13,7 @@ import {
 } from '../types';
 import { Plus, Search, Edit2, Trash2, FolderOpen, Eye, RefreshCw, Upload, FileText, Folder } from 'lucide-react';
 import { CustomerAccessTab, type CustomerCredentialPreset } from './customers/CustomerAccessTab';
+import { useCustomerDocuments } from './customers/hooks/useCustomerDocuments';
 import {
   SegSocialSubUserState,
   accessTypeMatchesPreset,
@@ -387,14 +388,6 @@ function dedupeCustomersForListing(items: Customer[]): Customer[] {
   return deduped;
 }
 
-type CustomerDocumentEntry = {
-  type: 'file' | 'directory';
-  name: string;
-  relativePath: string;
-  size?: number;
-  updatedAt: string;
-};
-
 type CustomerIngestDocumentType =
   | 'certidao_permanente'
   | 'pacto_social'
@@ -587,22 +580,29 @@ const Customers: React.FC = () => {
   const sociedadeFileInputRef = useRef<HTMLInputElement | null>(null);
   const ingestFileInputRef = useRef<HTMLInputElement | null>(null);
   const headerIngestFileInputRef = useRef<HTMLInputElement | null>(null);
-  const [modalDocs, setModalDocs] = useState<CustomerDocumentEntry[]>([]);
-  const [modalDocsPath, setModalDocsPath] = useState('');
-  const [modalDocsCurrentPath, setModalDocsCurrentPath] = useState('');
-  const [modalCanGoUp, setModalCanGoUp] = useState(false);
-  const [modalDocsConfigured, setModalDocsConfigured] = useState(false);
-  const [modalDocsLoading, setModalDocsLoading] = useState(false);
-  const [modalDocsError, setModalDocsError] = useState<string | null>(null);
-  const [modalUploadingDoc, setModalUploadingDoc] = useState(false);
-  const [sociedadeDocs, setSociedadeDocs] = useState<CustomerDocumentEntry[]>([]);
-  const [sociedadeDocsPath, setSociedadeDocsPath] = useState('');
-  const [sociedadeCurrentPath, setSociedadeCurrentPath] = useState(SOCIEDADE_BASE_PATH);
-  const [sociedadeCanGoUp, setSociedadeCanGoUp] = useState(false);
-  const [sociedadeDocsConfigured, setSociedadeDocsConfigured] = useState(false);
-  const [sociedadeDocsLoading, setSociedadeDocsLoading] = useState(false);
-  const [sociedadeDocsError, setSociedadeDocsError] = useState<string | null>(null);
-  const [sociedadeUploadingDoc, setSociedadeUploadingDoc] = useState(false);
+  const modalDocuments = useCustomerDocuments();
+  const sociedadeDocuments = useCustomerDocuments({
+    initialPath: SOCIEDADE_BASE_PATH,
+    basePath: SOCIEDADE_BASE_PATH,
+    loadErrorMessage: 'Falha ao carregar documentos da sociedade.',
+    uploadErrorMessage: 'Falha ao guardar documento da sociedade.',
+  });
+  const modalDocs = modalDocuments.state.entries;
+  const modalDocsPath = modalDocuments.state.folderPath;
+  const modalDocsCurrentPath = modalDocuments.state.currentPath;
+  const modalCanGoUp = modalDocuments.state.canGoUp;
+  const modalDocsConfigured = modalDocuments.state.configured;
+  const modalDocsLoading = modalDocuments.state.loading;
+  const modalDocsError = modalDocuments.state.error;
+  const modalUploadingDoc = modalDocuments.state.uploading;
+  const sociedadeDocs = sociedadeDocuments.state.entries;
+  const sociedadeDocsPath = sociedadeDocuments.state.folderPath;
+  const sociedadeCurrentPath = sociedadeDocuments.state.currentPath;
+  const sociedadeCanGoUp = sociedadeDocuments.state.canGoUp;
+  const sociedadeDocsConfigured = sociedadeDocuments.state.configured;
+  const sociedadeDocsLoading = sociedadeDocuments.state.loading;
+  const sociedadeDocsError = sociedadeDocuments.state.error;
+  const sociedadeUploadingDoc = sociedadeDocuments.state.uploading;
   const [sociedadeCategoryKey, setSociedadeCategoryKey] = useState(SOCIEDADE_DOCUMENT_CATEGORIES[0].key);
   const [ingestDocumentType, setIngestDocumentType] = useState<CustomerIngestDocumentType>('certidao_permanente');
   const [ingestSelectedFile, setIngestSelectedFile] = useState<File | null>(null);
@@ -623,6 +623,7 @@ const Customers: React.FC = () => {
   const [customerOccurrencesSummary, setCustomerOccurrencesSummary] = useState<CustomerOccurrenceSummary[]>([]);
   const [customerActivityLoading, setCustomerActivityLoading] = useState(false);
   const [customerActivityError, setCustomerActivityError] = useState('');
+  const customerActivityRequestRef = useRef(0);
   const [autologinBusyCustomerId, setAutologinBusyCustomerId] = useState<string | null>(null);
   const [segSocialAutologinBusyCustomerId, setSegSocialAutologinBusyCustomerId] = useState<string | null>(null);
   const [segSocialSubUserBusyCustomerId, setSegSocialSubUserBusyCustomerId] = useState<string | null>(null);
@@ -673,6 +674,10 @@ const Customers: React.FC = () => {
     const normalizedCustomerId = String(customerId || '').trim();
     if (!normalizedCustomerId) return;
 
+    const requestId = customerActivityRequestRef.current + 1;
+    customerActivityRequestRef.current = requestId;
+    const isCurrentActivityRequest = () => customerActivityRequestRef.current === requestId;
+
     setCustomerActivityLoading(true);
     setCustomerActivityError('');
     try {
@@ -682,6 +687,8 @@ const Customers: React.FC = () => {
         fetchOccurrences({ limit: 5000 }),
         mockService.getUsers(),
       ]);
+
+      if (!isCurrentActivityRequest()) return;
 
       const customerConversationIds = new Set(
         (Array.isArray(conversations) ? conversations : [])
@@ -732,34 +739,23 @@ const Customers: React.FC = () => {
       setCustomerTasksSummary(nextTasks);
       setCustomerOccurrencesSummary(nextOccurrences);
     } catch (error) {
+      if (!isCurrentActivityRequest()) return;
       setCustomerActivityError(error instanceof Error ? error.message : 'Falha ao carregar tarefas e ocorrências deste cliente.');
       setCustomerTasksSummary([]);
       setCustomerOccurrencesSummary([]);
     } finally {
-      setCustomerActivityLoading(false);
+      if (isCurrentActivityRequest()) {
+        setCustomerActivityLoading(false);
+      }
     }
   };
 
   const resetModalDocsState = () => {
-    setModalDocs([]);
-    setModalDocsPath('');
-    setModalDocsCurrentPath('');
-    setModalCanGoUp(false);
-    setModalDocsConfigured(false);
-    setModalDocsError(null);
-    setModalUploadingDoc(false);
-    setModalDocsLoading(false);
+    modalDocuments.reset();
   };
 
   const resetSociedadeDocsState = () => {
-    setSociedadeDocs([]);
-    setSociedadeDocsPath('');
-    setSociedadeCurrentPath(SOCIEDADE_BASE_PATH);
-    setSociedadeCanGoUp(false);
-    setSociedadeDocsConfigured(false);
-    setSociedadeDocsError(null);
-    setSociedadeUploadingDoc(false);
-    setSociedadeDocsLoading(false);
+    sociedadeDocuments.reset();
     setSociedadeCategoryKey(SOCIEDADE_DOCUMENT_CATEGORIES[0].key);
   };
 
@@ -960,25 +956,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
   };
 
   const loadModalDocuments = async (customerId: string, relativePath = '') => {
-    setModalDocsLoading(true);
-    setModalDocsError(null);
-    try {
-      const payload = await mockService.getCustomerDocumentsAtPath(customerId, relativePath);
-      setModalDocs(payload.entries);
-      setModalDocsPath(payload.folderPath || '');
-      setModalDocsCurrentPath(payload.currentRelativePath || '');
-      setModalCanGoUp(!!payload.canGoUp);
-      setModalDocsConfigured(!!payload.configured);
-    } catch (error) {
-      setModalDocs([]);
-      setModalDocsPath('');
-      setModalDocsCurrentPath('');
-      setModalCanGoUp(false);
-      setModalDocsConfigured(false);
-      setModalDocsError(error instanceof Error ? error.message : 'Falha ao carregar documentos.');
-    } finally {
-      setModalDocsLoading(false);
-    }
+    await modalDocuments.load(customerId, relativePath);
   };
 
   const openModalDocumentsFolder = async (relativePath: string) => {
@@ -988,11 +966,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
 
   const goUpModalDocumentsFolder = async () => {
     if (!editingCustomer?.id) return;
-    const parts = String(modalDocsCurrentPath || '')
-      .split('/')
-      .filter(Boolean);
-    parts.pop();
-    await loadModalDocuments(editingCustomer.id, parts.join('/'));
+    await modalDocuments.goUp(editingCustomer.id);
   };
 
   const triggerModalDocumentPicker = () => {
@@ -1004,39 +978,12 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     event.target.value = '';
     if (!editingCustomer?.id || !file) return;
 
-    setModalUploadingDoc(true);
-    setModalDocsError(null);
-    try {
-      await mockService.uploadCustomerDocument(editingCustomer.id, file, modalDocsCurrentPath);
-      await loadModalDocuments(editingCustomer.id, modalDocsCurrentPath);
-    } catch (error) {
-      setModalDocsError(error instanceof Error ? error.message : 'Falha ao guardar documento.');
-    } finally {
-      setModalUploadingDoc(false);
-    }
+    await modalDocuments.upload(editingCustomer.id, file, modalDocsCurrentPath);
   };
 
   const loadSociedadeDocuments = async (customerId: string, relativePath = SOCIEDADE_BASE_PATH) => {
     const targetPath = String(relativePath || SOCIEDADE_BASE_PATH).trim();
-    setSociedadeDocsLoading(true);
-    setSociedadeDocsError(null);
-    try {
-      const payload = await mockService.getCustomerDocumentsAtPath(customerId, targetPath);
-      setSociedadeDocs(payload.entries);
-      setSociedadeDocsPath(payload.folderPath || '');
-      setSociedadeCurrentPath(payload.currentRelativePath || targetPath);
-      setSociedadeCanGoUp(!!payload.canGoUp);
-      setSociedadeDocsConfigured(!!payload.configured);
-    } catch (error) {
-      setSociedadeDocs([]);
-      setSociedadeDocsPath('');
-      setSociedadeCurrentPath(targetPath);
-      setSociedadeCanGoUp(false);
-      setSociedadeDocsConfigured(false);
-      setSociedadeDocsError(error instanceof Error ? error.message : 'Falha ao carregar documentos da sociedade.');
-    } finally {
-      setSociedadeDocsLoading(false);
-    }
+    await sociedadeDocuments.load(customerId, targetPath);
   };
 
   const openSociedadeFolder = async (relativePath: string) => {
@@ -1052,17 +999,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
 
   const goUpSociedadeFolder = async () => {
     if (!editingCustomer?.id) return;
-    const base = SOCIEDADE_BASE_PATH;
-    const current = String(sociedadeCurrentPath || base).trim();
-    if (!current || current === base) {
-      await loadSociedadeDocuments(editingCustomer.id, base);
-      return;
-    }
-    const parts = current.split('/').filter(Boolean);
-    parts.pop();
-    const nextPath = parts.join('/');
-    const safeNext = nextPath && (nextPath === base || nextPath.startsWith(`${base}/`)) ? nextPath : base;
-    await loadSociedadeDocuments(editingCustomer.id, safeNext);
+    await sociedadeDocuments.goUp(editingCustomer.id);
   };
 
   const triggerSociedadeDocumentPicker = () => {
@@ -1079,16 +1016,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       targetPathRaw === SOCIEDADE_BASE_PATH || targetPathRaw.startsWith(`${SOCIEDADE_BASE_PATH}/`)
         ? targetPathRaw
         : SOCIEDADE_BASE_PATH;
-    setSociedadeUploadingDoc(true);
-    setSociedadeDocsError(null);
-    try {
-      await mockService.uploadCustomerDocument(editingCustomer.id, file, targetPath);
-      await loadSociedadeDocuments(editingCustomer.id, targetPath);
-    } catch (error) {
-      setSociedadeDocsError(error instanceof Error ? error.message : 'Falha ao guardar documento da sociedade.');
-    } finally {
-      setSociedadeUploadingDoc(false);
-    }
+    await sociedadeDocuments.upload(editingCustomer.id, file, targetPath);
   };
 
   const triggerIngestPicker = () => {
@@ -1283,7 +1211,6 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     setIngestLoading(true);
     setIngestStatus('');
     setIngestWarnings([]);
-    setModalDocsError(null);
 
     try {
       const result = await mockService.ingestCustomerDocumentWithAI(
@@ -2409,6 +2336,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
   };
 
   const openModal = (customer?: Customer) => {
+    customerActivityRequestRef.current += 1;
     setActiveTab('dados');
     resetModalDocsState();
     resetSociedadeDocsState();
@@ -2447,6 +2375,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       if (!canExit) return false;
     }
 
+    customerActivityRequestRef.current += 1;
     setShowModal(false);
     setEditingCustomer(null);
     setFormData(emptyFormState());
