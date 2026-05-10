@@ -717,6 +717,26 @@ function createBaileysGateway(options = {}) {
         };
     }
 
+    async function deleteMessageForEveryone(input) {
+        const to = String(input?.to || '').trim();
+        const waId = String(input?.messageId || input?.waId || '').trim();
+        if (!waId) throw new Error('ID da mensagem inválido para apagar.');
+        const toDigits = normalizeDigits(to);
+        if (!toDigits) throw new Error('Destino inválido para apagar mensagem.');
+
+        await start();
+        const activeSocket = await waitForConnected(30000);
+        const remoteJid = toJid(toDigits);
+        await activeSocket.sendMessage(remoteJid, {
+            delete: {
+                remoteJid,
+                fromMe: true,
+                id: waId,
+            },
+        });
+        return { waId };
+    }
+
     function getHealth() {
         return {
             provider: 'baileys',
@@ -764,6 +784,7 @@ function createBaileysGateway(options = {}) {
         sendText,
         sendImage,
         sendDocument,
+        deleteMessageForEveryone,
         downloadInboundMediaStream,
         getHealth,
         getQrPayload,

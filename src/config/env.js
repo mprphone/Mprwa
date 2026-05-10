@@ -50,6 +50,11 @@ function loadEnvConfig() {
         SMTP_FROM_EMAIL: trim(process.env.SMTP_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SAFT_EMAIL_FROM),
         SMTP_FROM_NAME: trim(process.env.SMTP_FROM_NAME, 'WA PRO'),
         SMTP_CC_FALLBACK: trim(process.env.SMTP_CC_FALLBACK, 'geral@mpr.pt').toLowerCase(),
+        IMAP_HOST: trim(process.env.IMAP_HOST || process.env.MAIL_IMAP_HOST || process.env.SMTP_HOST || 'mail.mpr.pt'),
+        IMAP_PORT: toInt(process.env.IMAP_PORT || process.env.MAIL_IMAP_PORT, 993),
+        IMAP_USERNAME: trim(process.env.IMAP_USERNAME || process.env.MAIL_IMAP_USERNAME || process.env.SMTP_USERNAME || process.env.SMTP_USER),
+        IMAP_PASSWORD: trim(process.env.IMAP_PASSWORD || process.env.MAIL_IMAP_PASSWORD || process.env.SMTP_PASSWORD || process.env.SMTP_PASS),
+        IMAP_MAILBOX: trim(process.env.IMAP_MAILBOX || process.env.MAIL_IMAP_MAILBOX, 'INBOX'),
 
         ENABLE_WEBHOOK_AUTOREPLY: toBool(process.env.ENABLE_WEBHOOK_AUTOREPLY, false),
         API_PUBLIC_BASE_URL: trim(process.env.API_PUBLIC_BASE_URL).replace(/\/+$/, ''),

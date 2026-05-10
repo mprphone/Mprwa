@@ -74,6 +74,36 @@ function createSaftService(deps) {
             .toLowerCase();
     }
 
+    function compactWindowsPathForCompare(value) {
+        return normalizeWindowsPathForCompare(value).replace(/[\\/]/g, '');
+    }
+
+    function getWindowsRelativePartAfterPrefix(stored, configuredPrefix) {
+        const storedRaw = String(stored || '').trim();
+        const prefixRaw = String(configuredPrefix || '').trim();
+        const storedNormalized = normalizeWindowsPathForCompare(storedRaw);
+        const prefixNormalized = normalizeWindowsPathForCompare(prefixRaw);
+        if (storedNormalized === prefixNormalized) return '';
+        if (storedNormalized.startsWith(`${prefixNormalized}\\`)) {
+            return storedRaw.slice(prefixRaw.length).replace(/^[\\/]+/, '');
+        }
+
+        const compactPrefix = compactWindowsPathForCompare(prefixRaw);
+        const compactStored = compactWindowsPathForCompare(storedRaw);
+        if (!compactPrefix || !compactStored.startsWith(compactPrefix)) {
+            return null;
+        }
+
+        let consumed = 0;
+        let offset = 0;
+        while (offset < storedRaw.length && consumed < compactPrefix.length) {
+            const char = storedRaw[offset];
+            if (char !== '\\' && char !== '/') consumed += 1;
+            offset += 1;
+        }
+        return storedRaw.slice(offset).replace(/^[\\/]+/, '');
+    }
+
     function decodeProcMountPath(value) {
         return String(value || '')
             .replace(/\\040/g, ' ')
@@ -122,17 +152,13 @@ function createSaftService(deps) {
             );
         }
 
-        const storedNormalized = normalizeWindowsPathForCompare(stored);
-        if (storedNormalized !== windowsPrefix && !storedNormalized.startsWith(`${windowsPrefix}\\`)) {
+        const relativePart = getWindowsRelativePartAfterPrefix(stored, DOCS_WINDOWS_PREFIX);
+        if (relativePart === null) {
             throw new Error(
                 `Pasta "${stored}" fora do prefixo configurado em DOCS_WINDOWS_PREFIX ("${DOCS_WINDOWS_PREFIX}").`
             );
         }
 
-        const relativePart = stored
-            .trim()
-            .slice(DOCS_WINDOWS_PREFIX.trim().length)
-            .replace(/^[\\/]+/, '');
         const segments = relativePart.split(/[\\/]+/).filter(Boolean);
         return path.resolve(linuxMount, ...segments);
     }

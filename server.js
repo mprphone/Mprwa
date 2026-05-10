@@ -14,6 +14,7 @@ const { createWhatsAppService } = require('./src/server/services/whatsappService
 const { createSupabaseClient } = require('./src/server/services/supabaseClient');
 const { createRobotService } = require('./src/server/services/robotService');
 const { createEmailService } = require('./src/server/services/emailService');
+const { createImapEmailService } = require('./src/server/services/imapEmailService');
 const { createQueueWorker } = require('./src/server/jobs/queueWorker');
 const { createAutoPullWorker } = require('./src/server/jobs/autoPullWorker');
 const { createUserRepository } = require('./src/server/repositories/userRepository');
@@ -21,6 +22,7 @@ const { createCustomerRepository } = require('./src/server/repositories/customer
 const { createCustomerMergeService } = require('./src/server/services/customerMergeService');
 const { registerChatCoreRoutes } = require('./backend/chatCoreRoutes');
 const { registerLocalDataRoutes } = require('./backend/routes/localDataRoutes');
+const { registerHrManagementRoutes } = require('./backend/routes/hrManagementRoutes');
 const { registerOccurrencesRoutes } = require('./backend/routes/occurrencesRoutes');
 const { registerImportRoutes } = require('./backend/routes/importRoutes');
 const { registerImportObrigacoesRoutes } = require('./backend/routes/importObrigacoesRoutes');
@@ -110,6 +112,11 @@ const {
     SMTP_FROM_EMAIL,
     SMTP_FROM_NAME,
     SMTP_CC_FALLBACK,
+    IMAP_HOST,
+    IMAP_PORT,
+    IMAP_USERNAME,
+    IMAP_PASSWORD,
+    IMAP_MAILBOX,
     ENABLE_WEBHOOK_AUTOREPLY,
     API_PUBLIC_BASE_URL,
     SUPABASE_URL,
@@ -247,13 +254,18 @@ async function proxyToChatCore(req, res) {
 
         const requestData =
             method === 'GET' || method === 'HEAD' || method === 'OPTIONS' ? undefined : req.body;
+        const responseType = isBinaryRequest
+            ? isMediaProxyRequest
+                ? 'stream'
+                : 'arraybuffer'
+            : undefined;
         const response = await axios({
             method,
             url: targetUrl,
             headers: requestHeaders,
             data: requestData,
-            responseType: isBinaryRequest ? 'arraybuffer' : undefined,
-            timeout: 30000,
+            responseType,
+            timeout: isMediaProxyRequest ? 0 : 30000,
             validateStatus: () => true,
         });
 
@@ -264,6 +276,14 @@ async function proxyToChatCore(req, res) {
         if (response.headers?.['content-length']) {
             res.setHeader('Content-Length', response.headers['content-length']);
         }
+        if (isMediaProxyRequest && response.data && typeof response.data.pipe === 'function') {
+            response.data.pipe(res);
+            req.on('close', () => {
+                response.data.destroy?.();
+            });
+            return;
+        }
+
         if (isBinaryRequest) {
             const raw = response.data;
             if (!raw) return res.end();
@@ -954,6 +974,84 @@ const { hasEmailProvider, sendEmailDocumentLink } = createEmailService({
     SMTP_FROM_NAME,
     RESEND_API_KEY,
     RESEND_FROM,
+});
+
+const segSocialEmailInbox = createImapEmailService({
+    host: IMAP_HOST,
+    port: IMAP_PORT,
+    username: IMAP_USERNAME,
+    password: IMAP_PASSWORD,
+    mailbox: IMAP_MAILBOX,
+});
+
+app.get('/api/email/seg-social/latest-code', async (req, res) => {
+    try {
+        if (!segSocialEmailInbox.hasImapConfig()) {
+            return res.status(400).json({
+                success: false,
+                error: 'IMAP não configurado para leitura do geral@mpr.pt.',
+            });
+        }
+        const result = await segSocialEmailInbox.findLatestSegSocialCode({
+            sinceDays: Number(req.query?.sinceDays || 7) || 7,
+            maxMessages: Number(req.query?.maxMessages || 25) || 25,
+            activationOnly: ['1', 'true', 'yes', 'sim'].includes(String(req.query?.activationOnly || '').toLowerCase()),
+            verificationOnly: ['1', 'true', 'yes', 'sim'].includes(String(req.query?.verificationOnly || '').toLowerCase()),
+            sinceIso: String(req.query?.sinceIso || '').trim(),
+        });
+        return res.json({
+            success: true,
+            found: Boolean(result?.code),
+            message: result?.code ? 'Código encontrado.' : 'Nenhum código recente da Segurança Social encontrado.',
+            result: result ? {
+                code: result.code,
+                uid: result.uid,
+                from: result.from,
+                subject: result.subject,
+                date: result.date,
+            } : null,
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            error: String(error?.message || error),
+        });
+    }
+});
+
+app.get('/api/email/seg-social/latest-subuser-password', async (req, res) => {
+    try {
+        if (!segSocialEmailInbox.hasImapConfig()) {
+            return res.status(400).json({
+                success: false,
+                error: 'IMAP não configurado para leitura do geral@mpr.pt.',
+            });
+        }
+        const result = await segSocialEmailInbox.findLatestSegSocialSubUserPassword({
+            sinceDays: Number(req.query?.sinceDays || 14) || 14,
+            maxMessages: Number(req.query?.maxMessages || 50) || 50,
+            sinceIso: String(req.query?.sinceIso || '').trim(),
+            username: String(req.query?.username || '').trim(),
+            email: String(req.query?.email || '').trim(),
+        });
+        return res.json({
+            success: true,
+            found: Boolean(result?.password),
+            message: result?.password ? 'Senha de subutilizador encontrada.' : 'Nenhuma senha recente de subutilizador da Segurança Social encontrada.',
+            result: result ? {
+                password: result.password,
+                uid: result.uid,
+                from: result.from,
+                subject: result.subject,
+                date: result.date,
+            } : null,
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            error: String(error?.message || error),
+        });
+    }
 });
 
 function normalizeRole(rawValue) {
@@ -1936,6 +2034,20 @@ registerLocalDataRoutes({
     nowIso,
 });
 
+registerHrManagementRoutes({
+    app,
+    dbRunAsync,
+    dbGetAsync,
+    dbAllAsync,
+    writeAuditLog,
+    SUPABASE_URL,
+    SUPABASE_KEY,
+    SUPABASE_FUNCIONARIOS_SOURCE,
+    fetchSupabaseTable,
+    resolveSupabaseTableName,
+    nowIso,
+});
+
 registerOccurrencesRoutes({
     app,
     dbRunAsync,
@@ -2059,6 +2171,7 @@ if (!IS_BACKOFFICE_ONLY) {
         sendMobilePushNotification: (payload) => mobilePushService.sendInboundMessageNotification(payload),
         fetchAvatarOnDemand: typeof fetchAvatarOnDemand === 'function' ? fetchAvatarOnDemand : null,
         downloadInboundMediaStream: typeof downloadInboundMediaStream === 'function' ? downloadInboundMediaStream : null,
+        pickBaileysGatewayForOutbound: typeof pickBaileysGatewayForOutbound === 'function' ? pickBaileysGatewayForOutbound : null,
     });
 }
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { MessageSquare, MessagesSquare, Users, CheckSquare, ClipboardList, BarChart2, LogOut, UploadCloud, Briefcase, Zap, FileText, AppWindow } from 'lucide-react';
+import { MessageSquare, MessagesSquare, Users, CheckSquare, ClipboardList, BarChart2, LogOut, UploadCloud, Briefcase, Zap, FileText, AppWindow, CalendarCheck } from 'lucide-react';
 import { USERS, CURRENT_USER_ID, mockService } from '../services/mockData';
 import { Role } from '../types';
 import { fetchChatContacts } from '../services/chatCoreApi';
@@ -69,6 +69,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     { path: '/occurrences', label: 'Ocorrências', icon: ClipboardList },
     { path: '/customers', label: 'Clientes', icon: Users },
     { path: '/employees', label: 'Funcionários', icon: Briefcase },
+    { path: '/pedidos', label: 'Pedidos', icon: CalendarCheck },
     { path: '/software', label: 'Software', icon: AppWindow },
     { path: '/automation', label: 'Automação', icon: Zap, adminOnly: true },
     { path: '/response-forms', label: 'Formulários', icon: FileText, adminOnly: true },

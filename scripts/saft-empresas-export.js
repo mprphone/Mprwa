@@ -45,6 +45,7 @@ const OUTPUT_COLUMNS = [
   'PasswordAT',
   'NISS',
   'PasswordSS',
+  'ValidadePasswordSS',
   'UtilizadorRU',
   'PasswordRU',
   'TipoIVA',
@@ -292,6 +293,17 @@ async function extractActiveTabFields(page) {
     });
 
     const fields = {};
+    let lastNonValidityLabel = '';
+    const setFieldValue = (key, value) => {
+      const normalizedKey = clean(key);
+      if (!normalizedKey) return;
+      const normalizedValue = clean(value);
+      const current = clean(fields[normalizedKey]);
+      if (!current || normalizedValue) {
+        fields[normalizedKey] = normalizedValue;
+      }
+    };
+
     for (const control of controls) {
       const id = clean(control.id);
       let label = '';
@@ -324,8 +336,16 @@ async function extractActiveTabFields(page) {
         value = clean(control.value);
       }
 
-      fields[label] = value;
-      fields[fold(label)] = value;
+      const foldedLabel = fold(label);
+      setFieldValue(label, value);
+      setFieldValue(foldedLabel, value);
+      if (foldedLabel === 'data de validade' && lastNonValidityLabel) {
+        setFieldValue(`${label} (${lastNonValidityLabel})`, value);
+        setFieldValue(`${foldedLabel} ${fold(lastNonValidityLabel)}`, value);
+      }
+      if (foldedLabel && foldedLabel !== 'data de validade') {
+        lastNonValidityLabel = label;
+      }
     }
 
     return fields;
@@ -388,6 +408,15 @@ function buildExcelRow(listRow, mergedFields) {
     'senha de acesso ss',
     'senha ss',
   ]);
+  const ssValidUntil = pickField(mergedFields, [
+    'data de validade senha de acesso ss',
+    'data validade senha de acesso ss',
+    'validade senha de acesso ss',
+    'data de validade utilizador ss',
+    'validade utilizador ss',
+    'data de validade ss',
+    'validade ss',
+  ]);
   const atPass = pickField(mergedFields, [
     'senha de utilizador at',
     'senha de acesso at',
@@ -431,6 +460,7 @@ function buildExcelRow(listRow, mergedFields) {
     PasswordAT: atPass,
     NISS: ssUser,
     PasswordSS: ssPass,
+    ValidadePasswordSS: ssValidUntil,
     UtilizadorRU: ruUser,
     PasswordRU: ruPass,
     TipoIVA: tipoIva,
@@ -545,6 +575,16 @@ async function main() {
   const templatePath = getArg('--template', process.env.SAFT_EMPRESAS_TEMPLATE || '');
   const templateSheet = getArg('--template-sheet', process.env.SAFT_EMPRESAS_TEMPLATE_SHEET || '');
   const defaultBase = path.join(outDir, `saft_empresas_${stamp}`);
+  const onlyNifSet = new Set(
+    [
+      getArg('--nif', ''),
+      ...String(getArg('--nifs', '') || '')
+        .split(/[;,]+/)
+        .map((item) => item.trim()),
+    ]
+      .map((item) => String(item || '').replace(/\D/g, ''))
+      .filter((item) => item.length === 9)
+  );
 
   let outCsv = csvArg;
   let outXlsx = xlsxArg;
@@ -603,6 +643,8 @@ async function main() {
       const rows = await extractEmpresaRows(page);
       let added = 0;
       for (const row of rows) {
+        const rowNif = String(row.nif || '').replace(/\D/g, '');
+        if (onlyNifSet.size > 0 && !onlyNifSet.has(rowNif)) continue;
         const key = row.detailUrl || `${row.nif}|${row.empresa}`;
         if (!key || seen.has(key)) continue;
         seen.add(key);
@@ -611,7 +653,8 @@ async function main() {
         if (limit > 0 && companies.length >= limit) break;
       }
       if (limit > 0 && companies.length >= limit) break;
-      if (added === 0) break;
+      if (onlyNifSet.size > 0 && companies.length >= onlyNifSet.size) break;
+      if (added === 0 && onlyNifSet.size === 0) break;
 
       const moved = await goToNextPage(page, readPageConfig(page.url()));
       if (!moved) break;

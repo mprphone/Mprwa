@@ -9,6 +9,7 @@ declare global {
       setUnreadCount?: (count: number) => void;
       setUnreadOverlay?: (count: number, dataUrl: string) => void;
       notifyInboundMessage?: (payload: { from: string; body: string; conversationId?: string }) => void;
+      readClipboardText?: () => Promise<string>;
       financasAutologin?: (payload: {
         username: string;
         password: string;
@@ -17,6 +18,14 @@ declare global {
         timeoutMs?: number;
         closeAfterSubmit?: boolean;
         credentialLabel?: string;
+        postLoginFlow?: string;
+        apiBaseUrl?: string;
+        customerName?: string;
+        customerCompany?: string;
+        subEmail?: string;
+        subUsername?: string;
+        subPassword?: string;
+        tokenDescription?: string;
         usernameSelectors?: string | string[];
         passwordSelectors?: string | string[];
         submitSelectors?: string | string[];
@@ -28,6 +37,17 @@ declare global {
         message?: string;
         error?: string;
         loginState?: string;
+        manualRequiredReason?: string;
+        postLoginFlow?: {
+          stage?: string;
+          createdUsername?: string;
+          activationCode?: string;
+          token?: string;
+          tokenValidUntil?: string;
+          appAuth?: string;
+          appAuthValidUntil?: string;
+          reason?: string;
+        };
       }>;
     };
   }

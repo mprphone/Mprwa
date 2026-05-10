@@ -587,9 +587,21 @@ function registerLocalDataRoutes(context) {
 
             if (!response.ok) {
                 const details = await response.text().catch(() => '');
-                throw new Error(
+                const error = new Error(
                     `Falha ao consultar Supabase (${normalizedTable}) [${response.status}]${details ? `: ${details}` : ''}`
                 );
+                error.status = response.status;
+                error.tableName = normalizedTable;
+                try {
+                    const parsedDetails = details ? JSON.parse(details) : null;
+                    if (parsedDetails && typeof parsedDetails === 'object') {
+                        error.supabaseCode = parsedDetails.code;
+                        error.supabaseMessage = parsedDetails.message;
+                    }
+                } catch (_parseError) {
+                    // Details are best-effort diagnostics only.
+                }
+                throw error;
             }
 
             const payload = await response.json().catch(() => []);
@@ -604,12 +616,39 @@ function registerLocalDataRoutes(context) {
         return rows.slice(0, maxAllowed);
     }
 
+    function isSupabaseMissingTableError(error) {
+        const message = String(error?.message || error || '');
+        const supabaseCode = String(error?.supabaseCode || '').trim();
+        return Number(error?.status || 0) === 404
+            || supabaseCode === 'PGRST205'
+            || /Could not find the table/i.test(message)
+            || /schema cache/i.test(message);
+    }
+
     async function syncInternalChatHistoryFromSupabase({
         actorUserId = '',
         forceFull = false,
         maxRows = 20000,
     } = {}) {
         await ensureInternalChatSupabaseSyncSchema();
+
+        const historySyncEnabled = parseBoolean(process.env.INTERNAL_CHAT_SUPABASE_HISTORY_ENABLED);
+        if (!historySyncEnabled) {
+            await setSyncStateValue('internal_chat_supabase_history_last_run_at', new Date().toISOString());
+            return {
+                skipped: true,
+                reason: 'disabled',
+                importedMessages: 0,
+                linkedMessages: 0,
+                skippedMessages: 0,
+                createdConversations: 0,
+                createdUsers: 0,
+                reconciledAliasUsers: 0,
+                totalFetched: 0,
+                table: null,
+                lastCursor: await getSyncStateValue('internal_chat_supabase_messages_cursor'),
+            };
+        }
 
         const defaultSyncIntervalMs = Math.min(
             10 * 60 * 1000,
@@ -686,14 +725,30 @@ function registerLocalDataRoutes(context) {
         });
 
         const createdAtCandidates = [sourceCreatedAtColumn, 'created_at', 'updated_at'];
-        const messageRowsRaw = await fetchSupabaseRowsPaginated({
-            tableName: mensagensTable,
-            sinceColumn: sourceCreatedAtColumn,
-            sinceIso,
-            orderColumn: sourceCreatedAtColumn || 'created_at',
-            maxRows,
-            batchSize: Math.min(2000, Math.max(200, Number(process.env.INTERNAL_CHAT_SUPABASE_BATCH_SIZE || 1200))),
-        });
+        let messageRowsRaw = [];
+        try {
+            messageRowsRaw = await fetchSupabaseRowsPaginated({
+                tableName: mensagensTable,
+                sinceColumn: sourceCreatedAtColumn,
+                sinceIso,
+                orderColumn: sourceCreatedAtColumn || 'created_at',
+                maxRows,
+                batchSize: Math.min(2000, Math.max(200, Number(process.env.INTERNAL_CHAT_SUPABASE_BATCH_SIZE || 1200))),
+            });
+        } catch (error) {
+            if (!isSupabaseMissingTableError(error)) {
+                throw error;
+            }
+
+            await setSyncStateValue('internal_chat_supabase_history_last_run_at', new Date().toISOString());
+            return {
+                ...stats,
+                skipped: true,
+                reason: 'source_table_missing',
+                warning: `Tabela Supabase '${mensagensTable}' nao existe; importacao de historico interno ignorada.`,
+                lastCursor: previousCursorIso || '',
+            };
+        }
         stats.totalFetched = Array.isArray(messageRowsRaw) ? messageRowsRaw.length : 0;
         if (!Array.isArray(messageRowsRaw) || messageRowsRaw.length === 0) {
             await setSyncStateValue('internal_chat_supabase_history_last_run_at', new Date().toISOString());
@@ -1622,6 +1677,66 @@ function registerLocalDataRoutes(context) {
         return Array.from(new Set(normalized)).slice(0, 40);
     }
 
+    function parseHttpCharset(contentType = '') {
+        const match = String(contentType || '').match(/charset\s*=\s*["']?([^;"'\s]+)/i);
+        return String(match?.[1] || '').trim().toLowerCase();
+    }
+
+    function normalizeHttpCharset(charset = '') {
+        const value = String(charset || '').trim().toLowerCase().replace(/_/g, '-');
+        if (!value) return '';
+        if (value === 'utf8') return 'utf-8';
+        if (
+            value === 'latin1'
+            || value === 'iso-8859-1'
+            || value === 'iso8859-1'
+            || value === 'windows-1252'
+            || value === 'cp1252'
+        ) {
+            return 'latin1';
+        }
+        return value;
+    }
+
+    function countReplacementChars(text = '') {
+        const matches = String(text || '').match(/\uFFFD/g);
+        return matches ? matches.length : 0;
+    }
+
+    function decodeHttpBodyText(rawBuffer, contentType = '') {
+        const buffer = Buffer.isBuffer(rawBuffer) ? rawBuffer : Buffer.from(rawBuffer || []);
+        if (!buffer.length) return '';
+
+        const charset = normalizeHttpCharset(parseHttpCharset(contentType));
+        if (charset === 'latin1') {
+            return buffer.toString('latin1');
+        }
+
+        const utf8Text = buffer.toString('utf8');
+        if (!utf8Text.includes('\uFFFD')) {
+            return utf8Text;
+        }
+
+        // Fallback para páginas legacy em ISO-8859-1 / Windows-1252 sem charset correto.
+        const latinText = buffer.toString('latin1');
+        const utf8Replacements = countReplacementChars(utf8Text);
+        const latinReplacements = countReplacementChars(latinText);
+        const latinLooksPortuguese =
+            /[àáâãéêíóôõúç]/i.test(latinText)
+            || /(?:\s|^)(?:de|da|do|para|com|não|gestão|proposta|contabilidade)(?:\s|$)/i.test(latinText);
+        if (latinReplacements < utf8Replacements && latinLooksPortuguese) {
+            return latinText;
+        }
+
+        return utf8Text;
+    }
+
+    async function readHttpResponseText(response) {
+        const arrayBuffer = await response.arrayBuffer();
+        const contentType = String(response?.headers?.get('content-type') || '');
+        return decodeHttpBodyText(arrayBuffer, contentType);
+    }
+
     function stripHtmlToText(html) {
         return String(html || '')
             .replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -1705,7 +1820,7 @@ function registerLocalDataRoutes(context) {
                 if (!contentType.includes('text') && !contentType.includes('html') && !contentType.includes('json')) {
                     continue;
                 }
-                const rawText = await response.text();
+                const rawText = await readHttpResponseText(response);
                 const plainText = stripHtmlToText(rawText).slice(0, INTERNAL_AI_SITE_EXCERPT_CHARS);
                 if (!plainText) continue;
                 excerpts.push({
@@ -1722,7 +1837,7 @@ function registerLocalDataRoutes(context) {
                         if (!subContentType.includes('text') && !subContentType.includes('html') && !subContentType.includes('json')) {
                             continue;
                         }
-                        const subRaw = await subResponse.text();
+                        const subRaw = await readHttpResponseText(subResponse);
                         const subPlain = stripHtmlToText(subRaw).slice(0, INTERNAL_AI_SITE_EXCERPT_CHARS);
                         if (!subPlain) continue;
                         excerpts.push({
@@ -2278,6 +2393,8 @@ function registerLocalDataRoutes(context) {
         statusColumn,
         tipoColumn,
         descricaoColumn,
+        requesterColumn,
+        requesterLegacyColumn,
         force = false,
     }) {
         const nowMs = Date.now();
@@ -2359,22 +2476,52 @@ function registerLocalDataRoutes(context) {
             let requesterName = extractRequesterNameFromLegacyDescricao(descricao) || null;
 
             if (!requesterUserId) {
-                const sourceFuncionarioId = String(row?.funcionario_id || row?.atribuido_a || '').trim().toLowerCase();
-                if (sourceFuncionarioId) {
-                    const localIdGuess = `ext_u_${sourceFuncionarioId}`;
-                    const localByExactId = localById.get(localIdGuess);
+                const sourceFuncionarioCandidates = Array.from(
+                    new Set(
+                        [
+                            requesterColumn ? row?.[requesterColumn] : '',
+                            requesterLegacyColumn ? row?.[requesterLegacyColumn] : '',
+                            row?.atribuido_a,
+                            row?.funcionario_id,
+                        ]
+                            .map((item) => String(item || '').trim().toLowerCase())
+                            .filter(Boolean)
+                    )
+                );
+
+                for (const sourceFuncionarioId of sourceFuncionarioCandidates) {
+                    const localIdCandidates = Array.from(
+                        new Set(
+                            [
+                                sourceFuncionarioId,
+                                sourceFuncionarioId.startsWith('ext_u_') ? sourceFuncionarioId : `ext_u_${sourceFuncionarioId}`,
+                                sourceFuncionarioId.startsWith('u_') ? `ext_${sourceFuncionarioId}` : '',
+                            ].filter(Boolean)
+                        )
+                    );
+                    let localByExactId = null;
+                    for (const localCandidateId of localIdCandidates) {
+                        localByExactId = localById.get(localCandidateId) || null;
+                        if (localByExactId?.id) break;
+                    }
+
                     if (localByExactId?.id) {
                         requesterUserId = String(localByExactId.id).trim();
                         requesterName = requesterName || String(localByExactId.name || '').trim() || null;
-                    } else {
-                        const supaFuncionario = supabaseFuncionariosById.get(sourceFuncionarioId);
-                        const localByEmailMatch = supaFuncionario?.email
-                            ? localByEmail.get(String(supaFuncionario.email || '').trim().toLowerCase())
-                            : null;
-                        if (localByEmailMatch?.id) {
-                            requesterUserId = String(localByEmailMatch.id).trim();
-                            requesterName = requesterName || String(localByEmailMatch.name || '').trim() || null;
-                        }
+                        break;
+                    }
+
+                    const normalizedFuncionarioId = sourceFuncionarioId.startsWith('ext_u_')
+                        ? sourceFuncionarioId.slice('ext_u_'.length)
+                        : sourceFuncionarioId;
+                    const supaFuncionario = supabaseFuncionariosById.get(normalizedFuncionarioId);
+                    const localByEmailMatch = supaFuncionario?.email
+                        ? localByEmail.get(String(supaFuncionario.email || '').trim().toLowerCase())
+                        : null;
+                    if (localByEmailMatch?.id) {
+                        requesterUserId = String(localByEmailMatch.id).trim();
+                        requesterName = requesterName || String(localByEmailMatch.name || '').trim() || null;
+                        break;
                     }
                 }
             }
@@ -2431,6 +2578,8 @@ function registerLocalDataRoutes(context) {
             const descricaoColumn = String(process.env.SUPABASE_PEDIDOS_DESCRIPTION_COLUMN || 'descricao').trim();
             const dataInicioColumn = String(process.env.SUPABASE_PEDIDOS_START_DATE_COLUMN || 'data_inicio').trim();
             const dataFimColumn = String(process.env.SUPABASE_PEDIDOS_END_DATE_COLUMN || 'data_fim').trim();
+            const requesterColumn = String(process.env.SUPABASE_PEDIDOS_REQUESTER_COLUMN || '').trim();
+            const requesterLegacyColumn = String(process.env.SUPABASE_PEDIDOS_ASSIGNEE_LEGACY_COLUMN || '').trim();
 
             await bootstrapSupabasePedidosTrackingFromLegacySupabase({
                 pedidosTable,
@@ -2438,6 +2587,8 @@ function registerLocalDataRoutes(context) {
                 statusColumn,
                 tipoColumn,
                 descricaoColumn,
+                requesterColumn,
+                requesterLegacyColumn,
                 force: forceRun,
             });
 

@@ -30,30 +30,39 @@ function createCustomerMergeService(deps) {
                 return sourceCustomer;
             }
 
+            const localId = String(localMatch?.id || '').trim();
+            const localSourceId = parseCustomerSourceId(localId, localMatch?.sourceId);
             const mergedCustomer = {
                 ...sourceCustomer,
                 id: sourceCustomer.id,
-                sourceId,
+                sourceId: sourceId || localSourceId,
             };
 
-            const applyLocalFallback = (fieldName) => {
-                const sourceValue = mergedCustomer[fieldName];
+            if (localId && localId.startsWith('local_')) {
+                mergedCustomer.id = localId;
+            }
+
+            const isFilled = (value) => {
+                if (value === undefined || value === null) return false;
+                if (typeof value === 'string') return value.trim() !== '';
+                if (Array.isArray(value)) return value.length > 0;
+                return true;
+            };
+
+            const applyLocalOverride = (fieldName) => {
                 const localValue = localMatch[fieldName];
-                const sourceMissing =
-                    sourceValue === undefined ||
-                    sourceValue === null ||
-                    (typeof sourceValue === 'string' && sourceValue.trim() === '');
-                const localPresent =
-                    localValue !== undefined &&
-                    localValue !== null &&
-                    (typeof localValue !== 'string' || localValue.trim() !== '');
-                if (sourceMissing && localPresent) {
+                if (isFilled(localValue)) {
                     mergedCustomer[fieldName] = localValue;
                 }
             };
 
             [
+                'name',
+                'company',
                 'contactName',
+                'phone',
+                'email',
+                'documentsFolder',
                 'nif',
                 'niss',
                 'type',
@@ -73,37 +82,37 @@ function createCustomerMergeService(deps) {
                 'estadoCliente',
                 'contabilistaCertificado',
                 'notes',
-            ].forEach(applyLocalFallback);
+            ].forEach(applyLocalOverride);
 
-            if (localMatch.type) {
-                mergedCustomer.type = localMatch.type;
-            }
-
-            if (!mergedCustomer.documentsFolder && localMatch.documentsFolder) {
+            if (isFilled(localMatch.documentsFolder)) {
                 mergedCustomer.documentsFolder = localMatch.documentsFolder;
             }
-            if ((!Array.isArray(mergedCustomer.contacts) || mergedCustomer.contacts.length === 0) && Array.isArray(localMatch.contacts) && localMatch.contacts.length > 0) {
+            if (Array.isArray(localMatch.contacts) && localMatch.contacts.length > 0) {
                 mergedCustomer.contacts = localMatch.contacts;
             }
             if (localMatch.allowAutoResponses !== undefined) {
                 mergedCustomer.allowAutoResponses = normalizeBoolean(localMatch.allowAutoResponses, true);
             }
-            if ((!Array.isArray(mergedCustomer.managers) || mergedCustomer.managers.length === 0) && Array.isArray(localMatch.managers) && localMatch.managers.length > 0) {
+            if (Array.isArray(localMatch.managers) && localMatch.managers.length > 0) {
                 mergedCustomer.managers = localMatch.managers;
             }
-            if ((!Array.isArray(mergedCustomer.accessCredentials) || mergedCustomer.accessCredentials.length === 0) && Array.isArray(localMatch.accessCredentials) && localMatch.accessCredentials.length > 0) {
+            if (Array.isArray(localMatch.accessCredentials) && localMatch.accessCredentials.length > 0) {
                 mergedCustomer.accessCredentials = localMatch.accessCredentials;
             }
-            if ((!Array.isArray(mergedCustomer.agregadoFamiliar) || mergedCustomer.agregadoFamiliar.length === 0) && Array.isArray(localMatch.agregadoFamiliar) && localMatch.agregadoFamiliar.length > 0) {
+            if (Array.isArray(localMatch.agregadoFamiliar) && localMatch.agregadoFamiliar.length > 0) {
                 mergedCustomer.agregadoFamiliar = localMatch.agregadoFamiliar;
             }
-            if ((!Array.isArray(mergedCustomer.fichasRelacionadas) || mergedCustomer.fichasRelacionadas.length === 0) && Array.isArray(localMatch.fichasRelacionadas) && localMatch.fichasRelacionadas.length > 0) {
+            if (Array.isArray(localMatch.fichasRelacionadas) && localMatch.fichasRelacionadas.length > 0) {
                 mergedCustomer.fichasRelacionadas = localMatch.fichasRelacionadas;
             }
-            if (!mergedCustomer.supabasePayload && sourceCustomer.supabasePayload) {
+            if (isFilled(localMatch.supabasePayload)) {
+                mergedCustomer.supabasePayload = localMatch.supabasePayload;
+            } else if (sourceCustomer.supabasePayload) {
                 mergedCustomer.supabasePayload = sourceCustomer.supabasePayload;
             }
-            if (!mergedCustomer.supabaseUpdatedAt && sourceCustomer.supabaseUpdatedAt) {
+            if (String(localMatch.supabaseUpdatedAt || '').trim()) {
+                mergedCustomer.supabaseUpdatedAt = localMatch.supabaseUpdatedAt;
+            } else if (String(sourceCustomer.supabaseUpdatedAt || '').trim()) {
                 mergedCustomer.supabaseUpdatedAt = sourceCustomer.supabaseUpdatedAt;
             }
             return mergedCustomer;
@@ -137,6 +146,7 @@ function createCustomerMergeService(deps) {
             if (!customer || typeof customer !== 'object') return 0;
             let score = 0;
             if (parseCustomerSourceId(customer?.id, customer?.sourceId)) score += 6;
+            if (String(customer?.id || '').startsWith('local_')) score += 10;
             if (String(customer?.id || '').startsWith('ext_c_')) score += 2;
             if (isFilled(customer?.phone)) score += 1;
             if (isFilled(customer?.email)) score += 1;

@@ -984,8 +984,17 @@ function registerOccurrencesRoutes(context) {
             }
 
             if (responsibleUserId) {
-                where.push('(o.responsible_user_id = ? OR ifnull(o.responsible_ids_json, "") LIKE ?)');
-                params.push(responsibleUserId, `%${responsibleUserId.replace(/[%_]/g, '')}%`);
+                const escapedResponsible = responsibleUserId.replace(/[%_]/g, '');
+                where.push(`(
+                    o.responsible_user_id = ?
+                    OR ifnull(o.responsible_ids_json, '') = ?
+                    OR ifnull(o.responsible_ids_json, '') LIKE ?
+                )`);
+                params.push(
+                    responsibleUserId,
+                    JSON.stringify([responsibleUserId]),
+                    `%"${escapedResponsible}"%`
+                );
             }
 
             const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';

@@ -74,6 +74,10 @@ const Occurrences: React.FC = () => {
   const [stateFilter, setStateFilter] = useState('TODOS');
   const [typeFilter, setTypeFilter] = useState('');
   const [responsibleFilter, setResponsibleFilter] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ field: 'date' | 'customer' | 'type'; direction: 'asc' | 'desc' }>({
+    field: 'date',
+    direction: 'desc',
+  });
 
   const [modal, setModal] = useState<ModalState>(DEFAULT_MODAL);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
@@ -82,7 +86,7 @@ const Occurrences: React.FC = () => {
   const currentUserId = String(mockService.getCurrentUserId() || '').trim();
   const currentUserRole = mockService.getCurrentUser()?.role;
   const isAdmin = currentUserRole === Role.ADMIN;
-  const effectiveResponsibleFilter = isAdmin ? responsibleFilter : currentUserId;
+  const effectiveResponsibleFilter = isAdmin ? responsibleFilter : '';
 
   const selectedTypeName = useMemo(() => {
     const id = String(modal.typeId || '').trim();
@@ -412,7 +416,33 @@ const Occurrences: React.FC = () => {
     return parsed.toLocaleDateString('pt-PT');
   };
 
+  const toggleSort = (field: 'date' | 'customer' | 'type') => {
+    setSortConfig((prev) => {
+      if (prev.field === field) {
+        return {
+          field,
+          direction: prev.direction === 'asc' ? 'desc' : 'asc',
+        };
+      }
+      return {
+        field,
+        direction: field === 'date' ? 'desc' : 'asc',
+      };
+    });
+  };
+
   const visibleRows = useMemo(() => {
+    const normalizeIdentity = (value: string | null | undefined) =>
+      String(value || '')
+        .trim()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+    const compareText = (left: string | null | undefined, right: string | null | undefined) =>
+      String(left || '')
+        .trim()
+        .localeCompare(String(right || '').trim(), 'pt-PT', { sensitivity: 'base' });
+
     const toDayNumber = (value: string | null | undefined, emptyValue: number) => {
       const raw = String(value || '').trim();
       if (!raw) return emptyValue;
@@ -420,35 +450,53 @@ const Occurrences: React.FC = () => {
       return Number.isFinite(parsed) ? parsed : emptyValue;
     };
 
-    const stateOrder = (state: string | null | undefined) => {
-      const normalized = String(state || '').trim().toUpperCase();
-      return normalized === 'RESOLVIDA' ? 1 : 0;
-    };
+    const applyDirection = (value: number) => (sortConfig.direction === 'asc' ? value : -value);
 
     const sortRows = (list: OccurrenceRow[]) =>
       [...list].sort((a, b) => {
-        const stateDiff = stateOrder(a.state) - stateOrder(b.state);
-        if (stateDiff !== 0) return stateDiff;
+        if (sortConfig.field === 'date') {
+          const dateDiff = toDayNumber(a.date, 0) - toDayNumber(b.date, 0);
+          if (dateDiff !== 0) return applyDirection(dateDiff);
+        } else if (sortConfig.field === 'customer') {
+          const customerDiff = compareText(a.customerCompany || a.customerName, b.customerCompany || b.customerName);
+          if (customerDiff !== 0) return applyDirection(customerDiff);
+        } else if (sortConfig.field === 'type') {
+          const typeDiff = compareText(getTypeLabel(a), getTypeLabel(b));
+          if (typeDiff !== 0) return applyDirection(typeDiff);
+        }
 
-        const dueDiff = toDayNumber(a.dueDate, Number.MAX_SAFE_INTEGER) - toDayNumber(b.dueDate, Number.MAX_SAFE_INTEGER);
-        if (dueDiff !== 0) return dueDiff;
+        const fallbackDateDiff = toDayNumber(b.date, 0) - toDayNumber(a.date, 0);
+        if (fallbackDateDiff !== 0) return fallbackDateDiff;
 
-        return toDayNumber(b.date, 0) - toDayNumber(a.date, 0);
+        return compareText(a.title, b.title);
       });
 
     if (isAdmin) return sortRows(rows);
     if (!currentUserId) return [];
+
+    const currentUser = users.find((user) => String(user.id || '').trim() === currentUserId) || null;
+    const currentName = normalizeIdentity(currentUser?.name || mockService.getCurrentUser()?.name || '');
+    const currentEmail = normalizeIdentity(currentUser?.email || mockService.getCurrentUser()?.email || '');
 
     const filtered = rows.filter((row) => {
       const primary = String(row.responsibleUserId || '').trim();
       const many = Array.isArray(row.responsibleUserIds)
         ? row.responsibleUserIds.map((item) => String(item || '').trim()).filter(Boolean)
         : [];
-      return primary === currentUserId || many.includes(currentUserId);
+      if (primary === currentUserId || many.includes(currentUserId)) return true;
+
+      const primaryEmail = normalizeIdentity(row.responsibleUserEmail);
+      if (currentEmail && primaryEmail === currentEmail) return true;
+
+      const names = String(row.responsibleNames || row.responsibleUserName || '')
+        .split(',')
+        .map((item) => normalizeIdentity(item))
+        .filter(Boolean);
+      return Boolean(currentName && names.includes(currentName));
     });
 
     return sortRows(filtered);
-  }, [rows, isAdmin, currentUserId]);
+  }, [rows, isAdmin, currentUserId, sortConfig, types, users]);
 
   const assignableUsers = useMemo(() => {
     if (isAdmin) return users;
@@ -540,6 +588,7 @@ const Occurrences: React.FC = () => {
               </option>
             ))}
           </select>
+
         </div>
 
         {(error || message) && (
@@ -557,9 +606,42 @@ const Occurrences: React.FC = () => {
           <table className="w-full min-w-[1220px] table-fixed">
             <thead className="bg-slate-100/80">
               <tr>
-                <th className="w-[8%] px-3 py-3 text-left text-[11px] font-semibold uppercase text-slate-600">Data</th>
-                <th className="w-[24%] px-3 py-3 text-left text-[11px] font-semibold uppercase text-slate-600">Cliente</th>
-                <th className="w-[12%] px-3 py-3 text-left text-[11px] font-semibold uppercase text-slate-600">Tipo</th>
+                <th className="w-[8%] px-3 py-3 text-left text-[11px] font-semibold uppercase text-slate-600">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort('date')}
+                    className="inline-flex items-center gap-1 uppercase hover:text-slate-900"
+                  >
+                    <span>Data</span>
+                    <span className="text-[10px]">
+                      {sortConfig.field === 'date' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </span>
+                  </button>
+                </th>
+                <th className="w-[24%] px-3 py-3 text-left text-[11px] font-semibold uppercase text-slate-600">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort('customer')}
+                    className="inline-flex items-center gap-1 uppercase hover:text-slate-900"
+                  >
+                    <span>Cliente</span>
+                    <span className="text-[10px]">
+                      {sortConfig.field === 'customer' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </span>
+                  </button>
+                </th>
+                <th className="w-[12%] px-3 py-3 text-left text-[11px] font-semibold uppercase text-slate-600">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort('type')}
+                    className="inline-flex items-center gap-1 uppercase hover:text-slate-900"
+                  >
+                    <span>Tipo</span>
+                    <span className="text-[10px]">
+                      {sortConfig.field === 'type' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </span>
+                  </button>
+                </th>
                 <th className="w-[24%] px-3 py-3 text-left text-[11px] font-semibold uppercase text-slate-600">Título</th>
                 <th className="w-[14%] px-3 py-3 text-left text-[11px] font-semibold uppercase text-slate-600">Responsável</th>
                 <th className="w-[8%] px-3 py-3 text-left text-[11px] font-semibold uppercase text-slate-600">Limite</th>

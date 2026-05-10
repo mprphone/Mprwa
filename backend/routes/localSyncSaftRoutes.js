@@ -1744,6 +1744,7 @@ Regras:
             serviceFold: normalizeFold(item?.service || ''),
             username: String(item?.username || '').trim(),
             password: String(item?.password || '').trim(),
+            validUntil: String(item?.validUntil || item?.valid_until || '').trim(),
         });
         const normalizedCredentials = credentials
             .map(normalizeCredential)
@@ -1799,6 +1800,22 @@ Regras:
         setIfColumnExists(['password_at', 'senha_at'], atCredential?.password || null);
         setIfColumnExists(['utilizador_ss', 'username_ss', 'user_ss'], ssCredential?.username || null);
         setIfColumnExists(['password_ss', 'senha_ss'], ssCredential?.password || null);
+        setIfColumnExists(
+            [
+                'validade_password_ss',
+                'validade_senha_ss',
+                'validade_ss',
+                'data_validade_ss',
+                'data_de_validade_ss',
+                'validade_senha_seguranca_social',
+                'data_validade_senha_seguranca_social',
+                'data_de_validade_senha_seguranca_social',
+                'ss_valid_until',
+                'seg_social_valid_until',
+                'valid_until_ss',
+            ],
+            toSupabaseDateValue(ssCredential?.validUntil)
+        );
         setIfColumnExists(['utilizador_ru', 'username_ru', 'user_ru'], ruCredential?.username || null);
         setIfColumnExists(['password_ru', 'senha_ru'], ruCredential?.password || null);
         setIfColumnExists(['utilizador_viactt', 'username_viactt', 'user_viactt'], viaCttCredential?.username || null);
@@ -2630,6 +2647,7 @@ Regras:
     const { registerSaftCustomerSyncRoutes } = require('./saftCustomerSyncRoutes');
     const { registerSaftDocumentRoutes } = require('./saftDocumentRoutes');
     const { registerSaftOperationsRoutes } = require('./saftOperationsRoutes');
+    const { registerSegSocialInteroperabilityRoutes } = require('./segSocialInteroperabilityRoutes');
 
     const helpers = {
         // customer sync helpers
@@ -2654,10 +2672,14 @@ Regras:
         normalizeCustomerIngestDocumentType,
         extractCustomerDocumentWithGemini, buildIngestDocumentFileName,
         findLocalCustomerByNifDigits, buildSuggestedCustomerFromExtraction,
-        mergeManagers, buildPublicBaseUrl,
+        normalizeNifDigits, parseDateToIso, toPtDate,
+        normalizeExtractionManagers, mergeManagers, buildPublicBaseUrl,
+        hasSupabaseCustomersSync, findSupabaseCustomerRow,
+        materializeSupabaseRowLocally, bumpCustomersSyncWatermark,
+        buildSupabaseCustomerPayloadFromLocal,
         CUSTOMER_INGEST_DOC_TYPES,
         // saft operations helpers
-        normalizeNifDigits, parseDateToIso, toPtDate, toDateToken,
+        toDateToken,
         extractDateToken, extractYearFromFileName, isValidAnnualObrigacaoYear,
         classifyDeclarationVariant, classifyCrcVariant,
         buildSaftArchivePlacement, selectLatestFilesPerYear,
@@ -2669,6 +2691,7 @@ Regras:
     registerSaftCustomerSyncRoutes(context, helpers);
     registerSaftDocumentRoutes(context, helpers);
     registerSaftOperationsRoutes(context, helpers);
+    registerSegSocialInteroperabilityRoutes(context);
 }
 
 module.exports = {

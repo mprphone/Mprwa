@@ -43,7 +43,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 }) => {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [isDropActive, setIsDropActive] = useState(false);
-  const [previewImage, setPreviewImage] = useState<{ src: string; name: string } | null>(null);
+  const [previewImage, setPreviewImage] = useState<{ src: string; name: string; downloadUrl: string } | null>(null);
   const [brokenImageByMessageId, setBrokenImageByMessageId] = useState<Record<string, boolean>>({});
   const [contextMenu, setContextMenu] = useState<{
     message: Message;
@@ -229,7 +229,13 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                         {canPreviewImage ? (
                           <button
                             type="button"
-                            onClick={() => setPreviewImage({ src: media.previewUrl, name: mediaName })}
+                            onClick={() =>
+                              setPreviewImage({
+                                src: media.previewUrl,
+                                name: mediaName,
+                                downloadUrl: media.downloadUrl || `${media.previewUrl}?download=1`,
+                              })
+                            }
                             className="block overflow-hidden rounded-xl border border-white/70 bg-white/80"
                             title="Abrir imagem"
                           >
@@ -261,6 +267,16 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                             )}
                           </div>
                         )}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <a
+                            href={media.downloadUrl || `${media.previewUrl}?download=1`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                          >
+                            <Download size={12} /> Download
+                          </a>
+                        </div>
                         {mediaCaption && (
                           <p className="break-words whitespace-pre-wrap text-sm text-gray-900">{mediaCaption}</p>
                         )}
@@ -407,13 +423,23 @@ const MessageThread: React.FC<MessageThreadProps> = ({
           >
             <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-3 py-2">
               <span className="truncate text-sm font-medium text-gray-700">{previewImage.name}</span>
-              <button
-                type="button"
-                onClick={() => setPreviewImage(null)}
-                className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
-              >
-                Fechar
-              </button>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewImage.downloadUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+                >
+                  <Download size={12} /> Download
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewImage(null)}
+                  className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+                >
+                  Fechar
+                </button>
+              </div>
             </div>
             <img
               src={previewImage.src}

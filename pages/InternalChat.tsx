@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  ArrowDown,
   Check,
   Copy,
   FileText,
@@ -159,6 +160,7 @@ const InternalChat: React.FC = () => {
   const [pontoRecentError, setPontoRecentError] = useState('');
   const [presenceByUserId, setPresenceByUserId] = useState<Record<string, InternalPresenceRow>>({});
   const [hiddenConversationIds, setHiddenConversationIds] = useState<string[]>([]);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [pedidoForm, setPedidoForm] = useState({
     responsibleUserId: '',
     tipo: '',
@@ -169,6 +171,7 @@ const InternalChat: React.FC = () => {
   });
 
   const endRef = useRef<HTMLDivElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerContainerRef = useRef<HTMLDivElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -179,6 +182,7 @@ const InternalChat: React.FC = () => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const lastNotificationSoundAtRef = useRef(0);
   const messageSnapshotRef = useRef<Record<string, { lastMessageId: number; lastSenderUserId: string; lastMessageAt: string }>>({});
+  const shouldAutoScrollMessagesRef = useRef(true);
   const navigate = useNavigate();
   const currentUserId = String(mockService.getCurrentUserId() || CURRENT_USER_ID || '').trim();
   const currentUser = users.find((user) => user.id === currentUserId) || null;
@@ -258,6 +262,27 @@ const InternalChat: React.FC = () => {
     [starredByConversation, selectedConversationId]
   );
   const pinnedMessageId = pinnedByConversation[selectedConversationId] || null;
+
+  const isInternalMessagesNearBottom = () => {
+    const container = messagesScrollRef.current;
+    if (!container) return true;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    return distanceFromBottom <= 160;
+  };
+
+  const scrollInternalMessagesToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    shouldAutoScrollMessagesRef.current = true;
+    setShowJumpToLatest(false);
+    window.requestAnimationFrame(() => {
+      endRef.current?.scrollIntoView({ behavior, block: 'end' });
+    });
+  };
+
+  const updateInternalMessageScrollLock = () => {
+    const isNearBottom = isInternalMessagesNearBottom();
+    shouldAutoScrollMessagesRef.current = isNearBottom;
+    setShowJumpToLatest(!isNearBottom && Boolean(selectedConversationId));
+  };
 
   const replyMessage = useMemo(
     () => messages.find((item) => item.id === replyToMessageId) || null,
@@ -635,6 +660,8 @@ const InternalChat: React.FC = () => {
       setMembers([]);
       return;
     }
+    shouldAutoScrollMessagesRef.current = true;
+    setShowJumpToLatest(false);
     void loadConversationMessages(selectedConversationId);
   }, [selectedConversationId]);
 
@@ -647,7 +674,23 @@ const InternalChat: React.FC = () => {
   }, [selectedConversation?.type, selectedConversationId]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesScrollRef.current;
+    if (!container) return;
+
+    container.addEventListener('scroll', updateInternalMessageScrollLock, { passive: true });
+    updateInternalMessageScrollLock();
+
+    return () => {
+      container.removeEventListener('scroll', updateInternalMessageScrollLock);
+    };
+  }, [selectedConversationId]);
+
+  useEffect(() => {
+    if (shouldAutoScrollMessagesRef.current) {
+      scrollInternalMessagesToBottom('smooth');
+      return;
+    }
+    setShowJumpToLatest(messages.length > 0);
   }, [messages]);
 
   useEffect(() => {
@@ -799,6 +842,17 @@ const InternalChat: React.FC = () => {
     }
   };
 
+  const toggleGroupComposer = () => {
+    setIsCreatingGroup((prev) => {
+      const next = !prev;
+      if (!next) {
+        setGroupTitle('');
+        setGroupMemberIds([]);
+      }
+      return next;
+    });
+  };
+
   const handleAddMemberToSelectedGroup = async (memberUserId: string) => {
     if (!selectedConversationId || !currentUserId || selectedConversation?.type !== 'group') return;
     if (memberIdSet.has(memberUserId)) return;
@@ -868,6 +922,8 @@ const InternalChat: React.FC = () => {
     const body = newMessage.trim();
     if (!body) return;
 
+    shouldAutoScrollMessagesRef.current = true;
+    setShowJumpToLatest(false);
     setIsSending(true);
     setError('');
     try {
@@ -897,6 +953,8 @@ const InternalChat: React.FC = () => {
 
   const handleUploadFile = async (file: File) => {
     if (!selectedConversationId || !currentUserId || !file) return;
+    shouldAutoScrollMessagesRef.current = true;
+    setShowJumpToLatest(false);
     setIsUploading(true);
     setError('');
     try {
@@ -1137,7 +1195,7 @@ const InternalChat: React.FC = () => {
         dataFim: pedidoForm.dataFim || undefined,
       });
       setShowPedidoModal(false);
-      setPedidoFeedback(`Pedido criado no Supabase (${created.table || 'pedidos'}).`);
+      setPedidoFeedback(`Pedido criado (${created.table || 'pedidos'}).`);
     } catch (submitError) {
       setPedidoError(submitError instanceof Error ? submitError.message : 'Falha ao criar pedido.');
     } finally {
@@ -1193,7 +1251,7 @@ const InternalChat: React.FC = () => {
   return (
     <div className="h-[calc(100vh-4rem)] w-full bg-gray-100 p-4 md:p-6 space-y-4 flex flex-col">
       <div className="rounded-2xl border border-slate-700/20 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-900 p-4 text-white shadow-sm md:p-5">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-[320px_1fr_360px] md:items-center">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(240px,300px)_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)_360px] lg:items-center">
           <div>
             <h1 className="text-xl font-bold md:text-2xl">Chat Interno</h1>
             <p className="text-xs text-slate-200 md:text-sm">Comunicação entre funcionários e equipas.</p>
@@ -1209,11 +1267,11 @@ const InternalChat: React.FC = () => {
               </p>
             )}
           </div>
-          <div className="flex items-center justify-end gap-2">
+          <div className="grid w-full grid-cols-2 gap-2 sm:w-auto lg:flex lg:flex-wrap lg:items-center lg:justify-end">
             <button
               onClick={() => void handleDeleteSelectedConversation()}
               disabled={!selectedConversationId || isDeletingConversation}
-              className="inline-flex items-center gap-1 rounded-lg border border-red-300/60 bg-red-500/15 px-3 py-2 text-xs font-semibold text-red-100 hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-1 rounded-lg border border-red-300/60 bg-red-500/15 px-3 py-2 text-xs font-semibold text-red-100 hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50"
               title="Eliminar conversa selecionada"
             >
               <Trash2 size={14} />
@@ -1221,23 +1279,24 @@ const InternalChat: React.FC = () => {
             </button>
             <button
               onClick={openPedidoModal}
-              className="inline-flex items-center gap-1 rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20"
+              className="inline-flex items-center justify-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:brightness-95"
+              style={{ backgroundColor: '#22c55e', borderColor: '#86efac' }}
             >
               <Plus size={14} />
               Criar Pedido
             </button>
             <button
-              onClick={() => setIsCreatingGroup((prev) => !prev)}
-              className="inline-flex items-center gap-1 rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20"
+              onClick={toggleGroupComposer}
+              className="col-span-2 inline-flex items-center justify-center gap-1 rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20 sm:col-span-1"
             >
               <Users size={14} />
-              Novo Grupo
+              {isCreatingGroup ? 'Fechar Grupo' : 'Novo Grupo'}
             </button>
           </div>
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 grid grid-cols-[320px_1fr_380px]">
+      <div className="min-h-0 flex-1 grid grid-cols-1 lg:grid-cols-[minmax(240px,300px)_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)_380px]">
         <aside className="border-r border-gray-200 bg-white flex flex-col min-h-0">
           <div className="p-3 border-b border-gray-200">
             <label className="relative block">
@@ -1319,7 +1378,9 @@ const InternalChat: React.FC = () => {
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 truncate">{conversation.title || 'Conversa interna'}</p>
+                          <p className="text-sm font-semibold text-gray-900 truncate" title={conversation.title || 'Conversa interna'}>
+                            {conversation.title || 'Conversa interna'}
+                          </p>
                           {conversation.type === 'group' && (
                             <span className="text-[10px] font-semibold px-2 py-[2px] rounded-full bg-blue-50 text-blue-700 border border-blue-200">
                               Grupo
@@ -1327,7 +1388,9 @@ const InternalChat: React.FC = () => {
                           )}
                         </div>
                         {conversation.type === 'direct' && (
-                          <p className="text-[11px] text-slate-500 mt-0.5">{formatPresenceLabel(directPresence)}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5 truncate" title={formatPresenceLabel(directPresence)}>
+                            {formatPresenceLabel(directPresence)}
+                          </p>
                         )}
                         <p className="text-xs text-gray-500 truncate mt-1">{conversation.lastMessageBody || 'Sem mensagens ainda.'}</p>
                         {conversation.type === 'group' && (
@@ -1352,6 +1415,42 @@ const InternalChat: React.FC = () => {
             </div>
 
             <div className="border-t border-gray-200">
+              {isCreatingGroup && (
+                <div className="border-b border-gray-200 bg-whatsapp-50/50 px-3 py-3">
+                  <div className="text-sm font-semibold text-slate-900">Novo grupo</div>
+                  <input
+                    value={groupTitle}
+                    onChange={(event) => setGroupTitle(event.target.value)}
+                    placeholder="Nome do grupo (opcional)"
+                    className="mt-2 w-full rounded border border-gray-200 bg-white px-2 py-2 text-sm"
+                  />
+                  <p className="mt-2 text-[11px] text-gray-500">
+                    Selecionados: {groupMemberIds.length}
+                  </p>
+                  {groupMemberIds.length === 0 && (
+                    <p className="mt-1 text-[11px] text-amber-700">
+                      Selecione pelo menos 1 funcionário na lista abaixo.
+                    </p>
+                  )}
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      onClick={() => void handleCreateGroup()}
+                      disabled={isSubmittingGroup}
+                      className="flex-1 rounded bg-whatsapp-500 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {isSubmittingGroup ? 'A criar...' : 'Criar Grupo'}
+                    </button>
+                    <button
+                      onClick={toggleGroupComposer}
+                      disabled={isSubmittingGroup}
+                      className="rounded border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                 Funcionários
               </div>
@@ -1377,7 +1476,7 @@ const InternalChat: React.FC = () => {
                         </div>
 
                         <div className="min-w-0 flex-1">
-                          <div className="text-sm font-medium text-gray-900 truncate">
+                          <div className="text-sm font-medium text-gray-900 truncate" title={user.name || ''}>
                             {user.name}
                             {isSelfUser ? (
                               <span className="ml-2 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">
@@ -1431,7 +1530,7 @@ const InternalChat: React.FC = () => {
           </div>
         </aside>
 
-        <section className="flex flex-col min-h-0 bg-[#ece8df]">
+        <section className="relative flex flex-col min-h-0 bg-[#ece8df]">
           {pinnedMessage && (
             <div className="bg-blue-50 border-b border-blue-100 px-4 py-2 text-xs text-blue-800 flex items-center justify-between">
               <div className="truncate">
@@ -1441,7 +1540,7 @@ const InternalChat: React.FC = () => {
             </div>
           )}
 
-          <div className="flex-1 overflow-auto px-6 py-4 space-y-2">
+          <div ref={messagesScrollRef} className="flex-1 overflow-auto px-6 py-4 space-y-2">
             {groupedMessages.map((item, index) => {
               if (item.type === 'day') {
                 return (
@@ -1617,6 +1716,17 @@ const InternalChat: React.FC = () => {
             })}
             <div ref={endRef} />
           </div>
+          {showJumpToLatest && (
+            <button
+              type="button"
+              onClick={() => scrollInternalMessagesToBottom('smooth')}
+              className="absolute bottom-24 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-lg hover:bg-gray-50"
+              title="Ir para o fim da conversa"
+            >
+              <ArrowDown size={14} />
+              Fim
+            </button>
+          )}
 
           <footer className="bg-white border-t border-gray-200 px-4 py-3">
             {(replyMessage || editingMessage) && (
@@ -1726,7 +1836,7 @@ const InternalChat: React.FC = () => {
           </footer>
         </section>
 
-        <aside className="border-l border-gray-200 bg-white min-h-0 flex flex-col p-3 gap-3 overflow-hidden">
+        <aside className="hidden 2xl:flex border-l border-gray-200 bg-white min-h-0 flex-col p-3 gap-3 overflow-hidden">
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
             <div className="text-xs uppercase tracking-wide text-slate-500">Atalhos</div>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -1826,26 +1936,6 @@ const InternalChat: React.FC = () => {
               </div>
             </div>
           </div>
-
-          {isCreatingGroup && (
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="text-sm font-semibold text-slate-900">Novo grupo</div>
-              <input
-                value={groupTitle}
-                onChange={(event) => setGroupTitle(event.target.value)}
-                placeholder="Nome do grupo (opcional)"
-                className="mt-2 w-full rounded border border-gray-200 bg-white px-2 py-2 text-sm"
-              />
-              <p className="text-[11px] text-gray-500 mt-2">Selecionados: {groupMemberIds.length}</p>
-              <button
-                onClick={() => void handleCreateGroup()}
-                disabled={isSubmittingGroup || groupMemberIds.length === 0}
-                className="mt-2 w-full rounded bg-whatsapp-500 text-white text-sm py-2 disabled:opacity-50"
-              >
-                {isSubmittingGroup ? 'A criar...' : 'Criar Grupo'}
-              </button>
-            </div>
-          )}
 
           {selectedConversation?.type === 'group' && (
             <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3">
@@ -1996,7 +2086,7 @@ const InternalChat: React.FC = () => {
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
           <div className="w-full max-w-2xl rounded-xl border border-gray-200 bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-              <h3 className="text-base font-semibold text-gray-900">Criar Pedido (Supabase)</h3>
+              <h3 className="text-base font-semibold text-gray-900">Criar Pedido</h3>
               <button
                 onClick={() => {
                   if (pedidoSubmitting) return;

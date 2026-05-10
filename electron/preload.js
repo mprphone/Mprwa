@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld('waDesktop', {
   financasAutologin: async (payload) => {
     return ipcRenderer.invoke('wa:financas-autologin', payload || {});
   },
+  readClipboardText: async () => {
+    return ipcRenderer.invoke('wa:read-clipboard-text');
+  },
   notifyInboundMessage: (payload) => {
     ipcRenderer.send('wa:notify-inbound-message', payload || {});
   },

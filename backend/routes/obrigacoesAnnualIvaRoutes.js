@@ -1151,6 +1151,407 @@ function registerObrigacoesAnnualIvaRoutes(context) {
         });
     });
     
+    async function handleAnnualSaftObrigacaoImport(req, res, options = {}) {
+        const body = req.body || {};
+        const dryRun = normalizeBoolean(body.dryRun, false);
+        const force = normalizeBoolean(body.force, false);
+        const targetYear =
+            body.year !== undefined
+                ? normalizeIntValue(body.year, new Date().getUTCFullYear() - 1)
+                : new Date().getUTCFullYear() - 1;
+
+        const routeTag = String(options.routeTag || 'ANUAL').trim();
+        const routeTagUpper = routeTag.toUpperCase();
+        const defaultObrigacaoId = Number(options.defaultObrigacaoId || 0);
+        const defaultObrigacaoNome = String(options.defaultObrigacaoNome || routeTagUpper || 'Obrigação').trim();
+        const labelHints = Array.isArray(options.labelHints) ? options.labelHints : [routeTag.toLowerCase()];
+        const origem = String(options.origem || `saft_${routeTag.toLowerCase()}_robot`).trim();
+        const auditEntityType = String(options.auditEntityType || `obrigacao_${routeTag.toLowerCase()}_recolha`).trim();
+        const successLabel = String(options.successLabel || 'Processado').trim();
+        const statusClassifier =
+            typeof options.statusClassifier === 'function'
+                ? options.statusClassifier
+                : (estado, estadoAt) => classifyM22ProcessadoStatus(estado, estadoAt);
+        const runRobot = typeof options.runRobot === 'function' ? options.runRobot : null;
+
+        if (!runRobot) {
+            return res.status(500).json({
+                success: false,
+                error: `Configuração inválida para ${routeTagUpper}: runRobot não definido.`,
+                period: { tipo: 'anual', ano: targetYear, mes: null, trimestre: null },
+            });
+        }
+
+        const warnings = [];
+        const startedAt = nowIso();
+        let robotPayload;
+
+        try {
+            robotPayload = await runRobot({ year: targetYear });
+        } catch (error) {
+            const details = error?.message || error;
+            return res.status(500).json({
+                success: false,
+                error: `Falha no robô ${routeTagUpper}: ${details}`,
+                period: { tipo: 'anual', ano: targetYear, mes: null, trimestre: null },
+            });
+        }
+
+        const rows = Array.isArray(robotPayload?.rows) ? robotPayload.rows : [];
+        let obrigacaoId = defaultObrigacaoId;
+        let obrigacaoNome = defaultObrigacaoNome;
+        let periodicidade = 'anual';
+
+        if (SUPABASE_URL && SUPABASE_KEY) {
+            try {
+                const modeloRows = await fetchSupabaseTable(SUPABASE_OBRIGACOES_MODELO);
+                const modeloRow = resolveObrigacaoModeloRow(modeloRows, defaultObrigacaoId, labelHints);
+                if (modeloRow) {
+                    obrigacaoId = normalizeIntValue(
+                        pickFirstValue(modeloRow, ['id', 'obrigacao_id', 'codigo', 'codigo_obrigacao', 'modelo_id']),
+                        defaultObrigacaoId
+                    );
+                    obrigacaoNome =
+                        String(
+                            pickFirstValue(modeloRow, ['nome', 'designacao', 'descricao', 'obrigacao_nome', 'titulo']) ||
+                                defaultObrigacaoNome
+                        ).trim() || defaultObrigacaoNome;
+                    periodicidade =
+                        String(
+                            pickFirstValue(modeloRow, [
+                                'periodicidade',
+                                'frequencia',
+                                'tipo_periodicidade',
+                                'periodo_tipo',
+                                'periodo',
+                            ]) || 'anual'
+                        ).trim() || 'anual';
+                } else {
+                    warnings.push(
+                        `Obrigação ${routeTagUpper} (${defaultObrigacaoId}) não encontrada em ${SUPABASE_OBRIGACOES_MODELO}; a usar anual por defeito.`
+                    );
+                }
+            } catch (error) {
+                warnings.push(`Falha a carregar ${SUPABASE_OBRIGACOES_MODELO}. A usar configuração anual por defeito.`);
+            }
+        } else {
+            warnings.push('Supabase não configurado. Será gravado apenas em SQL local.');
+        }
+
+        const periodo = {
+            tipo: 'anual',
+            ano: Number(targetYear),
+            mes: null,
+            trimestre: null,
+        };
+        const periodoAtualizacao = {
+            tipo: 'anual',
+            ano: Number(targetYear) + 1,
+            mes: null,
+            trimestre: null,
+        };
+        warnings.push(`${routeTagUpper} ${periodo.ano}: atualização de obrigações aplicada ao ano ${periodoAtualizacao.ano}.`);
+
+        const result = {
+            totalRows: rows.length,
+            matchedCustomers: 0,
+            missingCustomers: 0,
+            syncedCustomersFromSupabase: 0,
+            skippedAlreadyCollected: 0,
+            skippedInvalidStatus: 0,
+            localSaved: 0,
+            recolhasSyncOk: 0,
+            periodosUpdateOk: 0,
+            syncErrors: 0,
+        };
+        const missing = [];
+        const errors = [];
+        let supabaseCustomerLookup = null;
+        let localCollectedSets = { localCustomerIds: new Set(), sourceCustomerIds: new Set() };
+        let supabaseCollectedSourceIds = new Set();
+
+        if (SUPABASE_URL && SUPABASE_KEY) {
+            try {
+                supabaseCustomerLookup = await loadSupabaseCustomerLookup();
+            } catch (error) {
+                warnings.push(`Falha ao carregar lookup de clientes (${SUPABASE_CLIENTS_SOURCE}) para match por NIF.`);
+                console.error(`[${routeTagUpper}] Erro lookup clientes Supabase:`, error?.message || error);
+            }
+        }
+
+        try {
+            localCollectedSets = await loadLocalCollectedSets({
+                obrigacaoId,
+                periodo,
+                statusClassifier,
+            });
+        } catch (error) {
+            warnings.push('Falha ao carregar recolhas locais já processadas para este período.');
+        }
+
+        if (!dryRun && SUPABASE_URL && SUPABASE_KEY) {
+            try {
+                const loaded = await loadSupabaseCollectedSourceIds({
+                    obrigacaoId,
+                    periodo: periodoAtualizacao,
+                });
+                supabaseCollectedSourceIds = loaded.sourceIds;
+            } catch (error) {
+                warnings.push('Falha ao carregar estados já recolhidos no Supabase para este período.');
+            }
+        }
+
+        for (const row of rows) {
+            const rowEmpresa = String(pickFirstValue(row, ['empresa', 'company', 'nome', 'name']) || '').trim();
+            const rowNif = normalizeDigits(pickFirstValue(row, ['nif', 'NIF', 'vat']) || '');
+            const rowEstado = String(pickFirstValue(row, ['estado', 'status']) || '').trim();
+            const rowEstadoAt = String(pickFirstValue(row, ['estadoAt', 'estado_at', 'estadoAT', 'estado at']) || '').trim();
+            const rowIdentificacao = String(
+                pickFirstValue(row, [
+                    'codigo',
+                    'numeroDeclaracao',
+                    'numero_declaracao',
+                    'numero declaracao',
+                    'nDeclaracao',
+                    'idFicheiro',
+                    'id_ficheiro',
+                    'identificacao',
+                    'identificação',
+                    'id',
+                ]) || ''
+            ).trim();
+            const rowDataRecebidoRaw = String(
+                pickFirstValue(row, [
+                    'dataRecebido',
+                    'data_recebido',
+                    'dataRecolha',
+                    'data_recolha',
+                    'dataEntrega',
+                    'data_entrega',
+                    'data',
+                    'dataStatus',
+                    'data_status',
+                ]) || ''
+            ).trim();
+            const rowDataComprovativoRaw = String(
+                pickFirstValue(row, ['dataComprovativo', 'data_comprovativo', 'data comprovativo']) || ''
+            ).trim();
+
+            let customerMatch;
+            try {
+                customerMatch = await findCustomerRowForObrigacao(rowNif, rowEmpresa, supabaseCustomerLookup);
+            } catch (error) {
+                result.syncErrors += 1;
+                if (errors.length < 50) {
+                    errors.push({
+                        nif: rowNif || null,
+                        step: 'customer_match',
+                        error: String(error?.message || error),
+                    });
+                }
+                continue;
+            }
+
+            const customerRow = customerMatch?.customerRow || null;
+            if (!customerRow) {
+                result.missingCustomers += 1;
+                if (missing.length < 50) {
+                    missing.push({ empresa: rowEmpresa || null, nif: rowNif || null });
+                }
+                continue;
+            }
+
+            result.matchedCustomers += 1;
+            if (customerMatch?.syncedFromSupabase) {
+                result.syncedCustomersFromSupabase += 1;
+            }
+            const customerId = String(customerRow.id || '').trim();
+            const customerSourceId = resolveSupabaseCustomerIdFromLocalRow(customerRow);
+
+            const alreadyLocal =
+                localCollectedSets.localCustomerIds.has(customerId) ||
+                (customerSourceId && localCollectedSets.sourceCustomerIds.has(customerSourceId));
+            const alreadySupabase = customerSourceId && supabaseCollectedSourceIds.has(customerSourceId);
+            const shouldSkip = !force && (Boolean(alreadySupabase) || (!customerSourceId && alreadyLocal));
+            if (shouldSkip) {
+                result.skippedAlreadyCollected += 1;
+                continue;
+            }
+
+            const normalizedRowData = {
+                empresa: rowEmpresa || String(customerRow.company || customerRow.name || '').trim(),
+                nif: rowNif || normalizeDigits(customerRow.nif || ''),
+                estado: rowEstado || null,
+                estadoAt: rowEstadoAt || null,
+                identificacao: rowIdentificacao || null,
+                dataRecebidoRaw: rowDataRecebidoRaw || null,
+                dataRecebidoIso: parseDatePtToIso(rowDataRecebidoRaw),
+                dataComprovativoRaw: rowDataComprovativoRaw || null,
+                dataComprovativoIso: parseDatePtToIso(rowDataComprovativoRaw),
+                raw: row,
+            };
+
+            try {
+                await upsertLocalObrigacaoRecolha({
+                    customerId,
+                    customerSourceId,
+                    obrigacaoId,
+                    obrigacaoCodigo: String(obrigacaoId),
+                    obrigacaoNome,
+                    periodoTipo: periodo.tipo,
+                    periodoAno: periodo.ano,
+                    periodoMes: periodo.mes,
+                    periodoTrimestre: periodo.trimestre,
+                    estadoCodigo: normalizedRowData.estado,
+                    identificacao: normalizedRowData.identificacao,
+                    dataRecebido: normalizedRowData.dataRecebidoIso || normalizedRowData.dataRecebidoRaw,
+                    dataComprovativo: normalizedRowData.dataComprovativoIso || normalizedRowData.dataComprovativoRaw,
+                    empresa: normalizedRowData.empresa,
+                    nif: normalizedRowData.nif,
+                    payload: normalizedRowData.raw,
+                    origem,
+                    syncedSupabaseAt: null,
+                });
+                result.localSaved += 1;
+                localCollectedSets.localCustomerIds.add(customerId);
+                if (customerSourceId) localCollectedSets.sourceCustomerIds.add(customerSourceId);
+            } catch (error) {
+                result.syncErrors += 1;
+                if (errors.length < 50) {
+                    errors.push({
+                        customerId,
+                        nif: normalizedRowData.nif,
+                        step: 'local_upsert',
+                        error: String(error?.message || error),
+                    });
+                }
+                continue;
+            }
+
+            const statusCheck = statusClassifier(normalizedRowData.estado, normalizedRowData.estadoAt, normalizedRowData.raw);
+            if (!statusCheck.isSuccess) {
+                result.skippedInvalidStatus += 1;
+                if (warnings.length < 50) {
+                    warnings.push(
+                        `${routeTagUpper} ignorado (${normalizedRowData.nif || 'sem NIF'}): estado "${normalizedRowData.estado || '-'}"${
+                            normalizedRowData.estadoAt ? ` / AT "${normalizedRowData.estadoAt}"` : ''
+                        } (necessário: ${successLabel}).`
+                    );
+                }
+                continue;
+            }
+
+            if (dryRun || !(SUPABASE_URL && SUPABASE_KEY)) {
+                continue;
+            }
+            if (!customerSourceId) {
+                result.syncErrors += 1;
+                if (errors.length < 50) {
+                    errors.push({
+                        customerId,
+                        nif: normalizedRowData.nif,
+                        step: 'customer_source_id',
+                        error: 'Cliente sem source_id para sincronizar no Supabase.',
+                    });
+                }
+                continue;
+            }
+
+            try {
+                await syncRecolhaEstadoSupabase({
+                    customerSourceId,
+                    obrigacaoId,
+                    obrigacaoNome,
+                    periodo: periodoAtualizacao,
+                    rowData: normalizedRowData,
+                });
+                result.recolhasSyncOk += 1;
+            } catch (error) {
+                result.syncErrors += 1;
+                if (errors.length < 50) {
+                    errors.push({
+                        customerId,
+                        customerSourceId,
+                        nif: normalizedRowData.nif,
+                        step: 'recolhas_estados',
+                        error: String(error?.message || error),
+                    });
+                }
+            }
+
+            try {
+                const updateInfo = await updateObrigacaoPeriodoSupabase({
+                    customerSourceId,
+                    obrigacaoId,
+                    periodo: periodoAtualizacao,
+                    estadoFinal: 4,
+                });
+                if (Number(updateInfo.updatedRows || 0) > 0) {
+                    result.periodosUpdateOk += 1;
+                    await markLocalObrigacaoRecolhaSynced({
+                        customerId,
+                        obrigacaoId,
+                        periodo,
+                    });
+                } else {
+                    warnings.push(
+                        `Sem linhas atualizadas em ${updateInfo.table} para cliente ${customerSourceId} (obrigação ${obrigacaoId}).`
+                    );
+                }
+            } catch (error) {
+                result.syncErrors += 1;
+                if (errors.length < 50) {
+                    errors.push({
+                        customerId,
+                        customerSourceId,
+                        nif: normalizedRowData.nif,
+                        step: 'clientes_obrigacoes_periodos',
+                        error: String(error?.message || error),
+                    });
+                }
+            }
+        }
+
+        await writeAuditLog({
+            actorUserId: String(body.requestedBy || '').trim() || null,
+            entityType: auditEntityType,
+            entityId: String(periodo.ano),
+            action: 'sync',
+            details: {
+                dryRun,
+                force,
+                period: periodo,
+                updatePeriod: periodoAtualizacao,
+                obrigacaoId,
+                obrigacaoNome,
+                startedAt,
+                endedAt: nowIso(),
+                result,
+                warnings,
+                errors: errors.slice(0, 20),
+            },
+        });
+
+        return res.json({
+            success: true,
+            dryRun,
+            force,
+            period: periodo,
+            updatePeriod: periodoAtualizacao,
+            obrigacao: {
+                id: obrigacaoId,
+                nome: obrigacaoNome,
+                periodicidade,
+            },
+            startedAt,
+            finishedAt: nowIso(),
+            result,
+            warnings,
+            missingCustomers: missing.slice(0, 50),
+            errors,
+        });
+    }
+
     app.get('/api/import/obrigacoes/iva/jobs/:jobId', async (req, res) => {
         const jobId = String(req.params.jobId || '').trim();
         if (!jobId) {

@@ -529,7 +529,7 @@ export async function createInternalPedidoSupabase(input: {
     error?: unknown;
   }>(response);
   if (!response.ok || !payload.success) {
-    throw new Error(parseError(payload, response.status, 'Falha ao criar pedido no Supabase'));
+    throw new Error(parseError(payload, response.status, 'Falha ao criar pedido'));
   }
   return {
     table: payload.table,
@@ -557,7 +557,7 @@ export async function createInternalPontoSupabase(input: {
     error?: unknown;
   }>(response);
   if (!response.ok || !payload.success) {
-    throw new Error(parseError(payload, response.status, 'Falha ao registar ponto no Supabase'));
+    throw new Error(parseError(payload, response.status, 'Falha ao registar ponto'));
   }
   return {
     table: payload.table,

@@ -10,8 +10,14 @@ function registerSaftDocumentRoutes(context, helpers) {
     const {
         app, dbRunAsync, dbGetAsync, dbAllAsync, writeAuditLog,
         getLocalCustomerById, resolveCustomerDocumentsFolder,
-        fs, sanitizeDocumentFileName, buildPublicBaseUrl,
+        fs, sanitizeDocumentFileName,
         nowIso, API_PUBLIC_BASE_URL,
+        SUPABASE_CLIENTS_SOURCE,
+        parseCustomerSourceId,
+        upsertLocalCustomer,
+        fetchSupabaseTableColumns,
+        patchSupabaseTableWithFilters,
+        upsertSupabaseRow,
     } = context;
     const {
         hasConfiguredCustomerFolder,
@@ -24,8 +30,17 @@ function registerSaftDocumentRoutes(context, helpers) {
         buildIngestDocumentFileName,
         findLocalCustomerByNifDigits,
         buildSuggestedCustomerFromExtraction,
+        normalizeNifDigits,
+        parseDateToIso,
+        toPtDate,
+        normalizeExtractionManagers,
         mergeManagers,
         buildPublicBaseUrl: buildPublicBaseUrlHelper,
+        hasSupabaseCustomersSync,
+        findSupabaseCustomerRow,
+        materializeSupabaseRowLocally,
+        bumpCustomersSyncWatermark,
+        buildSupabaseCustomerPayloadFromLocal,
         CUSTOMER_INGEST_DOC_TYPES,
     } = helpers;
 
@@ -54,7 +69,25 @@ function registerSaftDocumentRoutes(context, helpers) {
             }
             const folderPath = resolveCustomerDocumentsFolder(customer.id, configuredFolder);
             const { targetFolder, relativePath } = resolveDocsTargetFolder(folderPath, req.query.path || '');
-            await ensureWritableFolderTree(folderPath, targetFolder);
+            try {
+                await fs.promises.access(targetFolder, fs.constants.R_OK);
+            } catch (accessError) {
+                const missingFolder = accessError?.code === 'ENOENT';
+                return res.json({
+                    success: true,
+                    folderPath: configuredFolder || folderPath,
+                    storageFolderPath: folderPath,
+                    currentRelativePath: relativePath,
+                    currentStoragePath: targetFolder,
+                    canGoUp: !!relativePath,
+                    entries: [],
+                    configured: !!configuredFolder,
+                    files: [],
+                    warning: missingFolder
+                        ? 'Esta pasta ainda não existe no armazenamento.'
+                        : `Sem acesso de leitura a esta pasta: ${accessError?.message || accessError}`,
+                });
+            }
 
             const entries = await fs.promises.readdir(targetFolder, { withFileTypes: true });
             const items = [];
@@ -599,7 +632,13 @@ function registerSaftDocumentRoutes(context, helpers) {
             }
     
             await fs.promises.access(fullPath, fs.constants.R_OK);
-            return res.download(fullPath, downloadName);
+            if (String(req.query.download || '').trim() === '1') {
+                return res.download(fullPath, downloadName);
+            }
+
+            res.setHeader('Content-Type', guessMimeType(downloadName));
+            res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(downloadName)}"`);
+            return res.sendFile(fullPath);
         } catch (error) {
             const details = error?.message || error;
             console.error('[Docs] Erro ao descarregar documento do cliente:', details);
@@ -635,7 +674,7 @@ function registerSaftDocumentRoutes(context, helpers) {
             }
             await fs.promises.access(fullPath, fs.constants.R_OK);
 
-            const baseUrl = buildPublicBaseUrl(req);
+            const baseUrl = buildPublicBaseUrlHelper(req);
             const query = new URLSearchParams({ path: safeRelativePath });
             const url = `${baseUrl}/api/customers/${encodeURIComponent(customer.id)}/documents/download?${query.toString()}`;
             return res.json({

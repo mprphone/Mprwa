@@ -18,6 +18,7 @@ const LOCAL_FINANCAS_AUTOMATION_BRIDGE_URL = String(
   import.meta.env?.VITE_LOCAL_AUTOMATION_BRIDGE_URL || 'http://127.0.0.1:30777/financas-autologin'
 ).trim();
 const SEG_SOCIAL_LOGIN_URL = 'https://www.seg-social.pt/sso/login?service=https%3A%2F%2Fwww.seg-social.pt%2Fptss%2Fcaslogin';
+const SEG_SOCIAL_ACTIVATE_URL = 'https://www.seg-social.pt/ptss/gus/atribuir-palavra-chave/codigo-verificacao';
 const SEG_SOCIAL_USERNAME_SELECTORS = [
   'input[name="username"]',
   'input[name="niss"]',
@@ -264,6 +265,106 @@ function normalizeAccessService(value: string): string {
     .toLowerCase();
 }
 
+function isSegSocialCredential(credential?: CustomerAccessCredential | null): boolean {
+  const normalizedService = normalizeAccessService(String(credential?.service || ''));
+  return (
+    normalizedService === 'ss' ||
+    normalizedService.includes('seguranca social') ||
+    normalizedService.includes('seg_social')
+  );
+}
+
+function normalizeStoredSegSocialUsername(username: string, fallbackNissRaw = ''): string {
+  const raw = String(username || '').trim();
+  const fallbackNiss = normalizeNissDigits(fallbackNissRaw);
+  if (!raw) return raw;
+  if (fallbackNiss && raw === `${fallbackNiss}_1`) return `${fallbackNiss}-1`;
+  return raw.replace(/^(\d{11})_1$/, '$1-1');
+}
+
+function normalizeAccessIdentity(value: string): string {
+  return normalizeAccessService(value).replace(/_/g, '-');
+}
+
+function accessTypeMatchesPreset(rawCredentialType: string, rawPresetType: string): boolean {
+  const credentialType = normalizeAccessIdentity(rawCredentialType);
+  const presetType = normalizeAccessIdentity(rawPresetType);
+  if (credentialType === presetType) return true;
+  return presetType === 'principal' && !credentialType;
+}
+
+function credentialsLookLikeSameSecret(
+  a?: CustomerAccessCredential | null,
+  b?: CustomerAccessCredential | null
+): boolean {
+  if (!a || !b) return false;
+  const aService = normalizeAccessIdentity(String(a.service || ''));
+  const bService = normalizeAccessIdentity(String(b.service || ''));
+  if (aService !== bService) return false;
+
+  const aType = normalizeAccessIdentity(String(a.credentialType || ''));
+  const bType = normalizeAccessIdentity(String(b.credentialType || ''));
+  if (aType !== bType) return false;
+
+  const aUsername = normalizeAccessIdentity(String(a.username || ''));
+  const bUsername = normalizeAccessIdentity(String(b.username || ''));
+  if (aUsername && bUsername && aUsername === bUsername) return true;
+
+  const aEmail = normalizeAccessIdentity(String(a.emailAssociado || ''));
+  const bEmail = normalizeAccessIdentity(String(b.emailAssociado || ''));
+  return Boolean(aEmail && bEmail && aEmail === bEmail);
+}
+
+function preserveExistingCredentialSecrets(
+  nextCredentials: CustomerAccessCredential[],
+  previousCredentials: CustomerAccessCredential[],
+  fallbackNissRaw = ''
+): CustomerAccessCredential[] {
+  return (Array.isArray(nextCredentials) ? nextCredentials : []).map((credential) => {
+    const normalizedCredential: CustomerAccessCredential = {
+      ...credential,
+      username: isSegSocialCredential(credential)
+        ? normalizeStoredSegSocialUsername(String(credential.username || ''), fallbackNissRaw)
+        : String(credential.username || ''),
+    };
+    if (String(normalizedCredential.password || '').trim()) {
+      return normalizedCredential;
+    }
+    const previous = (Array.isArray(previousCredentials) ? previousCredentials : []).find((candidate) =>
+      credentialsLookLikeSameSecret(normalizedCredential, candidate)
+    );
+    const previousPassword = String(previous?.password || '').trim();
+    return previousPassword ? { ...normalizedCredential, password: previousPassword } : normalizedCredential;
+  });
+}
+
+function isSegSocialLoginCredential(credential?: CustomerAccessCredential | null): boolean {
+  const credentialType = normalizeAccessService(String(credential?.credentialType || ''));
+  return isSegSocialCredential(credential) && !credentialType.includes('token') && !credentialType.includes('chave') && !credentialType.includes('2fa');
+}
+
+function addMonthsIsoDate(months: number, baseDate = new Date()): string {
+  const next = new Date(baseDate);
+  next.setMonth(next.getMonth() + months);
+  return next.toISOString().slice(0, 10);
+}
+
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function previousMonthAnoMes(baseDate = new Date()): string {
+  const date = new Date(baseDate);
+  date.setMonth(date.getMonth() - 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function isCredentialUsable(credential?: CustomerAccessCredential | null): boolean {
+  const status = normalizeAccessService(String(credential?.status || 'active'));
+  const validUntil = String(credential?.validUntil || '').trim();
+  return status !== 'expired' && status !== 'inactive' && status !== 'error' && (!validUntil || validUntil >= todayIsoDate());
+}
+
 function resolveAtAccessFromCustomer(customer: Customer): { username: string; password: string } {
   const credentials = Array.isArray(customer.accessCredentials) ? customer.accessCredentials : [];
   const atCredential =
@@ -289,21 +390,123 @@ function normalizeNissDigits(rawValue: string): string {
 
 function resolveSsAccessFromCustomer(customer: Customer): { username: string; password: string } {
   const credentials = Array.isArray(customer.accessCredentials) ? customer.accessCredentials : [];
+  const ssCredentials = credentials.filter(isSegSocialLoginCredential);
   const ssCredential =
-    credentials.find((credential) => {
-      const normalizedService = normalizeAccessService(String(credential?.service || ''));
-      return (
-        normalizedService === 'ss' ||
-        normalizedService.includes('seguranca social') ||
-        normalizedService.includes('seg_social')
-      );
-    }) || null;
+    ssCredentials.find((credential) => normalizeAccessService(String(credential?.credentialType || '')).includes('sub') && isCredentialUsable(credential)) ||
+    ssCredentials.find((credential) => isCredentialUsable(credential)) ||
+    ssCredentials[0] ||
+    null;
 
   const fallbackUsername = normalizeNissDigits(String(customer.niss || ''));
-  const username = String(ssCredential?.username || fallbackUsername || '').trim();
+  const username = String(ssCredential?.username || ssCredential?.emailAssociado || fallbackUsername || '').trim();
   const password = String(ssCredential?.password || customer.senhaSegurancaSocial || '').trim();
 
   return { username, password };
+}
+
+function resolveSsSubUserAccessFromCustomer(customer: Customer): {
+  credential: CustomerAccessCredential | null;
+  username: string;
+  password: string;
+  email: string;
+} {
+  const credentials = Array.isArray(customer.accessCredentials) ? customer.accessCredentials : [];
+  const subCredentials = credentials.filter((credential) => (
+    isSegSocialCredential(credential) &&
+    normalizeAccessService(String(credential?.credentialType || '')).includes('sub')
+  ));
+  const subCredential =
+    subCredentials.find((credential) => String(credential?.username || '').trim() && String(credential?.password || '').trim() && isCredentialUsable(credential)) ||
+    subCredentials.find((credential) => String(credential?.username || '').trim() && String(credential?.password || '').trim()) ||
+    subCredentials.find((credential) => String(credential?.username || '').trim()) ||
+    subCredentials[0] ||
+    null;
+  const username = normalizeStoredSegSocialUsername(
+    String(subCredential?.username || '').trim(),
+    String(customer.niss || '')
+  );
+  const password = String(subCredential?.password || '').trim();
+  const email = String(subCredential?.emailAssociado || 'geral@mpr.pt').trim() || 'geral@mpr.pt';
+
+  return { credential: subCredential, username, password, email };
+}
+
+function resolveSsPrincipalAccessFromCustomer(customer: Customer): { username: string; password: string } {
+  const credentials = Array.isArray(customer.accessCredentials) ? customer.accessCredentials : [];
+  const principalCredential =
+    credentials.find((credential) => {
+      const credentialType = normalizeAccessService(String(credential?.credentialType || ''));
+      return isSegSocialCredential(credential) && (credentialType === 'principal' || (!credentialType && String(credential?.service || '').trim().toUpperCase() === 'SS'));
+    }) || null;
+
+  const fallbackUsername = normalizeNissDigits(String(customer.niss || ''));
+  const username = String(principalCredential?.username || fallbackUsername || '').trim();
+  const password = String(principalCredential?.password || customer.senhaSegurancaSocial || '').trim();
+
+  return { username, password };
+}
+
+function resolveSegSocialInteropAccessFromCustomer(
+  customer: Customer,
+  preferredType: 'chave_aplicacional' | 'token'
+): { username: string; token: string; validUntil: string; label: string } {
+  const credentials = Array.isArray(customer.accessCredentials) ? customer.accessCredentials : [];
+  const preferredIdentity = normalizeAccessIdentity(preferredType);
+  const candidates = credentials.filter((credential) => {
+    if (!isSegSocialCredential(credential)) return false;
+    const type = normalizeAccessIdentity(String(credential.credentialType || ''));
+    if (preferredIdentity === 'token') return type.includes('token') || type.includes('interoperabilidade');
+    return type.includes('chave-aplicacional');
+  });
+  const credential =
+    candidates.find(isCredentialUsable) ||
+    candidates[0] ||
+    null;
+
+  return {
+    username: String(credential?.username || '').trim(),
+    token: String(credential?.password || '').trim(),
+    validUntil: String(credential?.validUntil || '').trim(),
+    label: String(credential?.credentialType || preferredType).trim(),
+  };
+}
+
+function isSafeSegSocialApplicationAuthValue(value: string): boolean {
+  const text = String(value || '').trim();
+  const lower = text.toLowerCase();
+  const rejectedWords = new Set([
+    'function',
+    'return',
+    'const',
+    'class',
+    'undefined',
+    'object',
+    'string',
+    'number',
+    'boolean',
+    'promise',
+  ]);
+  return text.length >= 12 &&
+    text.length <= 128 &&
+    /^[A-Za-z0-9._=-]+$/.test(text) &&
+    !/^eyJ/i.test(text) &&
+    !text.includes('.') &&
+    !rejectedWords.has(lower) &&
+    !/contabilidade|copiar|voltar|cria[cç][aã]o|autentica[cç][aã]o|token/i.test(text);
+}
+
+function generateSegSocialPassword(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  const bytes = new Uint8Array(8);
+  if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    bytes.forEach((_, index) => {
+      bytes[index] = Math.floor(Math.random() * 255);
+    });
+  }
+  const suffix = Array.from(bytes).map((byte) => alphabet[byte % alphabet.length]).join('');
+  return `Mpr${new Date().getFullYear()}!${suffix}`;
 }
 
 function isValidPortugueseNif(rawValue: string): boolean {
@@ -320,6 +523,32 @@ function isValidPortugueseNif(rawValue: string): boolean {
   return checkDigit === Number(nif[8]);
 }
 
+// Helper function to normalize customer type for Seg Social sub-user flow.
+// Important: do not guess only by the displayed label. The real value comes from CustomerType in ../types,
+// but older/imported records may still have values like EMPRESA, INDEPENDENTE or Trabalhador Independente.
+function normalizeCustomerTypeForSubUserFlow(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+const SEG_SOCIAL_SUBUSER_ALLOWED_CUSTOMER_TYPES = new Set(
+  [CustomerType.ENTERPRISE, CustomerType.INDEPENDENT, 'empresa', 'empresas', 'enterprise', 'independente', 'independent', 'trabalhador_independente']
+    .map(normalizeCustomerTypeForSubUserFlow)
+);
+
+function canUseSegSocialSubUserFlow(customer: Customer): boolean {
+  const customerType = normalizeCustomerTypeForSubUserFlow(customer.type);
+  if (!customerType) return false;
+  if (SEG_SOCIAL_SUBUSER_ALLOWED_CUSTOMER_TYPES.has(customerType)) return true;
+  return customerType.includes('empresa') || customerType.includes('enterprise') || customerType.includes('independent') || customerType.includes('independente');
+}
+
+
 function dedupeCustomersForListing(items: Customer[]): Customer[] {
   const list = Array.isArray(items) ? [...items] : [];
   const byNif = new Map<string, number>();
@@ -335,6 +564,7 @@ function dedupeCustomersForListing(items: Customer[]): Customer[] {
 
   const score = (customer: Customer): number => {
     let total = 0;
+    if (String(customer.id || '').startsWith('local_')) total += 10;
     if (sourceIdFor(customer)) total += 6;
     if (String(customer.id || '').startsWith('ext_c_')) total += 2;
     if (String(customer.phone || '').trim()) total += 1;
@@ -526,8 +756,9 @@ type CustomerFormState = {
   allowAutoResponses: boolean;
 };
 
-type CustomerSortKey = 'nif' | 'name' | 'type' | 'email' | 'phone' | 'owner' | 'status';
+type CustomerSortKey = 'nif' | 'name' | 'type' | 'email' | 'phone' | 'owner' | 'status' | 'subuser';
 type SortDirection = 'asc' | 'desc';
+type SegSocialSubUserState = 'COM_SUBUTILIZADOR' | 'INCOMPLETO' | 'SEM_SUBUTILIZADOR';
 
 const emptyFormState = (): CustomerFormState => ({
   name: '',
@@ -564,6 +795,8 @@ const emptyFormState = (): CustomerFormState => ({
   allowAutoResponses: true,
 });
 
+const serializeCustomerFormState = (state: CustomerFormState): string => JSON.stringify(state);
+
 const Customers: React.FC = () => {
   const navigate = useNavigate();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -572,6 +805,7 @@ const Customers: React.FC = () => {
   const [stateFilter, setStateFilter] = useState('TODOS');
   const [typeFilter, setTypeFilter] = useState('TODOS');
   const [ownerFilter, setOwnerFilter] = useState('TODOS');
+  const [subUserFilter, setSubUserFilter] = useState<'TODOS' | SegSocialSubUserState>('TODOS');
   const [sortKey, setSortKey] = useState<CustomerSortKey>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [showModal, setShowModal] = useState(false);
@@ -579,6 +813,8 @@ const Customers: React.FC = () => {
   const [activeTab, setActiveTab] = useState<CustomerModalTab>('dados');
 
   const [formData, setFormData] = useState<CustomerFormState>(emptyFormState());
+  const [savedFormSnapshot, setSavedFormSnapshot] = useState('');
+  const [formSavedNotice, setFormSavedNotice] = useState('');
 
   const modalFileInputRef = useRef<HTMLInputElement | null>(null);
   const sociedadeFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -622,6 +858,9 @@ const Customers: React.FC = () => {
   const [customerActivityError, setCustomerActivityError] = useState('');
   const [autologinBusyCustomerId, setAutologinBusyCustomerId] = useState<string | null>(null);
   const [segSocialAutologinBusyCustomerId, setSegSocialAutologinBusyCustomerId] = useState<string | null>(null);
+  const [segSocialSubUserBusyCustomerId, setSegSocialSubUserBusyCustomerId] = useState<string | null>(null);
+  const [segSocialActivationBusyCustomerId, setSegSocialActivationBusyCustomerId] = useState<string | null>(null);
+  const [saftSsSyncBusy, setSaftSsSyncBusy] = useState(false);
 
   useEffect(() => {
     void loadCustomers();
@@ -644,9 +883,18 @@ const Customers: React.FC = () => {
     void loadCustomerActivity(editingCustomer.id);
   }, [showModal, activeTab, editingCustomer?.id]);
 
+  useEffect(() => {
+    if (!showModal || !formSavedNotice) return;
+    if (savedFormSnapshot && serializeCustomerFormState(formData) !== savedFormSnapshot) {
+      setFormSavedNotice('');
+    }
+  }, [formData, formSavedNotice, savedFormSnapshot, showModal]);
+
   const loadCustomers = async () => {
     const data = await mockService.getCustomers();
-    setCustomers(dedupeCustomersForListing(data));
+    const deduped = dedupeCustomersForListing(data);
+    setCustomers(deduped);
+    return deduped;
   };
 
   const loadUsers = async () => {
@@ -797,11 +1045,15 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     estadoCliente: customer.estadoCliente || '',
     contabilistaCertificado: customer.contabilistaCertificado || '',
     managers: Array.isArray(customer.managers) ? customer.managers.map((manager) => ({ ...manager })) : [],
-    accessCredentials: applyAtUsernameFallback(
-      Array.isArray(customer.accessCredentials)
-        ? customer.accessCredentials.map((credential) => ({ ...credential }))
-        : [],
-      customer.nif || ''
+    accessCredentials: preserveExistingCredentialSecrets(
+      applyAtUsernameFallback(
+        Array.isArray(customer.accessCredentials)
+          ? customer.accessCredentials.map((credential) => ({ ...credential }))
+          : [],
+        customer.nif || ''
+      ),
+      [],
+      customer.niss || ''
     ),
     agregadoFamiliar: Array.isArray(customer.agregadoFamiliar)
       ? customer.agregadoFamiliar.map((item) => ({
@@ -1403,15 +1655,52 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     }
   };
 
-  const downloadCustomerDocument = (customerId: string, relativePath: string) => {
+  const buildWindowsDocumentPath = (rootFolder: string, relativePath: string): string => {
+    const root = String(rootFolder || '').trim().replace(/[\\/]+$/g, '');
+    const relative = String(relativePath || '').trim().replace(/^[/\\]+/g, '').replace(/\//g, '\\');
+    if (!root || !relative) return '';
+    return `${root}\\${relative}`;
+  };
+
+  const toFileUri = (windowsPath: string): string => {
+    const raw = String(windowsPath || '').trim();
+    if (/^\\\\[^\\]+\\[^\\]+/.test(raw)) {
+      const parts = raw.replace(/^\\\\/, '').split('\\').filter(Boolean);
+      const host = parts.shift() || '';
+      return `file://${host}/${parts.map((part) => encodeURIComponent(part)).join('/')}`;
+    }
+    const normalized = raw.replace(/\\/g, '/');
+    if (/^[A-Za-z]:\//.test(normalized)) {
+      return `file:///${normalized.split('/').map((part, index) => (index === 0 ? part : encodeURIComponent(part))).join('/')}`;
+    }
+    return '';
+  };
+
+  const officeProtocolForFile = (relativePath: string): string => {
+    const extension = String(relativePath || '').split('.').pop()?.toLowerCase() || '';
+    if (['doc', 'docx', 'docm', 'rtf'].includes(extension)) return 'ms-word';
+    if (['xls', 'xlsx', 'xlsm', 'csv'].includes(extension)) return 'ms-excel';
+    if (['ppt', 'pptx', 'pptm'].includes(extension)) return 'ms-powerpoint';
+    return '';
+  };
+
+  const openCustomerDocument = (customerId: string, relativePath: string, rootFolder = '') => {
     if (!customerId) return;
+    const officeProtocol = officeProtocolForFile(relativePath);
+    const windowsPath = buildWindowsDocumentPath(rootFolder, relativePath);
+    const fileUri = officeProtocol ? toFileUri(windowsPath) : '';
+    if (officeProtocol && fileUri) {
+      window.location.href = `${officeProtocol}:ofe|u|${fileUri}`;
+      return;
+    }
+
     const query = new URLSearchParams({ path: relativePath });
     window.open(`/api/customers/${encodeURIComponent(customerId)}/documents/download?${query.toString()}`, '_blank');
   };
 
-  const downloadModalDocument = (relativePath: string) => {
+  const openModalDocument = (relativePath: string) => {
     if (!editingCustomer?.id) return;
-    downloadCustomerDocument(editingCustomer.id, relativePath);
+    openCustomerDocument(editingCustomer.id, relativePath, modalDocsPath || formData.documentsFolder);
   };
 
   const triggerFinancasAutologin = async (customer: Customer) => {
@@ -1619,11 +1908,13 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
           loginUrl,
           closeAfterSubmit: false,
           credentialLabel: 'SS',
+          apiBaseUrl: window.location.origin,
           usernameSelectors: SEG_SOCIAL_USERNAME_SELECTORS,
           passwordSelectors: SEG_SOCIAL_PASSWORD_SELECTORS,
           submitSelectors: SEG_SOCIAL_SUBMIT_SELECTORS,
           successSelectors: SEG_SOCIAL_SUCCESS_SELECTORS,
           activateFinancasNifTab: false,
+          timeoutMs: 180000,
         });
         if (!desktopResult?.success) {
           const desktopError = String(desktopResult?.error || 'Falha no autologin local.');
@@ -1710,6 +2001,646 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     }
   };
 
+  const triggerSegSocialSubUserLogin = async (customer: Customer) => {
+    const customerId = String(customer?.id || '').trim();
+    if (!customerId) return;
+    if (autologinBusyCustomerId || segSocialAutologinBusyCustomerId || segSocialSubUserBusyCustomerId || segSocialActivationBusyCustomerId) return;
+
+    const { credential: subCredential, username, password, email } = resolveSsSubUserAccessFromCustomer(customer);
+    if (!subCredential || !username) {
+      window.alert('Este cliente ainda não tem subutilizador SS na ficha. Primeiro cria a subconta/subutilizador.');
+      return;
+    }
+
+    const loginUrl = SEG_SOCIAL_LOGIN_URL;
+    const isDesktopShell = Boolean(window.waDesktop?.isDesktop);
+    const hasDesktopAutologinApi = typeof window.waDesktop?.financasAutologin === 'function';
+    let resolvedPassword = String(password || '').trim();
+
+    const saveSubUserPassword = async (nextPassword: string) => {
+      const trimmedPassword = String(nextPassword || '').trim();
+      if (!trimmedPassword) return;
+      const nextCredentials = [...(Array.isArray(customer.accessCredentials) ? customer.accessCredentials : [])];
+      const subIndex = nextCredentials.findIndex((credential) => (
+        isSegSocialCredential(credential) &&
+        normalizeAccessService(String(credential.credentialType || '')).includes('sub')
+      ));
+      const nextCredential: CustomerAccessCredential = {
+        ...(subIndex >= 0 ? nextCredentials[subIndex] : {
+          service: 'Segurança Social',
+          credentialType: 'subutilizador',
+          username,
+          emailAssociado: email || 'geral@mpr.pt',
+        }),
+        service: 'Segurança Social',
+        credentialType: 'subutilizador',
+        username,
+        password: trimmedPassword,
+        emailAssociado: email || 'geral@mpr.pt',
+        status: 'active',
+        observacoes: 'Senha do subutilizador obtida automaticamente por email da Segurança Social.',
+      };
+      if (subIndex >= 0) nextCredentials[subIndex] = nextCredential;
+      else nextCredentials.push(nextCredential);
+      const guardedCredentials = preserveExistingCredentialSecrets(nextCredentials, customer.accessCredentials || [], customer.niss || '');
+      await mockService.updateCustomer(customerId, { accessCredentials: guardedCredentials }, { syncToSupabase: false });
+      setFormData((current) => ({ ...current, accessCredentials: guardedCredentials }));
+      setEditingCustomer((current) => current && current.id === customerId ? { ...current, accessCredentials: guardedCredentials } : current);
+    };
+
+    const openLoginWithClipboard = async (messagePrefix: string, includeDesktopHint = false) => {
+      window.open(loginUrl, '_blank', 'noopener,noreferrer');
+      let clipboardCopied = false;
+      if (username && resolvedPassword && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(`Subutilizador SS: ${username}\nSenha SS: ${resolvedPassword}`);
+          clipboardCopied = true;
+        } catch {
+          clipboardCopied = false;
+        }
+      }
+      const desktopHint = includeDesktopHint
+        ? ' Se estiveres na app WA PRO Desktop, atualiza/reabre a app para ativar o autologin local.'
+        : '';
+      window.alert(
+        clipboardCopied
+          ? `${messagePrefix}${desktopHint} Abri a Segurança Social e copiei o subutilizador/senha para colar.`
+          : `${messagePrefix}${desktopHint} Abri a Segurança Social; usa o subutilizador da ficha do cliente.`
+      );
+    };
+
+    const showManualPasteHintWithoutOpening = async (messagePrefix: string) => {
+      let clipboardCopied = false;
+      if (username && resolvedPassword && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(`Subutilizador SS: ${username}\nSenha SS: ${resolvedPassword}`);
+          clipboardCopied = true;
+        } catch {
+          clipboardCopied = false;
+        }
+      }
+      window.alert(
+        clipboardCopied
+          ? `${messagePrefix} O browser já foi aberto; copiei o subutilizador/senha para colar.`
+          : `${messagePrefix} O browser já foi aberto; usa o subutilizador da ficha do cliente.`
+      );
+    };
+
+    setSegSocialAutologinBusyCustomerId(customerId);
+    try {
+      if (!resolvedPassword) {
+        const emailResult = await mockService.findLatestSegSocialSubUserPassword({
+          username,
+          email,
+          sinceDays: 30,
+          maxMessages: 80,
+        });
+        if (!emailResult.found || !emailResult.password) {
+          throw new Error('Não encontrei no email recente a senha do subutilizador SS. Grava a senha na ficha ou confirma se o email chegou ao geral@mpr.pt.');
+        }
+        resolvedPassword = emailResult.password;
+        await saveSubUserPassword(resolvedPassword);
+      }
+
+      const localDesktopAutologin = hasDesktopAutologinApi ? window.waDesktop?.financasAutologin : undefined;
+      if (localDesktopAutologin) {
+        const desktopResult = await localDesktopAutologin({
+          username,
+          password: resolvedPassword,
+          loginUrl,
+          closeAfterSubmit: false,
+          credentialLabel: 'SS',
+          apiBaseUrl: window.location.origin,
+          usernameSelectors: SEG_SOCIAL_USERNAME_SELECTORS,
+          passwordSelectors: SEG_SOCIAL_PASSWORD_SELECTORS,
+          submitSelectors: SEG_SOCIAL_SUBMIT_SELECTORS,
+          successSelectors: SEG_SOCIAL_SUCCESS_SELECTORS,
+          activateFinancasNifTab: false,
+          timeoutMs: 180000,
+        });
+        if (!desktopResult?.success) {
+          const desktopError = String(desktopResult?.error || 'Falha no autologin local.');
+          const fallbackReason = classifyAutologinFallbackReason(desktopError);
+          if (fallbackReason === 'automation_unavailable') {
+            await openLoginWithClipboard(
+              'Autologin automático indisponível neste computador (browser de automação não instalado).',
+              isDesktopShell
+            );
+            return;
+          }
+          if (fallbackReason === 'fields_not_found') {
+            await showManualPasteHintWithoutOpening(
+              'Não consegui preencher automaticamente os campos de login neste ecrã da Segurança Social Direta.'
+            );
+            return;
+          }
+          throw new Error(desktopError);
+        }
+        return;
+      }
+
+      try {
+        const bridgeResult = await triggerLocalFinancasAutologinBridge({
+          username,
+          password: resolvedPassword,
+          loginUrl,
+          closeAfterSubmit: false,
+          credentialLabel: 'SS',
+          usernameSelectors: SEG_SOCIAL_USERNAME_SELECTORS,
+          passwordSelectors: SEG_SOCIAL_PASSWORD_SELECTORS,
+          submitSelectors: SEG_SOCIAL_SUBMIT_SELECTORS,
+          successSelectors: SEG_SOCIAL_SUCCESS_SELECTORS,
+          activateFinancasNifTab: false,
+        });
+        if (bridgeResult?.success) return;
+      } catch (bridgeError) {
+        const bridgeMessage = bridgeError instanceof Error ? bridgeError.message : String(bridgeError || '');
+        if (!isLocalAutomationBridgeUnavailable(bridgeMessage)) {
+          throw new Error(bridgeMessage || 'Falha no autologin local.');
+        }
+      }
+
+      await openLoginWithClipboard(
+        isDesktopShell
+          ? 'Não encontrei o helper local de automação.'
+          : 'Não encontrei o helper local de automação neste computador.',
+        isDesktopShell
+      );
+    } catch (error) {
+      const rawMessage = error instanceof Error ? error.message : 'Falha ao entrar com subutilizador SS.';
+      const errorCode =
+        error && typeof error === 'object' && 'code' in error
+          ? String((error as { code?: unknown }).code || '').trim()
+          : '';
+
+      if (errorCode === 'NO_GUI_SESSION') {
+        await openLoginWithClipboard('O servidor não tem ambiente gráfico para abrir browser.');
+      } else {
+        window.alert(rawMessage);
+      }
+    } finally {
+      setSegSocialAutologinBusyCustomerId(null);
+    }
+  };
+
+  const triggerSegSocialInteroperabilityInfo = async (
+    customer: Customer,
+    preferredType: 'chave_aplicacional' | 'token'
+  ) => {
+    const { username, token, validUntil, label } = resolveSegSocialInteropAccessFromCustomer(customer, preferredType);
+    if (!token) {
+      window.alert(
+        preferredType === 'token'
+          ? 'Este cliente ainda não tem token da Plataforma de Interoperabilidade da Segurança Social guardado.'
+          : 'Este cliente ainda não tem chave de autenticação aplicacional da Segurança Social guardada.'
+      );
+      return;
+    }
+
+    const usernameNissMatch = String(username || '').trim().match(/^(\d{9,12})-\d+$/);
+    const nissEe = normalizeNissDigits(String(customer.niss || '')) || (usernameNissMatch ? usernameNissMatch[1] : normalizeNissDigits(username));
+    if (!nissEe) {
+      window.alert('Este cliente tem a credencial guardada, mas falta o NISS da entidade empregadora para chamar a API da Segurança Social.');
+      return;
+    }
+
+    setSegSocialAutologinBusyCustomerId(customer.id);
+    try {
+      const anoMes = previousMonthAnoMes();
+      const result =
+        preferredType === 'token'
+          ? await mockService.consultarSegSocialValoresApuradosMensalmente(customer.id, { tipo: preferredType, nissEe, anoMes })
+          : await mockService.consultarSegSocialValoresComunicados(customer.id, { tipo: preferredType, nissEe });
+      const statusText =
+        result && typeof result === 'object' && 'status' in result
+          ? `\nEstado HTTP: ${String((result as { status?: unknown }).status || '')}`
+          : '';
+      const validityText = validUntil ? `\nValidade: ${validUntil}` : '';
+      const operationText =
+        preferredType === 'token'
+          ? `\nServiço: Valores apurados mensalmente (${anoMes})`
+          : '\nServiço: Valores comunicados por processar';
+      window.alert(
+        `Chamada direta à API da Segurança Social concluída com sucesso.\n\nTipo: ${label || preferredType}\nUtilizador: ${username || '(sem utilizador associado)'}\nNISS EE: ${nissEe}${operationText}${validityText}${statusText}`
+      );
+    } catch (error) {
+      const typedError = error as Error & { code?: string };
+      const code = String(typedError.code || '').trim();
+      if (code === 'SEG_SOCIAL_INTEROP_BASE_URL_MISSING') {
+        window.alert(
+          'A credencial está guardada, mas falta configurar SEG_SOCIAL_INTEROP_BASE_URL no backend com o endereço base oficial da PSi.'
+        );
+      } else if (code === 'SEG_SOCIAL_INTEROP_PATH_MISSING') {
+        window.alert(
+          'A credencial está guardada, mas falta configurar no .env o path do serviço PSi que este botão deve testar.\n\nUsa a variável indicada na mensagem do backend/YAML do serviço.'
+        );
+      } else if (code === 'SEG_SOCIAL_INTEROP_PARAM_MISSING') {
+        window.alert(typedError.message || 'Falta um parâmetro obrigatório para a chamada à API da Segurança Social.');
+      } else if (code === 'SEG_SOCIAL_SERVICE_NOT_AUTHORIZED') {
+        window.alert(
+          'A Segurança Social respondeu 403.\n\nIsto significa que o subutilizador/token não tem permissões para este serviço PSi ou para este NISS. Confirma no portal se a subconta tem acesso ao serviço de interoperabilidade que estás a testar.'
+        );
+      } else if (code === 'SEG_SOCIAL_AUTH_INVALID') {
+        window.alert(
+          'A Segurança Social respondeu 401.\n\nO token/credencial Basic está inválido, expirado ou com formato errado. Não vou abrir login web nem pedir 2FA; é preciso renovar ou corrigir a credencial.'
+        );
+      } else {
+        window.alert(typedError.message || 'Falha na chamada direta à API da Segurança Social.');
+      }
+    } finally {
+      setSegSocialAutologinBusyCustomerId(null);
+    }
+  };
+
+  const openSegSocialManualFallback = async (customer: Customer) => {
+    const { username, password } = resolveSsPrincipalAccessFromCustomer(customer);
+    window.open(SEG_SOCIAL_LOGIN_URL, '_blank', 'noopener,noreferrer');
+    let clipboardCopied = false;
+    if (username && password && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(`Utilizador SS: ${username}\nSenha SS: ${password}`);
+        clipboardCopied = true;
+      } catch {
+        clipboardCopied = false;
+      }
+    }
+    window.alert(
+      clipboardCopied
+        ? 'Abri a Segurança Social para uso manual e copiei as credenciais principais para colar. Este botão não faz login automático nem tenta 2FA.'
+        : 'Abri a Segurança Social para uso manual. Este botão não faz login automático nem tenta 2FA.'
+    );
+  };
+
+  const triggerSegSocialSubUserSetup = async (customer: Customer) => {
+    const customerId = String(customer?.id || '').trim();
+    if (!customerId) return;
+    if (autologinBusyCustomerId || segSocialAutologinBusyCustomerId || segSocialSubUserBusyCustomerId) return;
+
+    if (!canUseSegSocialSubUserFlow(customer)) {
+      window.alert('Este assistente está disponível apenas para empresas e independentes.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'Vou abrir a Segurança Social Direta com a conta principal deste cliente e criar apenas a subconta geral@mpr.pt. Continuar?'
+    );
+    if (!confirmed) return;
+
+    setSegSocialSubUserBusyCustomerId(customerId);
+    try {
+      const desktopSetup = window.waDesktop?.financasAutologin;
+      if (typeof desktopSetup === 'function') {
+        const { username, password } = resolveSsPrincipalAccessFromCustomer(customer);
+        if (!username || !password) {
+          throw new Error('Este cliente precisa de utilizador/senha principal da Segurança Social antes de criar subutilizador.');
+        }
+        const niss = normalizeNissDigits(String(customer.niss || ''));
+        const subUsername = niss ? `${niss}-1` : 'geral@mpr.pt';
+        const validFrom = todayIsoDate();
+        const nextCredentials = [...(Array.isArray(customer.accessCredentials) ? customer.accessCredentials : [])];
+        const upsertLocalCredential = (next: CustomerAccessCredential) => {
+          const service = normalizeAccessService(String(next.service || ''));
+          const type = normalizeAccessService(String(next.credentialType || ''));
+          const usernameKey = normalizeAccessService(String(next.username || ''));
+          const emailKey = normalizeAccessService(String(next.emailAssociado || ''));
+          const index = nextCredentials.findIndex((credential) => (
+            normalizeAccessService(String(credential.service || '')) === service &&
+            normalizeAccessService(String(credential.credentialType || '')) === type &&
+            (
+              (usernameKey && normalizeAccessService(String(credential.username || '')) === usernameKey) ||
+              (emailKey && normalizeAccessService(String(credential.emailAssociado || '')) === emailKey)
+            )
+          ));
+          if (index >= 0) {
+            nextCredentials[index] = {
+              ...nextCredentials[index],
+              ...next,
+              password: String(next.password || '').trim() || nextCredentials[index].password || '',
+              username: isSegSocialCredential(next)
+                ? normalizeStoredSegSocialUsername(String(next.username || nextCredentials[index].username || ''), niss)
+                : next.username,
+            };
+          }
+          else nextCredentials.push(next);
+        };
+
+        upsertLocalCredential({
+          service: 'Segurança Social',
+          credentialType: 'subutilizador',
+          username: subUsername,
+          password: '',
+          emailAssociado: 'geral@mpr.pt',
+          validFrom,
+          validUntil: '',
+          status: 'pending',
+          observacoes: 'Subconta empresarial preparada pelo assistente local. A senha só deve ser preenchida depois da ativação real.',
+        });
+
+        const guardedCredentials = preserveExistingCredentialSecrets(nextCredentials, customer.accessCredentials || [], customer.niss || '');
+        await mockService.updateCustomer(customerId, { accessCredentials: guardedCredentials }, { syncToSupabase: false });
+        setFormData((current) => ({ ...current, accessCredentials: guardedCredentials }));
+
+        const desktopResult = await desktopSetup({
+          username,
+          password,
+          loginUrl: SEG_SOCIAL_LOGIN_URL,
+          closeAfterSubmit: false,
+          credentialLabel: 'SS',
+          postLoginFlow: 'seg_social_enterprise_subuser_setup',
+          apiBaseUrl: window.location.origin,
+          customerName: customer.name,
+          customerCompany: customer.company || customer.name,
+          customerNif: customer.nif,
+          customerNiss: customer.niss,
+          subEmail: 'geral@mpr.pt',
+          subUsername,
+          usernameSelectors: SEG_SOCIAL_USERNAME_SELECTORS,
+          passwordSelectors: SEG_SOCIAL_PASSWORD_SELECTORS,
+          submitSelectors: SEG_SOCIAL_SUBMIT_SELECTORS,
+          successSelectors: SEG_SOCIAL_SUCCESS_SELECTORS,
+          activateFinancasNifTab: false,
+        });
+        if (!desktopResult?.success) {
+          throw new Error(String(desktopResult?.error || 'Falha ao abrir automação local da Segurança Social.'));
+        }
+        const flow = (desktopResult?.postLoginFlow || {}) as {
+          createdUsername?: unknown;
+          stage?: unknown;
+          message?: unknown;
+          reason?: unknown;
+          success?: unknown;
+          lastCompletedStep?: unknown;
+        };
+        const createdUsername = String(flow.createdUsername || subUsername).trim();
+        const createdStage = String(flow.stage || '').trim();
+        const flowSucceeded = createdStage === 'subconta_criada' || flow.success === true;
+        if (flowSucceeded) {
+          const confirmedCredentials = guardedCredentials.map((credential) => {
+            const credentialType = normalizeAccessService(String(credential.credentialType || ''));
+            if (!isSegSocialCredential(credential) || credentialType !== 'subutilizador') {
+              return credential;
+            }
+            return {
+              ...credential,
+              username: createdUsername || credential.username,
+              password: '',
+              status: 'pending_activation',
+              observacoes: 'Subconta empresarial criada na Segurança Social. Falta ativar a conta e definir palavra-passe.',
+            };
+          });
+          await mockService.updateCustomer(customerId, { accessCredentials: confirmedCredentials }, { syncToSupabase: false });
+          setFormData((current) => ({ ...current, accessCredentials: confirmedCredentials }));
+        }
+        await loadCustomers();
+        if (flowSucceeded) {
+          window.alert(String(flow.message || `Subconta criada com sucesso para ${customer.company || customer.name}`));
+        } else if (String(desktopResult?.loginState || '').trim() === 'MANUAL_REQUIRED') {
+          window.alert(String(desktopResult?.manualRequiredReason || flow.reason || 'A Segurança Social pediu intervenção manual. Continua no browser aberto.'));
+        } else if (createdStage) {
+          window.alert(String(flow.reason || `Não foi possível concluir. Último passo concluído: ${flow.lastCompletedStep ? `passo ${flow.lastCompletedStep}` : 'não identificado'}.`));
+        } else {
+          window.alert(String(desktopResult?.message || 'Abri a Segurança Social no teu PC e iniciei o assistente empresarial de subconta.'));
+        }
+        return;
+      }
+
+      throw new Error('A criação automática empresarial de subconta requer a app desktop atualizada. Não vou usar o fluxo antigo do servidor para evitar misturar particulares/empresas.');
+    } catch (error) {
+      const rawMessage = error instanceof Error ? error.message : 'Falha ao iniciar criação de subutilizador SS.';
+      const errorCode =
+        error && typeof error === 'object' && 'code' in error
+          ? String((error as { code?: unknown }).code || '').trim()
+          : '';
+      if (errorCode === 'NO_GUI_SESSION') {
+        window.alert('Não vou executar este fluxo em segundo plano no servidor. A criação empresarial da subconta deve correr no browser visível da app desktop para poderes intervir se o portal pedir validação.');
+        return;
+      }
+      window.alert(rawMessage);
+    } finally {
+      setSegSocialSubUserBusyCustomerId(null);
+    }
+  };
+
+  const triggerSegSocialActivationSetup = async (customer: Customer) => {
+    const customerId = String(customer?.id || '').trim();
+    if (!customerId) return;
+    if (autologinBusyCustomerId || segSocialAutologinBusyCustomerId || segSocialSubUserBusyCustomerId || segSocialActivationBusyCustomerId) return;
+
+    const credentials = Array.isArray(customer.accessCredentials) ? customer.accessCredentials : [];
+    const { credential: subCredential, username, password, email } = resolveSsSubUserAccessFromCustomer(customer);
+
+    if (!subCredential || !username) {
+      window.alert('Primeiro cria a subconta empresarial. Este botão não cria subcontas; só ativa/gera token para um subutilizador já existente.');
+      return;
+    }
+
+    const desktopSetup = window.waDesktop?.financasAutologin;
+    if (typeof desktopSetup !== 'function') {
+      try {
+        if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(`Subutilizador Segurança Social: ${username || '(por ativar)'}\nEmail: ${email}`);
+        }
+      } catch {
+        // clipboard is only a convenience
+      }
+      window.open(SEG_SOCIAL_ACTIVATE_URL, '_blank', 'noopener,noreferrer');
+      window.alert(
+        username
+          ? `Abri a ativação da conta. O subutilizador é ${username}. A partir do CAPTCHA continua manualmente.`
+          : 'Abri a ativação da conta. A partir do CAPTCHA continua manualmente.'
+      );
+      return;
+    }
+
+    if (!password) {
+      window.alert('A subconta ainda não tem senha guardada. Ativa a conta/define a senha do subutilizador e grava essa senha na ficha antes de usar "Ativar conta/token".');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'Vou usar apenas o subutilizador já criado para ativar/gerar token e autenticação aplicacional. Este processo não cria subconta nem usa a conta principal. Continuar?'
+    );
+    if (!confirmed) return;
+
+    setSegSocialActivationBusyCustomerId(customerId);
+    try {
+      const desktopResult = await desktopSetup({
+        username,
+        password,
+        loginUrl: SEG_SOCIAL_LOGIN_URL,
+        closeAfterSubmit: false,
+        credentialLabel: 'SS',
+        postLoginFlow: 'seg_social_activation_token_setup',
+        apiBaseUrl: window.location.origin,
+        tokenDescription: 'Contabilidade',
+        usernameSelectors: SEG_SOCIAL_USERNAME_SELECTORS,
+        passwordSelectors: SEG_SOCIAL_PASSWORD_SELECTORS,
+        submitSelectors: SEG_SOCIAL_SUBMIT_SELECTORS,
+        successSelectors: SEG_SOCIAL_SUCCESS_SELECTORS,
+        activateFinancasNifTab: false,
+        timeoutMs: 180000,
+      } as Parameters<NonNullable<typeof window.waDesktop>['financasAutologin']>[0]);
+      if (!desktopResult?.success) {
+        throw new Error(String(desktopResult?.error || 'Falha ao iniciar ativação/token da Segurança Social.'));
+      }
+
+      const flow = desktopResult.postLoginFlow || {};
+      const token = String((flow as { token?: unknown }).token || '').trim();
+      const tokenValidUntil = String((flow as { tokenValidUntil?: unknown }).tokenValidUntil || '').trim() || addMonthsIsoDate(12);
+      const rawAppAuth = String((flow as { appAuth?: unknown }).appAuth || '').trim();
+      let appAuth = isSafeSegSocialApplicationAuthValue(rawAppAuth) ? rawAppAuth : '';
+      if (!appAuth && typeof window.waDesktop?.readClipboardText === 'function') {
+        const clipboardText = String(await window.waDesktop.readClipboardText().catch(() => '') || '').trim();
+        if (isSafeSegSocialApplicationAuthValue(clipboardText)) {
+          appAuth = clipboardText;
+        }
+      }
+      const appAuthValidUntil = String((flow as { appAuthValidUntil?: unknown }).appAuthValidUntil || '').trim() || addMonthsIsoDate(6);
+
+      if (token || appAuth) {
+        const nextCredentials = [...credentials];
+        const upsertCredential = (next: CustomerAccessCredential) => {
+          const service = normalizeAccessService(String(next.service || ''));
+          const type = normalizeAccessService(String(next.credentialType || ''));
+          const index = nextCredentials.findIndex((credential) => (
+            normalizeAccessService(String(credential.service || '')) === service &&
+            normalizeAccessService(String(credential.credentialType || '')) === type
+          ));
+          if (index >= 0) {
+            nextCredentials[index] = {
+              ...nextCredentials[index],
+              ...next,
+              password: String(next.password || '').trim() || nextCredentials[index].password || '',
+            };
+          } else {
+            nextCredentials.push(next);
+          }
+        };
+
+        if (token) {
+          upsertCredential({
+            service: 'Segurança Social',
+            credentialType: 'token',
+            username,
+            password: token,
+            emailAssociado: email,
+            validFrom: todayIsoDate(),
+            validUntil: tokenValidUntil,
+            status: 'active',
+            observacoes: 'Token de acesso criado automaticamente na gestão de autenticação da Segurança Social.',
+          });
+        }
+        if (appAuth) {
+          upsertCredential({
+            service: 'Segurança Social',
+            credentialType: 'chave_aplicacional',
+            username,
+            password: appAuth,
+            emailAssociado: email,
+            validFrom: todayIsoDate(),
+            validUntil: appAuthValidUntil,
+            status: 'active',
+            observacoes: 'Autenticação aplicacional criada automaticamente na gestão de autenticação da Segurança Social.',
+          });
+        }
+
+        const guardedCredentials = preserveExistingCredentialSecrets(nextCredentials, customer.accessCredentials || [], customer.niss || '');
+        await mockService.updateCustomer(customerId, { accessCredentials: guardedCredentials }, { syncToSupabase: false });
+        setFormData((current) => ({ ...current, accessCredentials: guardedCredentials }));
+        await loadCustomers();
+      }
+
+      if (String(desktopResult.loginState || '') === 'MANUAL_REQUIRED') {
+        window.alert(String(desktopResult.manualRequiredReason || (flow as { reason?: unknown }).reason || 'A Segurança Social pediu continuação manual no browser aberto.'));
+      } else if (token && appAuth) {
+        window.alert('Token de acesso e autenticação aplicacional criados e guardados na ficha do cliente.');
+      } else if (token) {
+        window.alert('Token de acesso guardado. A autenticação aplicacional ficou pendente no browser aberto.');
+      } else {
+        window.alert(String((flow as { reason?: unknown }).reason || desktopResult.message || 'Assistente de ativação/token iniciado no browser aberto.'));
+      }
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Falha ao ativar conta/token da Segurança Social.');
+    } finally {
+      setSegSocialActivationBusyCustomerId(null);
+    }
+  };
+
+  const formatSaftSegSocialSyncMessage = (message: string, summary: {
+    requested?: number;
+    eligible?: number;
+    updated?: number;
+    unchanged?: number;
+    skippedWithSubuser?: number;
+    skippedNonEnterprise?: number;
+    skippedNoNif?: number;
+    skippedNoSaftMatch?: number;
+    skippedNoSegSocialPassword?: number;
+    errors?: string[];
+    warnings?: string[];
+  }): string => {
+    const lines = [
+      message || 'Sincronização SAFT concluída.',
+      '',
+      `Atualizados: ${Number(summary.updated || 0)}`,
+      `Já estavam iguais: ${Number(summary.unchanged || 0)}`,
+      `Ignorados com subutilizador: ${Number(summary.skippedWithSubuser || 0)}`,
+      `Ignorados sem NIF: ${Number(summary.skippedNoNif || 0)}`,
+      `Não encontrados no SAFT: ${Number(summary.skippedNoSaftMatch || 0)}`,
+      `Sem senha SS no SAFT: ${Number(summary.skippedNoSegSocialPassword || 0)}`,
+    ];
+    if (Number(summary.skippedNonEnterprise || 0) > 0) {
+      lines.push(`Ignorados por não serem empresa: ${Number(summary.skippedNonEnterprise || 0)}`);
+    }
+    const warnings = Array.isArray(summary.warnings) ? summary.warnings : [];
+    if (warnings.length > 0) {
+      lines.push('', `Avisos: ${warnings.slice(0, 5).join(' | ')}${warnings.length > 5 ? ` (+${warnings.length - 5})` : ''}`);
+    }
+    const errors = Array.isArray(summary.errors) ? summary.errors : [];
+    if (errors.length > 0) {
+      lines.push('', `Erros: ${errors.slice(0, 5).join(' | ')}${errors.length > 5 ? ` (+${errors.length - 5})` : ''}`);
+    }
+    return lines.join('\n');
+  };
+
+  const syncSegSocialPasswordsFromSaft = async (customer?: Customer) => {
+    if (saftSsSyncBusy) return;
+    const targetLabel = customer ? (customer.company || customer.name || customer.nif || 'este cliente') : 'todos os clientes empresa sem subutilizador';
+    const confirmed = window.confirm(
+      customer
+        ? `Vou buscar ao SAFTonline a senha da Segurança Social e a validade para ${targetLabel}. Se este cliente já tiver subutilizador completo, não será alterado. Continuar?`
+        : 'Vou buscar ao SAFTonline as senhas da Segurança Social e validades para empresas sem subutilizador completo. Pode demorar alguns minutos. Continuar?'
+    );
+    if (!confirmed) return;
+
+    setSaftSsSyncBusy(true);
+    try {
+      const result = await mockService.syncSegSocialPasswordsFromSaft({
+        customerId: customer?.id,
+        headless: true,
+        syncToSupabase: true,
+      });
+      const nextCustomers = await loadCustomers();
+      if (customer && showModal) {
+        const refreshed =
+          (Array.isArray(result.customers) ? result.customers : []).find((item) => item.id === customer.id) ||
+          nextCustomers.find((item) => item.id === customer.id);
+        if (refreshed) {
+          const nextFormState = formStateFromCustomer(refreshed);
+          setEditingCustomer(refreshed);
+          setFormData(nextFormState);
+          setSavedFormSnapshot(serializeCustomerFormState(nextFormState));
+          setFormSavedNotice('Dados SS atualizados a partir do SAFTonline.');
+        }
+      }
+      window.alert(formatSaftSegSocialSyncMessage(result.message, result.summary));
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Falha ao atualizar senha SS a partir do SAFTonline.');
+    } finally {
+      setSaftSsSyncBusy(false);
+    }
+  };
+
   const openModal = (customer?: Customer) => {
     setActiveTab('dados');
     resetModalDocsState();
@@ -1721,16 +2652,45 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     setCustomerActivityLoading(false);
     setAgregadoSearchTerms({});
     setFichasSearchTerms({});
+    setFormSavedNotice('');
 
     if (customer) {
+      const nextFormState = formStateFromCustomer(customer);
       setEditingCustomer(customer);
-      setFormData(formStateFromCustomer(customer));
+      setFormData(nextFormState);
+      setSavedFormSnapshot(serializeCustomerFormState(nextFormState));
     } else {
+      const nextFormState = emptyFormState();
       setEditingCustomer(null);
-      setFormData(emptyFormState());
+      setFormData(nextFormState);
+      setSavedFormSnapshot(serializeCustomerFormState(nextFormState));
     }
 
     setShowModal(true);
+  };
+
+  const closeCustomerModal = (confirmUnsaved = true): boolean => {
+    const hasUnsavedChanges = Boolean(
+      showModal &&
+      savedFormSnapshot &&
+      serializeCustomerFormState(formData) !== savedFormSnapshot
+    );
+    if (confirmUnsaved && hasUnsavedChanges) {
+      const canExit = window.confirm('Existem alterações não gravadas. Quer mesmo sair sem gravar?');
+      if (!canExit) return false;
+    }
+
+    setShowModal(false);
+    setEditingCustomer(null);
+    setFormData(emptyFormState());
+    setSavedFormSnapshot('');
+    setFormSavedNotice('');
+    setAgregadoSearchTerms({});
+    setFichasSearchTerms({});
+    resetModalDocsState();
+    resetSociedadeDocsState();
+    resetIngestState();
+    return true;
   };
 
   useEffect(() => {
@@ -1891,35 +2851,53 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
           phone: String(manager.phone || '').trim(),
         }))
         .filter((manager) => manager.name || manager.email || manager.phone),
-      accessCredentials: applyAtUsernameFallback(
-        (Array.isArray(formData.accessCredentials) ? formData.accessCredentials : [])
-          .map((credential) => ({
-            service: String(credential.service || '').trim(),
-            username: String(credential.username || '').trim(),
-            password: String(credential.password || '').trim(),
-          })),
-        nextNif
-      )
-        .filter((credential) => credential.service || credential.username || credential.password),
+      accessCredentials: preserveExistingCredentialSecrets(
+        applyAtUsernameFallback(
+          (Array.isArray(formData.accessCredentials) ? formData.accessCredentials : [])
+            .map((credential) => ({
+              service: String(credential.service || '').trim(),
+              username: String(credential.username || '').trim(),
+              password: String(credential.password || '').trim(),
+              credentialType: String(credential.credentialType || '').trim(),
+              emailAssociado: String(credential.emailAssociado || '').trim(),
+              validFrom: String(credential.validFrom || '').trim(),
+              validUntil: String(credential.validUntil || '').trim(),
+              status: String(credential.status || '').trim(),
+              observacoes: String(credential.observacoes || '').trim(),
+            })),
+          nextNif
+        )
+          .filter((credential) => credential.service || credential.username || credential.password || credential.emailAssociado || credential.validUntil),
+        Array.isArray(editingCustomer?.accessCredentials) ? editingCustomer.accessCredentials : [],
+        formData.niss || editingCustomer?.niss || ''
+      ),
       agregadoFamiliar,
       fichasRelacionadas,
     };
 
+    let savedCustomer: Customer | null = null;
     if (editingCustomer) {
       await mockService.updateCustomer(editingCustomer.id, payload);
+      const refreshedCustomers = await loadCustomers();
+      savedCustomer =
+        refreshedCustomers.find((customer) => String(customer.id || '') === String(editingCustomer.id || '')) ||
+        ({ ...editingCustomer, ...payload } as Customer);
     } else {
       const syncToSupabase = window.confirm('Também quer adicionar este cliente no MPR Control (Supabase)?\n\nOK = Sim\nCancelar = Só local');
-      await mockService.createCustomer(payload, { syncToSupabase });
+      const createdCustomer = await mockService.createCustomer(payload, { syncToSupabase });
+      const refreshedCustomers = await loadCustomers();
+      savedCustomer =
+        refreshedCustomers.find((customer) => String(customer.id || '') === String(createdCustomer.id || '')) ||
+        createdCustomer;
     }
 
-    setShowModal(false);
-    setEditingCustomer(null);
-    setFormData(emptyFormState());
-    setAgregadoSearchTerms({});
-    setFichasSearchTerms({});
-    resetModalDocsState();
-    resetIngestState();
-    await loadCustomers();
+    if (savedCustomer) {
+      const nextFormState = formStateFromCustomer(savedCustomer);
+      setEditingCustomer(savedCustomer);
+      setFormData(nextFormState);
+      setSavedFormSnapshot(serializeCustomerFormState(nextFormState));
+      setFormSavedNotice('Guardado. Pode continuar a editar a ficha.');
+    }
   };
 
   const addSubContact = () => {
@@ -1961,7 +2939,53 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
   const addAccessCredential = () => {
     setFormData({
       ...formData,
-      accessCredentials: [...formData.accessCredentials, { service: '', username: '', password: '' }],
+      accessCredentials: [...formData.accessCredentials, { service: '', username: '', password: '', credentialType: '', emailAssociado: '', validFrom: '', validUntil: '', status: 'active', observacoes: '' }],
+    });
+  };
+
+  const addSegSocialCredential = (credentialType: 'principal' | 'subutilizador') => {
+    const isSubUser = credentialType === 'subutilizador';
+    const validFrom = todayIsoDate();
+    setFormData({
+      ...formData,
+      accessCredentials: [
+        ...formData.accessCredentials,
+        {
+          service: 'Segurança Social',
+          credentialType,
+          username: isSubUser ? formData.email || '' : formData.niss || '',
+          password: '',
+          emailAssociado: isSubUser ? formData.email || '' : '',
+          validFrom,
+          validUntil: isSubUser ? addMonthsIsoDate(6) : '',
+          status: isSubUser ? 'pending' : 'active',
+          observacoes: isSubUser ? 'Subutilizador Segurança Social com validade de 6 meses.' : '',
+        },
+      ],
+    });
+  };
+
+  const addSegSocialSecurityCredential = (credentialType: '2fa' | 'chave_aplicacional') => {
+    const validFrom = todayIsoDate();
+    setFormData({
+      ...formData,
+      accessCredentials: [
+        ...formData.accessCredentials,
+        {
+          service: 'Segurança Social',
+          credentialType,
+          username: credentialType === 'chave_aplicacional' ? 'niss-1' : '',
+          password: '',
+          emailAssociado: 'geral@mpr.pt',
+          validFrom,
+          validUntil: credentialType === 'chave_aplicacional' ? addMonthsIsoDate(6) : '',
+          status: credentialType === '2fa' ? 'pending' : 'active',
+          observacoes:
+            credentialType === '2fa'
+              ? 'Estado do duplo fator de autenticação do subutilizador.'
+              : 'Chave de autenticação aplicacional válida por 6 meses.',
+        },
+      ],
     });
   };
 
@@ -1975,6 +2999,85 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     const nextCredentials = formData.accessCredentials.filter((_, i) => i !== index);
     setFormData({ ...formData, accessCredentials: nextCredentials });
   };
+
+  const credentialPresets = [
+    { key: 'at', label: 'Autoridade Tributária', icon: 'AT', service: 'AT', credentialType: 'principal', usernameFallback: formData.nif || '', passwordFallback: formData.senhaFinancas || '', validity: false },
+    { key: 'ss_principal', label: 'Seg. Social conta principal', icon: 'SS', service: 'SS', credentialType: 'principal', usernameFallback: formData.niss || '', passwordFallback: formData.senhaSegurancaSocial || '', validity: true },
+    { key: 'ss_sub', label: 'Seg. Social Autenticação Utilizador', icon: 'SS', service: 'Segurança Social', credentialType: 'subutilizador', usernameFallback: formData.niss ? `${normalizeNissDigits(formData.niss)}-1` : '', passwordFallback: '', validity: false },
+    { key: 'ss_2fa', label: 'Seg. Social Duplo Fator', icon: 'SS', service: 'Segurança Social', credentialType: '2fa', usernameFallback: formData.niss ? `${normalizeNissDigits(formData.niss)}-1` : '', passwordFallback: '', validity: false },
+    { key: 'ss_app', label: 'Seg. Social Autenticação Aplicacional', icon: 'SS', service: 'Segurança Social', credentialType: 'chave_aplicacional', usernameFallback: formData.niss ? `${normalizeNissDigits(formData.niss)}-1` : '', passwordFallback: '', validity: true },
+    { key: 'ru', label: 'Relatório Único', icon: 'RU', service: 'RU', credentialType: '', usernameFallback: '', passwordFallback: '', validity: false },
+    { key: 'viactt', label: 'Via CTT', icon: 'CTT', service: 'ViaCTT', credentialType: '', usernameFallback: '', passwordFallback: '', validity: false },
+    { key: 'iapmei', label: 'IAPMEI', icon: 'IP', service: 'IAPMEI', credentialType: '', usernameFallback: formData.nif || '', passwordFallback: '', validity: false },
+    { key: 'ss_interop', label: 'Seg. Social Plataforma Interoperabilidade', icon: 'SS', service: 'Segurança Social', credentialType: 'token', usernameFallback: formData.niss ? `${normalizeNissDigits(formData.niss)}-1` : '', passwordFallback: '', validity: true },
+  ] as const;
+
+  const findCredentialIndexForPreset = (preset: typeof credentialPresets[number]) => {
+    const targetService = normalizeAccessIdentity(preset.service);
+    return formData.accessCredentials.findIndex((credential) => (
+      normalizeAccessIdentity(String(credential.service || '')) === targetService &&
+      accessTypeMatchesPreset(String(credential.credentialType || ''), preset.credentialType)
+    ));
+  };
+
+  const credentialForPreset = (preset: typeof credentialPresets[number]): CustomerAccessCredential => {
+    const index = findCredentialIndexForPreset(preset);
+    if (index >= 0) return formData.accessCredentials[index];
+    return {
+      service: preset.service,
+      credentialType: preset.credentialType,
+      username: preset.usernameFallback,
+      password: preset.passwordFallback,
+      emailAssociado: '',
+      validFrom: '',
+      validUntil: '',
+      status: 'active',
+      observacoes: '',
+    };
+  };
+
+  const updateCredentialPreset = (
+    preset: typeof credentialPresets[number],
+    field: keyof CustomerAccessCredential,
+    value: string
+  ) => {
+    const index = findCredentialIndexForPreset(preset);
+    const nextCredentials = [...formData.accessCredentials];
+    const current = index >= 0 ? nextCredentials[index] : credentialForPreset(preset);
+    const nextCredential = {
+      ...current,
+      service: preset.service,
+      credentialType: preset.credentialType,
+      [field]: value,
+    };
+    if (index >= 0) nextCredentials[index] = nextCredential;
+    else nextCredentials.push(nextCredential);
+
+    setFormData({
+      ...formData,
+      accessCredentials: nextCredentials,
+      senhaFinancas: preset.key === 'at' && field === 'password' ? value : formData.senhaFinancas,
+      senhaSegurancaSocial: preset.key === 'ss_principal' && field === 'password' ? value : formData.senhaSegurancaSocial,
+      nif: preset.key === 'at' && field === 'username' ? value : formData.nif,
+      niss: preset.key === 'ss_principal' && field === 'username' ? value : formData.niss,
+    });
+  };
+
+  const removeCredentialPreset = (preset: typeof credentialPresets[number]) => {
+    const index = findCredentialIndexForPreset(preset);
+    if (index < 0) return;
+    const nextCredentials = formData.accessCredentials.filter((_, i) => i !== index);
+    setFormData({ ...formData, accessCredentials: nextCredentials });
+  };
+
+  const isCredentialCoveredByPreset = (credential: CustomerAccessCredential) => credentialPresets.some((preset) => (
+    normalizeAccessIdentity(String(credential.service || '')) === normalizeAccessIdentity(preset.service) &&
+    accessTypeMatchesPreset(String(credential.credentialType || ''), preset.credentialType)
+  ));
+
+  const customAccessCredentialIndexes = formData.accessCredentials
+    .map((credential, index) => ({ credential, index }))
+    .filter(({ credential }) => !isCredentialCoveredByPreset(credential));
 
   const inferCustomerSourceId = (customer?: Customer | null): string => {
     const explicit = String(customer?.sourceId || '').trim();
@@ -2143,6 +3246,44 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     return normalizeStatus(sourceStatus);
   };
 
+  const getSegSocialSubUserStateFromCredentials = (credentials: CustomerAccessCredential[]): SegSocialSubUserState => {
+    const subCredentials = credentials.filter((credential) => {
+      if (!isSegSocialCredential(credential)) return false;
+      const type = normalizeAccessIdentity(String(credential.credentialType || ''));
+      return type.includes('subutilizador') || type.includes('subconta') || type.includes('sub-user') || type === 'sub';
+    });
+
+    if (!subCredentials.length) return 'SEM_SUBUTILIZADOR';
+
+    const hasCompleteSubUser = subCredentials.some((credential) =>
+      Boolean(
+        String(credential.username || '').trim() &&
+        String(credential.password || '').trim() &&
+        isCredentialUsable(credential)
+      )
+    );
+    if (hasCompleteSubUser) return 'COM_SUBUTILIZADOR';
+
+    return 'INCOMPLETO';
+  };
+
+  const getSegSocialSubUserState = (customer: Customer): SegSocialSubUserState =>
+    getSegSocialSubUserStateFromCredentials(Array.isArray(customer.accessCredentials) ? customer.accessCredentials : []);
+
+  const segSocialSubUserCounts = useMemo(() => {
+    return customers.reduce(
+      (acc, customer) => {
+        acc[getSegSocialSubUserState(customer)] += 1;
+        return acc;
+      },
+      {
+        COM_SUBUTILIZADOR: 0,
+        INCOMPLETO: 0,
+        SEM_SUBUTILIZADOR: 0,
+      } as Record<SegSocialSubUserState, number>
+    );
+  }, [customers]);
+
   const filteredCustomers = customers.filter((customer) => {
     const term = searchTerm.trim().toLowerCase();
     if (term) {
@@ -2161,6 +3302,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     if (stateFilter !== 'TODOS' && getCustomerStatus(customer) !== stateFilter) return false;
     if (typeFilter !== 'TODOS' && String(customer.type) !== typeFilter) return false;
     if (ownerFilter !== 'TODOS' && String(customer.ownerId || '') !== ownerFilter) return false;
+    if (subUserFilter !== 'TODOS' && getSegSocialSubUserState(customer) !== subUserFilter) return false;
 
     return true;
   });
@@ -2213,6 +3355,8 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
         comparison = compareText(ownerNameById.get(left.ownerId || '') || '', ownerNameById.get(right.ownerId || '') || '');
       } else if (sortKey === 'status') {
         comparison = compareText(getCustomerStatus(left), getCustomerStatus(right));
+      } else if (sortKey === 'subuser') {
+        comparison = compareText(getSegSocialSubUserState(left), getSegSocialSubUserState(right));
       }
 
       if (comparison === 0) {
@@ -2223,7 +3367,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     });
 
     return sorted;
-  }, [filteredCustomers, getCustomerStatus, sortDirection, sortKey, users]);
+  }, [filteredCustomers, getCustomerStatus, getSegSocialSubUserState, sortDirection, sortKey, users]);
 
   const selectableRelationCustomers = useMemo(() => {
     const currentId = String(editingCustomer?.id || '').trim();
@@ -2271,6 +3415,11 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     if (!editingCustomer?.supabasePayload || typeof editingCustomer.supabasePayload !== 'object') return undefined;
     return editingCustomer.supabasePayload as Record<string, unknown>;
   }, [editingCustomer]);
+
+  const editingSegSocialSubUserState = useMemo(
+    () => getSegSocialSubUserStateFromCredentials(Array.isArray(formData.accessCredentials) ? formData.accessCredentials : []),
+    [formData.accessCredentials]
+  );
 
   const importedLookup = useMemo(() => buildImportedLookup(importedPayload), [importedPayload]);
 
@@ -2331,6 +3480,16 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     return <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700">ATIVA</span>;
   };
 
+  const SegSocialSubUserBadge = ({ state }: { state: SegSocialSubUserState }) => {
+    if (state === 'COM_SUBUTILIZADOR') {
+      return <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700">Com sub</span>;
+    }
+    if (state === 'INCOMPLETO') {
+      return <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">Incompleto</span>;
+    }
+    return <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600">Sem sub</span>;
+  };
+
   const actionButtonBaseClass =
     'inline-flex items-center justify-center rounded-lg border transition-all duration-150 hover:-translate-y-[1px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1';
   const actionButtonAutologinClass =
@@ -2353,6 +3512,14 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={() => void syncSegSocialPasswordsFromSaft()}
+              disabled={saftSsSyncBusy}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-60 text-white text-xs md:text-sm font-semibold"
+            >
+              <RefreshCw size={16} className={saftSsSyncBusy ? 'animate-spin' : ''} />
+              {saftSsSyncBusy ? 'A atualizar SS...' : 'Atualizar SS SAFT'}
+            </button>
+            <button
               onClick={openHeaderIngestModal}
               className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs md:text-sm font-semibold"
             >
@@ -2371,7 +3538,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-3 border-b border-slate-200 grid grid-cols-1 md:grid-cols-4 gap-2">
+        <div className="p-3 border-b border-slate-200 grid grid-cols-1 md:grid-cols-5 gap-2">
           <div className="relative md:col-span-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input
@@ -2404,12 +3571,26 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
               <option key={user.id} value={user.id}>{user.name}</option>
             ))}
           </select>
+
+          <select value={subUserFilter} onChange={(e) => setSubUserFilter(e.target.value as 'TODOS' | SegSocialSubUserState)} className="w-full py-2 px-3 border border-slate-200 rounded-md bg-white text-sm">
+            <option value="TODOS">Todos os subutilizadores</option>
+            <option value="COM_SUBUTILIZADOR">Com subutilizador</option>
+            <option value="SEM_SUBUTILIZADOR">Sem subutilizador</option>
+            <option value="INCOMPLETO">Subutilizador incompleto</option>
+          </select>
         </div>
 
-        <div className="px-3 py-2 text-xs text-slate-500 border-b border-slate-100">{sortedCustomers.length} cliente(s)</div>
+        <div className="px-3 py-2 text-xs text-slate-500 border-b border-slate-100 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>{sortedCustomers.length} cliente(s)</span>
+          <span className="text-emerald-700 font-semibold">{segSocialSubUserCounts.COM_SUBUTILIZADOR} com subutilizador</span>
+          <span className="text-slate-500 font-semibold">{segSocialSubUserCounts.SEM_SUBUTILIZADOR} sem subutilizador</span>
+          {segSocialSubUserCounts.INCOMPLETO > 0 && (
+            <span className="text-amber-700 font-semibold">{segSocialSubUserCounts.INCOMPLETO} incompleto(s)</span>
+          )}
+        </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1100px] w-full table-fixed">
+          <table className="min-w-[1220px] w-full table-fixed">
             <thead className="bg-slate-100/80">
               <tr>
                 <th className="w-[8%] px-3 py-3 text-left text-[11px] uppercase text-slate-600 font-semibold">
@@ -2417,7 +3598,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                     NIF <span className="text-[10px]">{sortIndicator('nif')}</span>
                   </button>
                 </th>
-                <th className="w-[27%] px-3 py-3 text-left text-[11px] uppercase text-slate-600 font-semibold">
+                <th className="w-[24%] px-3 py-3 text-left text-[11px] uppercase text-slate-600 font-semibold">
                   <button type="button" onClick={() => toggleSort('name')} className="inline-flex items-center gap-1 hover:text-slate-900">
                     Nome <span className="text-[10px]">{sortIndicator('name')}</span>
                   </button>
@@ -2427,17 +3608,17 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                     Tipo <span className="text-[10px]">{sortIndicator('type')}</span>
                   </button>
                 </th>
-                <th className="w-[18%] px-3 py-3 text-left text-[11px] uppercase text-slate-600 font-semibold">
+                <th className="w-[16%] px-3 py-3 text-left text-[11px] uppercase text-slate-600 font-semibold">
                   <button type="button" onClick={() => toggleSort('email')} className="inline-flex items-center gap-1 hover:text-slate-900">
                     Email <span className="text-[10px]">{sortIndicator('email')}</span>
                   </button>
                 </th>
-                <th className="w-[12%] px-3 py-3 text-left text-[11px] uppercase text-slate-600 font-semibold">
+                <th className="w-[11%] px-3 py-3 text-left text-[11px] uppercase text-slate-600 font-semibold">
                   <button type="button" onClick={() => toggleSort('phone')} className="inline-flex items-center gap-1 hover:text-slate-900">
                     Telefone <span className="text-[10px]">{sortIndicator('phone')}</span>
                   </button>
                 </th>
-                <th className="w-[12%] px-3 py-3 text-left text-[11px] uppercase text-slate-600 font-semibold">
+                <th className="w-[11%] px-3 py-3 text-left text-[11px] uppercase text-slate-600 font-semibold">
                   <button type="button" onClick={() => toggleSort('owner')} className="inline-flex items-center gap-1 hover:text-slate-900">
                     Resp. interno <span className="text-[10px]">{sortIndicator('owner')}</span>
                   </button>
@@ -2447,6 +3628,11 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                     Estado <span className="text-[10px]">{sortIndicator('status')}</span>
                   </button>
                 </th>
+                <th className="w-[9%] px-3 py-3 text-left text-[11px] uppercase text-slate-600 font-semibold">
+                  <button type="button" onClick={() => toggleSort('subuser')} className="inline-flex items-center gap-1 hover:text-slate-900">
+                    Subutilizador <span className="text-[10px]">{sortIndicator('subuser')}</span>
+                  </button>
+                </th>
                 <th className="w-[6%] px-3 py-3 text-right text-[11px] uppercase text-slate-600 font-semibold">Ações</th>
               </tr>
             </thead>
@@ -2454,6 +3640,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
               {sortedCustomers.map((customer) => {
                 const owner = users.find((u) => u.id === customer.ownerId);
                 const status = getCustomerStatus(customer);
+                const subUserState = getSegSocialSubUserState(customer);
                 return (
                   <tr key={customer.id} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => openModal(customer)}>
                     <td className="px-3 py-3 text-xs font-mono text-slate-700">{customer.nif || '--'}</td>
@@ -2470,13 +3657,14 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                     <td className="px-3 py-3 text-xs text-slate-700 font-mono">{customer.phone || '--'}</td>
                     <td className="px-3 py-3 text-xs text-slate-700">{owner?.name || '--'}</td>
                     <td className="px-3 py-3"><StatusBadge status={status} /></td>
+                    <td className="px-3 py-3"><SegSocialSubUserBadge state={subUserState} /></td>
                     <td className="px-3 py-3">
                       <div className="flex justify-end items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => {
                             void triggerFinancasAutologin(customer);
                           }}
-                          disabled={Boolean(autologinBusyCustomerId || segSocialAutologinBusyCustomerId)}
+                          disabled={Boolean(autologinBusyCustomerId || segSocialAutologinBusyCustomerId || segSocialSubUserBusyCustomerId)}
                           className={actionButtonAutologinClass}
                           title="Autologin Portal das Finanças"
                           aria-label="Autologin Portal das Finanças"
@@ -2489,12 +3677,12 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         </button>
                         <button
                           onClick={() => {
-                            void triggerSegSocialAutologin(customer);
+                            void openSegSocialManualFallback(customer);
                           }}
-                          disabled={Boolean(autologinBusyCustomerId || segSocialAutologinBusyCustomerId)}
+                          disabled={Boolean(autologinBusyCustomerId || segSocialAutologinBusyCustomerId || segSocialSubUserBusyCustomerId)}
                           className={actionButtonSsAutologinClass}
-                          title="Autologin Segurança Social Direta"
-                          aria-label="Autologin Segurança Social Direta"
+                          title="Abrir Segurança Social Direta (manual)"
+                          aria-label="Abrir Segurança Social Direta manualmente"
                         >
                           <span className="text-[11px] font-semibold leading-none">SS</span>
                         </button>
@@ -2522,7 +3710,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
 
               {sortedCustomers.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-500">Nenhum cliente encontrado para os filtros atuais.</td>
+                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-500">Nenhum cliente encontrado para os filtros atuais.</td>
                 </tr>
               )}
             </tbody>
@@ -2646,10 +3834,10 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
               <div className="flex items-center justify-between gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={() => closeCustomerModal(true)}
                   className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
-                  ← Voltar
+                  ← Sair
                 </button>
                 <div className="min-w-0 flex-1 text-center">
                   <h2 className="text-xl font-bold text-slate-900">{editingCustomer ? 'Editar Cliente' : 'Novo Cliente'}</h2>
@@ -2663,6 +3851,9 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                       ? 'Edite os dados locais. Os contactos podem existir só aqui, sem existir no Supabase.'
                       : 'Ao criar, pode escolher se também quer sincronizar este cliente no MPR Control (Supabase).'}
                   </p>
+                  {formSavedNotice && (
+                    <p className="mt-1 text-xs font-semibold text-emerald-700">{formSavedNotice}</p>
+                  )}
                 </div>
                 <button
                   type="submit"
@@ -3135,86 +4326,299 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
               )}
 
               {activeTab === 'acessos' && (
-                <div className="border rounded-lg p-4 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-800">Credenciais Locais</h3>
-                    <p className="text-xs text-gray-500">Estes dados ficam editáveis nesta aplicação.</p>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Senha Finanças</label>
-                      <input
-                        type="text"
-                        className="mt-1 w-full border rounded-md p-2 font-mono"
-                        value={formData.senhaFinancas}
-                        onChange={(e) => setFormData({ ...formData, senhaFinancas: e.target.value })}
-                      />
+                <div className="space-y-4">
+                  {editingCustomer && (
+                    <div className={`flex flex-col gap-3 rounded-xl border p-3 lg:flex-row lg:items-center lg:justify-between ${
+                      editingSegSocialSubUserState === 'COM_SUBUTILIZADOR'
+                        ? 'border-emerald-200 bg-emerald-50'
+                        : editingSegSocialSubUserState === 'INCOMPLETO'
+                          ? 'border-amber-200 bg-amber-50'
+                          : 'border-slate-200 bg-slate-50'
+                    }`}>
+                      <div>
+                        <div className={`text-sm font-semibold ${
+                          editingSegSocialSubUserState === 'COM_SUBUTILIZADOR'
+                            ? 'text-emerald-900'
+                            : editingSegSocialSubUserState === 'INCOMPLETO'
+                              ? 'text-amber-900'
+                              : 'text-slate-800'
+                        }`}>
+                          Segurança Social: subutilizador geral@mpr.pt
+                        </div>
+                        <p className={`text-xs ${
+                          editingSegSocialSubUserState === 'COM_SUBUTILIZADOR'
+                            ? 'text-emerald-700'
+                            : editingSegSocialSubUserState === 'INCOMPLETO'
+                              ? 'text-amber-700'
+                              : 'text-slate-500'
+                        }`}>
+                          {editingSegSocialSubUserState === 'COM_SUBUTILIZADOR'
+                            ? 'Subutilizador criado com utilizador e senha guardados.'
+                            : editingSegSocialSubUserState === 'INCOMPLETO'
+                              ? 'Subutilizador preparado ou incompleto. Só fica verde depois de confirmar utilizador e senha.'
+                              : 'Cria apenas a subconta empresarial; ativação/token ficam no botão seguinte.'}
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <button
+                          type="button"
+                          onClick={() => void syncSegSocialPasswordsFromSaft(editingCustomer)}
+                          disabled={Boolean(saftSsSyncBusy || editingSegSocialSubUserState === 'COM_SUBUTILIZADOR')}
+                          className="inline-flex items-center justify-center gap-2 rounded-md border border-cyan-200 bg-white px-3 py-2 text-sm font-semibold text-cyan-800 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          title={editingSegSocialSubUserState === 'COM_SUBUTILIZADOR' ? 'Clientes com subutilizador completo não são atualizados pela senha principal do SAFT.' : 'Atualiza a senha e validade da conta principal SS a partir do SAFTonline.'}
+                        >
+                          <RefreshCw size={16} className={saftSsSyncBusy ? 'animate-spin' : ''} />
+                          {saftSsSyncBusy ? 'A atualizar...' : 'Atualizar SS do SAFT'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void triggerSegSocialSubUserSetup(editingCustomer)}
+                          disabled={Boolean(autologinBusyCustomerId || segSocialAutologinBusyCustomerId || segSocialSubUserBusyCustomerId)}
+                          className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          title={!canUseSegSocialSubUserFlow(editingCustomer) ? `Fluxo disponível apenas para empresas e independentes. Tipo atual: ${editingCustomer.type}` : 'Criar subutilizador na Segurança Social.'}
+                        >
+                          <Plus size={16} />
+                          {segSocialSubUserBusyCustomerId === editingCustomer.id ? 'A iniciar...' : 'Criar subutilizador SS'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void triggerSegSocialActivationSetup(editingCustomer)}
+                          disabled={Boolean(autologinBusyCustomerId || segSocialAutologinBusyCustomerId || segSocialSubUserBusyCustomerId || segSocialActivationBusyCustomerId)}
+                          className="inline-flex items-center justify-center rounded-md border border-emerald-300 bg-white px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          title="Usa apenas o subutilizador ja criado e com senha guardada. Nao cria subconta nem usa a conta principal."
+                        >
+                          {segSocialActivationBusyCustomerId === editingCustomer.id ? 'A ativar...' : 'Ativar conta/token'}
+                        </button>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Senha Segurança Social</label>
-                      <input
-                        type="text"
-                        className="mt-1 w-full border rounded-md p-2 font-mono"
-                        value={formData.senhaSegurancaSocial}
-                        onChange={(e) => setFormData({ ...formData, senhaSegurancaSocial: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="border rounded-md p-3 space-y-3">
-                    <div className="flex justify-between items-center">
-                      <div className="text-sm font-semibold text-gray-800">Acessos adicionais</div>
-                      <button
-                        type="button"
-                        onClick={addAccessCredential}
-                        className="text-xs text-whatsapp-600 font-medium hover:underline flex items-center gap-1"
-                      >
-                        <Plus size={14} /> Adicionar acesso
-                      </button>
-                    </div>
-                    <div className="space-y-2">
-                      {formData.accessCredentials.map((credential, index) => (
-                        <div key={`credential-${index}`} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
-                          <input
-                            type="text"
-                            placeholder="Serviço (ex: ViaCTT, RU, IAPMEI)"
-                            className="md:col-span-3 text-sm border rounded-md p-2"
-                            value={credential.service || ''}
-                            onChange={(e) => updateAccessCredential(index, 'service', e.target.value)}
-                          />
-                          <input
-                            type="text"
-                            placeholder="Utilizador"
-                            className="md:col-span-4 text-sm border rounded-md p-2"
-                            value={credential.username || ''}
-                            onChange={(e) => updateAccessCredential(index, 'username', e.target.value)}
-                          />
-                          <input
-                            type="text"
-                            placeholder="Senha"
-                            className="md:col-span-4 text-sm border rounded-md p-2 font-mono"
-                            value={credential.password || ''}
-                            onChange={(e) => updateAccessCredential(index, 'password', e.target.value)}
-                          />
+                  )}
+                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+                    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                      <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-900">Credenciais</h3>
+                            <p className="text-xs text-slate-500">Senhas e chaves ficam guardadas localmente. Um campo vazio nao apaga um segredo ja gravado.</p>
+                          </div>
                           <button
                             type="button"
-                            onClick={() => removeAccessCredential(index)}
-                            className="md:col-span-1 text-red-600 text-xs hover:underline justify-self-start md:justify-self-end"
+                            onClick={addAccessCredential}
+                            className="inline-flex items-center justify-center gap-1 rounded-md border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50"
                           >
-                            Remover
+                            <Plus size={14} /> Adicionar senha
                           </button>
                         </div>
-                      ))}
-                      {formData.accessCredentials.length === 0 && (
-                        <p className="text-xs text-gray-400 italic">Sem acessos adicionais definidos.</p>
-                      )}
-                    </div>
+                      </div>
+                      <div className="divide-y divide-slate-100 p-3">
+                        {credentialPresets.map((preset) => {
+                          const credential = credentialForPreset(preset);
+                          const hasCredential = findCredentialIndexForPreset(preset) >= 0;
+                          return (
+                            <div key={preset.key} className="grid grid-cols-1 gap-3 py-3 lg:grid-cols-[260px_minmax(180px,220px)_minmax(0,1fr)_140px_44px] lg:items-center">
+                              <div className="flex items-center gap-3">
+                                <span className={[
+                                  'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[11px] font-black',
+                                  preset.key.startsWith('ss') ? 'bg-emerald-50 text-emerald-700' : '',
+                                  preset.key === 'at' ? 'bg-blue-50 text-blue-700' : '',
+                                  preset.key === 'ru' ? 'bg-lime-50 text-lime-700' : '',
+                                  preset.key === 'viactt' ? 'bg-red-50 text-red-700' : '',
+                                  preset.key === 'iapmei' ? 'bg-sky-50 text-sky-700' : '',
+                                ].filter(Boolean).join(' ')}
+                                >
+                                  {preset.icon}
+                                </span>
+                                <div>
+                                  <div className="text-sm font-medium text-slate-800">{preset.label}</div>
+                                  <div className="text-[11px] text-slate-400">{preset.credentialType || 'principal'}</div>
+                                </div>
+                              </div>
+                              <input
+                                type="text"
+                                placeholder="Username"
+                                className="h-11 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                                value={credential.username || ''}
+                                onChange={(e) => updateCredentialPreset(preset, 'username', e.target.value)}
+                              />
+                              <input
+                                type="text"
+                                placeholder={preset.key === 'ss_app' || preset.key === 'ss_interop' ? 'Token / chave' : 'Password'}
+                                className="h-11 rounded-md border border-slate-200 bg-white px-3 font-mono text-sm"
+                                value={credential.password || ''}
+                                onChange={(e) => updateCredentialPreset(preset, 'password', e.target.value)}
+                              />
+                              {preset.validity ? (
+                                <input
+                                  type="date"
+                                  className="h-11 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                                  value={credential.validUntil || ''}
+                                  onChange={(e) => updateCredentialPreset(preset, 'validUntil', e.target.value)}
+                                  title="Data validade"
+                                />
+                              ) : (
+                                <div className="hidden lg:block" />
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => removeCredentialPreset(preset)}
+                                disabled={!hasCredential}
+                                className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-red-100 bg-white text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-30"
+                                title="Limpar esta credencial"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          );
+                        })}
+                        {customAccessCredentialIndexes.length > 0 && (
+                          <div className="space-y-3 py-4">
+                            <div>
+                              <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Acessos personalizados</h4>
+                              <p className="text-xs text-slate-400">Senhas especificas deste cliente que nao fazem parte dos acessos base.</p>
+                            </div>
+                            {customAccessCredentialIndexes.map(({ credential, index }) => (
+                              <div key={`custom-credential-${index}`} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(160px,1fr)_150px_minmax(160px,1fr)_minmax(180px,1fr)_44px]">
+                                  <input
+                                    type="text"
+                                    placeholder="Serviço"
+                                    className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                                    value={credential.service || ''}
+                                    onChange={(e) => updateAccessCredential(index, 'service', e.target.value)}
+                                  />
+                                  <select
+                                    className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                                    value={credential.credentialType || ''}
+                                    onChange={(e) => updateAccessCredential(index, 'credentialType', e.target.value)}
+                                  >
+                                    <option value="">Tipo</option>
+                                    <option value="principal">Principal</option>
+                                    <option value="subutilizador">Subutilizador</option>
+                                    <option value="2fa">2FA</option>
+                                    <option value="chave_aplicacional">Chave aplicacional</option>
+                                    <option value="token">Token/chave</option>
+                                    <option value="outro">Outro</option>
+                                  </select>
+                                  <input
+                                    type="text"
+                                    placeholder="Username"
+                                    className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                                    value={credential.username || ''}
+                                    onChange={(e) => updateAccessCredential(index, 'username', e.target.value)}
+                                  />
+                                  <input
+                                    type="text"
+                                    placeholder="Password / token"
+                                    className="h-10 rounded-md border border-slate-200 bg-white px-3 font-mono text-sm"
+                                    value={credential.password || ''}
+                                    onChange={(e) => updateAccessCredential(index, 'password', e.target.value)}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => removeAccessCredential(index)}
+                                    className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-red-100 bg-white text-red-500 hover:bg-red-50"
+                                    title="Remover credencial"
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                </div>
+                                <div className="mt-2 grid grid-cols-1 gap-2 lg:grid-cols-[minmax(160px,1fr)_150px_150px_minmax(180px,1fr)]">
+                                  <input
+                                    type="email"
+                                    placeholder="Email associado"
+                                    className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                                    value={credential.emailAssociado || ''}
+                                    onChange={(e) => updateAccessCredential(index, 'emailAssociado', e.target.value)}
+                                  />
+                                  <input
+                                    type="date"
+                                    className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                                    value={credential.validUntil || ''}
+                                    onChange={(e) => updateAccessCredential(index, 'validUntil', e.target.value)}
+                                    title="Data validade"
+                                  />
+                                  <select
+                                    className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                                    value={credential.status || 'active'}
+                                    onChange={(e) => updateAccessCredential(index, 'status', e.target.value)}
+                                  >
+                                    <option value="pending">Pendente</option>
+                                    <option value="active">Ativo</option>
+                                    <option value="expired">Expirado</option>
+                                    <option value="error">Erro</option>
+                                    <option value="inactive">Inativo</option>
+                                  </select>
+                                  <input
+                                    type="text"
+                                    placeholder="Observações"
+                                    className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                                    value={credential.observacoes || ''}
+                                    onChange={(e) => updateAccessCredential(index, 'observacoes', e.target.value)}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </section>
+
+                    <aside className="rounded-xl border border-slate-200 bg-white shadow-sm">
+                      <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
+                        <h3 className="text-sm font-semibold text-slate-900">Login Automático</h3>
+                      </div>
+                      <div className="space-y-3 p-4">
+                        {editingCustomer ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void triggerFinancasAutologin(editingCustomer)}
+                              disabled={Boolean(autologinBusyCustomerId || segSocialAutologinBusyCustomerId || segSocialSubUserBusyCustomerId || segSocialActivationBusyCustomerId)}
+                              className="flex w-full items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-3 text-left text-sm font-semibold text-blue-800 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Autoridade Tributária
+                              <span className="text-xs">{autologinBusyCustomerId === editingCustomer.id ? 'A abrir...' : 'Abrir'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void triggerSegSocialSubUserLogin(editingCustomer)}
+                              disabled={Boolean(autologinBusyCustomerId || segSocialAutologinBusyCustomerId || segSocialSubUserBusyCustomerId || segSocialActivationBusyCustomerId)}
+                              className="flex w-full items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-3 text-left text-sm font-semibold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              title="Entra na Segurança Social com o subutilizador guardado. Se faltar senha, tenta ler a senha recebida no email."
+                            >
+                              Entrar com subutilizador
+                              <span className="text-xs">{segSocialAutologinBusyCustomerId === editingCustomer.id ? 'A entrar...' : 'Entrar'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void triggerSegSocialInteroperabilityInfo(editingCustomer, 'chave_aplicacional')}
+                              disabled={Boolean(autologinBusyCustomerId || segSocialAutologinBusyCustomerId || segSocialSubUserBusyCustomerId || segSocialActivationBusyCustomerId)}
+                              className="flex w-full items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-3 text-left text-sm font-semibold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Seg. Social Aplicacional
+                              <span className="text-xs">{segSocialAutologinBusyCustomerId === editingCustomer.id ? 'A testar...' : 'Testar'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void triggerSegSocialInteroperabilityInfo(editingCustomer, 'token')}
+                              disabled={Boolean(autologinBusyCustomerId || segSocialAutologinBusyCustomerId || segSocialSubUserBusyCustomerId || segSocialActivationBusyCustomerId)}
+                              className="flex w-full items-center justify-between rounded-lg border border-emerald-100 bg-white px-3 py-3 text-left text-sm font-semibold text-emerald-800 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Seg. Social Token
+                              <span className="text-xs">{segSocialAutologinBusyCustomerId === editingCustomer.id ? 'A testar...' : 'Testar'}</span>
+                            </button>
+                          </>
+                        ) : (
+                          <p className="text-sm text-slate-500">Guarde o cliente primeiro para usar o login automático.</p>
+                        )}
+                      </div>
+                    </aside>
                   </div>
 
                   <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-                    <div className="text-xs text-slate-500 uppercase tracking-wide">Última sincronização com MPR Control</div>
-                    <div className="text-sm font-semibold text-slate-700 mt-1">{formatDateTime(editingCustomer?.supabaseUpdatedAt)}</div>
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-slate-500">Última sincronização com MPR Control</div>
+                      <div className="mt-1 text-sm font-semibold text-slate-700">{formatDateTime(editingCustomer?.supabaseUpdatedAt)}</div>
+                    </div>
                   </div>
 
                   {importedAccesses.length > 0 ? (
@@ -3721,7 +5125,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                                 void openSociedadeFolder(entry.relativePath);
                                 return;
                               }
-                              downloadCustomerDocument(editingCustomer.id, entry.relativePath);
+                              openCustomerDocument(editingCustomer.id, entry.relativePath, sociedadeDocsPath || formData.documentsFolder);
                             }}
                             className="w-full text-left border border-slate-200 rounded-md px-2 py-1.5 bg-white hover:bg-slate-100 flex items-center justify-between gap-2"
                           >
@@ -3737,7 +5141,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                       </div>
 
                       <p className="text-xs text-gray-400">
-                        Clique numa pasta para navegar e clique num ficheiro para descarregar.
+                        Clique numa pasta para navegar e clique num ficheiro para abrir.
                       </p>
 
                       <input
@@ -3876,7 +5280,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                                 void openModalDocumentsFolder(entry.relativePath);
                                 return;
                               }
-                              downloadModalDocument(entry.relativePath);
+                              openModalDocument(entry.relativePath);
                             }}
                             className="w-full text-left border border-slate-200 rounded-md px-2 py-1.5 bg-white hover:bg-slate-100 flex items-center justify-between gap-2"
                           >
@@ -3892,7 +5296,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                       </div>
 
                       <p className="text-xs text-gray-400">
-                        Clique numa pasta para navegar e clique num ficheiro para descarregar.
+                        Clique numa pasta para navegar e clique num ficheiro para abrir.
                       </p>
 
                       <input
@@ -3909,10 +5313,10 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
               <div className="flex justify-end gap-2 mt-6 pt-3 border-t border-slate-200">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={() => closeCustomerModal(true)}
                   className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
-                  Cancelar
+                  Sair
                 </button>
                 <button type="submit" className="rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500">
                   Gravar

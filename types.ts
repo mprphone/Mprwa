@@ -57,6 +57,12 @@ export interface CustomerAccessCredential {
   service: string;
   username: string;
   password: string;
+  credentialType?: string;
+  emailAssociado?: string;
+  validFrom?: string;
+  validUntil?: string;
+  status?: string;
+  observacoes?: string;
 }
 
 export interface CustomerHouseholdRelation {

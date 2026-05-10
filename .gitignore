@@ -7,10 +7,16 @@ node_modules_*/
 *.db-wal
 *.db-shm
 whatsapp.db.before_*
+*.db.bak-*
+whatsapp.db.bak-*
 
 # WhatsApp auth sessions
+.baileys_auth
 .baileys_auth/
+.baileys_auth_2
 .baileys_auth_2/
+.baileys_auth.bak-*/
+.baileys_auth_2.bak-*/
 
 # Environment / secrets
 .env
@@ -23,13 +29,23 @@ release/
 dist/
 
 # Backups
+backups
 backups/
+backups.bak-*/
 
 # Media & user data (runtime)
+chat_media
 chat_media/
+chat_media.bak-*/
+internal_chat_media
 internal_chat_media/
+internal_chat_media.bak-*/
+customer_documents
 customer_documents/
+customer_documents.bak-*/
+exports
 exports/
+exports.bak-*/
 
 # Logs
 *.log

@@ -615,10 +615,10 @@ function isInternalUrl(urlText, runtimeConfig) {
 
 function createMainWindow(runtimeConfig) {
   mainWindow = new BrowserWindow({
-    width: 1520,
-    height: 920,
-    minWidth: 1120,
-    minHeight: 700,
+    width: 1420,
+    height: 840,
+    minWidth: 980,
+    minHeight: 620,
     show: false,
     autoHideMenuBar: true,
     title: APP_NAME,
@@ -632,6 +632,10 @@ function createMainWindow(runtimeConfig) {
   });
 
   mainWindow.loadURL(runtimeConfig.appUrl);
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow?.webContents.setZoomFactor(0.95);
+  });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isInternalUrl(url, runtimeConfig)) {

@@ -40,9 +40,39 @@ function registerChatCoreRoutes(app, deps) {
     sendMobilePushNotification,
     fetchAvatarOnDemand,
     downloadInboundMediaStream,
+    pickBaileysGatewayForOutbound,
   } = deps;
 
   const normalizePhoneDigits = (value) => String(value || '').replace(/\D/g, '');
+  const tryDeleteWhatsAppMessageForEveryone = async ({ toNumber = '', waId = '', accountId = '' } = {}) => {
+    const normalizedWaId = String(waId || '').trim();
+    const toDigits = normalizePhoneDigits(toNumber);
+    if (!normalizedWaId || !toDigits) {
+      return { success: false, error: 'Dados insuficientes para apagar no WhatsApp.' };
+    }
+    if (typeof pickBaileysGatewayForOutbound !== 'function') {
+      return { success: false, error: 'Gateway WhatsApp indisponível para apagar no cliente.' };
+    }
+
+    const resolved = pickBaileysGatewayForOutbound(accountId);
+    if (!resolved?.gateway || typeof resolved.gateway.deleteMessageForEveryone !== 'function') {
+      return { success: false, error: 'Conta WhatsApp sem suporte para apagar no cliente.' };
+    }
+
+    try {
+      await resolved.gateway.deleteMessageForEveryone({
+        to: toDigits,
+        messageId: normalizedWaId,
+      });
+      return { success: true, accountId: resolved.accountId || null };
+    } catch (error) {
+      const details = error?.response?.data || error?.message || error;
+      return {
+        success: false,
+        error: typeof details === 'string' ? details : JSON.stringify(details),
+      };
+    }
+  };
   const extractOwnDigitsFromMeId = (rawMeId) => {
     const value = String(rawMeId || '').trim();
     if (!value) return '';
@@ -84,6 +114,133 @@ function registerChatCoreRoutes(app, deps) {
   };
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms || 0))));
+
+  const parseBooleanEnv = (value, fallback = false) => {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    if (!normalized) return fallback;
+    if (['1', 'true', 'yes', 'on', 'sim'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off', 'nao', 'não'].includes(normalized)) return false;
+    return fallback;
+  };
+
+  const parseIntEnv = (value, fallback, min, max) => {
+    const parsed = Number(value);
+    const safe = Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
+    return Math.max(min, Math.min(max, safe));
+  };
+
+  const inboxCacheEnabled = parseBooleanEnv(process.env.WHATSAPP_INBOX_CACHE_ENABLED, true);
+  const contactsQueryV2Enabled = parseBooleanEnv(process.env.WHATSAPP_CONTACTS_QUERY_V2, true);
+  const contactsCacheTtlMs = parseIntEnv(process.env.WHATSAPP_CONTACTS_CACHE_TTL_MS, 10000, 0, 120000);
+  const messagesCacheTtlMs = parseIntEnv(process.env.WHATSAPP_MESSAGES_CACHE_TTL_MS, 3000, 0, 30000);
+  const inboxCacheMaxEntries = parseIntEnv(process.env.WHATSAPP_INBOX_CACHE_MAX_ENTRIES, 250, 20, 2000);
+  const outboundUploadsCleanupEnabled = parseBooleanEnv(process.env.CHAT_OUTBOUND_UPLOADS_CLEANUP_ENABLED, true);
+  const outboundUploadsTtlHours = parseIntEnv(process.env.CHAT_OUTBOUND_UPLOADS_TTL_HOURS, 72, 1, 24 * 90);
+  const outboundUploadsCleanupIntervalMinutes = parseIntEnv(
+    process.env.CHAT_OUTBOUND_UPLOADS_CLEANUP_INTERVAL_MINUTES,
+    15,
+    1,
+    24 * 60
+  );
+  const outboundUploadsCleanupIntervalMs = outboundUploadsCleanupIntervalMinutes * 60 * 1000;
+  const outboundMediaDedupeWindowMs = parseIntEnv(
+    process.env.WHATSAPP_OUTBOUND_DEDUPE_WINDOW_MS,
+    12000,
+    0,
+    120000
+  );
+
+  const contactsCache = {
+    value: null,
+    expiresAt: 0,
+  };
+  const messagesCache = new Map();
+  const recentOutboundMediaSends = new Map();
+
+  const readContactsCache = () => {
+    if (!inboxCacheEnabled || contactsCacheTtlMs <= 0) return null;
+    if (!contactsCache.value) return null;
+    if (contactsCache.expiresAt <= Date.now()) {
+      contactsCache.value = null;
+      contactsCache.expiresAt = 0;
+      return null;
+    }
+    return contactsCache.value;
+  };
+
+  const writeContactsCache = (value) => {
+    if (!inboxCacheEnabled || contactsCacheTtlMs <= 0) return;
+    contactsCache.value = value;
+    contactsCache.expiresAt = Date.now() + contactsCacheTtlMs;
+  };
+
+  const readMessagesCache = (cacheKey) => {
+    if (!inboxCacheEnabled || messagesCacheTtlMs <= 0 || !cacheKey) return null;
+    const entry = messagesCache.get(cacheKey);
+    if (!entry) return null;
+    if (entry.expiresAt <= Date.now()) {
+      messagesCache.delete(cacheKey);
+      return null;
+    }
+    return entry.value;
+  };
+
+  const writeMessagesCache = (cacheKey, value) => {
+    if (!inboxCacheEnabled || messagesCacheTtlMs <= 0 || !cacheKey) return;
+    messagesCache.set(cacheKey, {
+      value,
+      expiresAt: Date.now() + messagesCacheTtlMs,
+    });
+    while (messagesCache.size > inboxCacheMaxEntries) {
+      const oldestKey = messagesCache.keys().next().value;
+      if (!oldestKey) break;
+      messagesCache.delete(oldestKey);
+    }
+  };
+
+  const clearInboxResponseCaches = () => {
+    contactsCache.value = null;
+    contactsCache.expiresAt = 0;
+    messagesCache.clear();
+  };
+
+  const cleanupRecentOutboundMediaSends = (nowMs = Date.now()) => {
+    if (outboundMediaDedupeWindowMs <= 0 || recentOutboundMediaSends.size === 0) return;
+    for (const [key, value] of recentOutboundMediaSends.entries()) {
+      const ageMs = nowMs - Number(value?.at || 0);
+      if (!Number.isFinite(ageMs) || ageMs > outboundMediaDedupeWindowMs) {
+        recentOutboundMediaSends.delete(key);
+      }
+    }
+  };
+
+  const buildOutboundMediaDedupeKey = ({
+    toNumber = '',
+    accountId = '',
+    conversationId = '',
+    messageKind = '',
+    mediaPath = '',
+    mediaMimeType = '',
+    mediaFileName = '',
+    messageBody = '',
+  }) => {
+    return [
+      String(toNumber || '').trim(),
+      String(accountId || '').trim(),
+      String(conversationId || '').trim(),
+      String(messageKind || '').trim(),
+      String(mediaPath || '').trim(),
+      String(mediaMimeType || '').trim(),
+      String(mediaFileName || '').trim(),
+      String(messageBody || '').trim(),
+    ].join('|');
+  };
+
+  if (chatEvents && typeof chatEvents.on === 'function') {
+    chatEvents.on('chat_event', () => {
+      clearInboxResponseCaches();
+    });
+  }
 
   let blockedContactsTableReady = false;
 
@@ -436,6 +593,57 @@ function registerChatCoreRoutes(app, deps) {
     return '';
   };
 
+  const CHAT_OUTBOUND_UPLOADS_DIR = path.resolve(process.cwd(), 'chat_media', 'outbound_uploads');
+  let lastOutboundUploadsCleanupAt = 0;
+
+  const cleanupOutboundUploadsFolder = async () => {
+    if (!outboundUploadsCleanupEnabled) return;
+
+    const now = Date.now();
+    if (now - lastOutboundUploadsCleanupAt < outboundUploadsCleanupIntervalMs) return;
+    lastOutboundUploadsCleanupAt = now;
+
+    const ttlMs = outboundUploadsTtlHours * 60 * 60 * 1000;
+    const threshold = now - ttlMs;
+
+    try {
+      await fs.promises.mkdir(CHAT_OUTBOUND_UPLOADS_DIR, { recursive: true });
+      const entries = await fs.promises.readdir(CHAT_OUTBOUND_UPLOADS_DIR, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry?.isFile?.()) continue;
+        const entryPath = path.resolve(CHAT_OUTBOUND_UPLOADS_DIR, entry.name);
+        if (entryPath !== CHAT_OUTBOUND_UPLOADS_DIR && !entryPath.startsWith(`${CHAT_OUTBOUND_UPLOADS_DIR}${path.sep}`)) {
+          continue;
+        }
+        try {
+          const stat = await fs.promises.stat(entryPath);
+          const modifiedAt = Number(stat?.mtimeMs || 0);
+          if (!Number.isFinite(modifiedAt) || modifiedAt > threshold) continue;
+          await fs.promises.unlink(entryPath);
+        } catch (_) {
+          // best effort cleanup
+        }
+      }
+    } catch (_) {
+      // keep uploads available even if cleanup fails
+    }
+  };
+
+  const buildOutboundUploadFileName = ({ requestedFileName = '', mimeType = '', mediaKind = '' }) => {
+    const normalizedName = sanitizeDownloadFileName(requestedFileName, 'anexo');
+    const providedExt = String(path.extname(normalizedName || '').toLowerCase() || '');
+    const inferredExt =
+      providedExt ||
+      guessExtensionFromMime(mimeType) ||
+      guessExtensionFromMime(guessMimeType({ explicitMime: mimeType, fileName: normalizedName, mediaKind }));
+    const baseNameRaw = providedExt ? normalizedName.slice(0, -providedExt.length) : normalizedName;
+    const baseName = sanitizeDownloadFileName(baseNameRaw, 'anexo')
+      .replace(/\s+/g, '_')
+      .slice(0, 64);
+    const token = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    return `${token}_${baseName || 'anexo'}${inferredExt || ''}`;
+  };
+
   const normalizeMediaKind = (value) => {
     const normalized = String(value || '').trim().toLowerCase();
     if (!normalized) return '';
@@ -596,6 +804,87 @@ function registerChatCoreRoutes(app, deps) {
 
     return { conversation, customer };
   };
+
+  app.post(['/api/chat/media/upload-temp', '/api/chat/attachments/upload-temp'], async (req, res) => {
+    const body = req.body || {};
+    const requestedFileName = sanitizeDownloadFileName(body.fileName, 'anexo');
+    const contentBase64Raw = String(body.contentBase64 || '').trim();
+    const explicitMimeType = String(body.mimeType || '').trim();
+    const mediaKind = normalizeMediaKind(body.mediaKind || explicitMimeType);
+
+    if (!requestedFileName || !contentBase64Raw) {
+      return res.status(400).json({
+        success: false,
+        error: "fileName e contentBase64 são obrigatórios.",
+      });
+    }
+
+    const cleanBase64 = contentBase64Raw.includes(',') ? contentBase64Raw.split(',')[1] : contentBase64Raw;
+    let fileBuffer = Buffer.alloc(0);
+    try {
+      fileBuffer = Buffer.from(cleanBase64, 'base64');
+    } catch (_) {
+      return res.status(400).json({ success: false, error: 'Conteúdo base64 inválido.' });
+    }
+
+    if (!fileBuffer.length) {
+      return res.status(400).json({ success: false, error: 'Conteúdo base64 inválido.' });
+    }
+
+    try {
+      await cleanupOutboundUploadsFolder();
+      await fs.promises.mkdir(CHAT_OUTBOUND_UPLOADS_DIR, { recursive: true });
+      const storedFileName = buildOutboundUploadFileName({
+        requestedFileName,
+        mimeType: explicitMimeType,
+        mediaKind,
+      });
+      const fullPath = path.resolve(CHAT_OUTBOUND_UPLOADS_DIR, storedFileName);
+      if (fullPath !== CHAT_OUTBOUND_UPLOADS_DIR && !fullPath.startsWith(`${CHAT_OUTBOUND_UPLOADS_DIR}${path.sep}`)) {
+        throw new Error('Nome de ficheiro inválido.');
+      }
+
+      await fs.promises.writeFile(fullPath, fileBuffer);
+      const normalizedMimeType = guessMimeType({
+        explicitMime: explicitMimeType,
+        fileName: requestedFileName,
+        mediaKind,
+      });
+
+      if (typeof writeAuditLog === 'function') {
+        await Promise.resolve(
+          writeAuditLog({
+            actorUserId: String(body.actorUserId || '').trim() || null,
+            entityType: 'chat_media',
+            entityId: storedFileName,
+            action: 'upload_temp',
+            details: {
+              fileName: requestedFileName,
+              storedFileName,
+              size: fileBuffer.length,
+              mimeType: normalizedMimeType,
+              mediaKind: mediaKind || null,
+            },
+          })
+        ).catch(() => null);
+      }
+
+      return res.json({
+        success: true,
+        fileName: requestedFileName,
+        storedFileName,
+        size: fileBuffer.length,
+        mimeType: normalizedMimeType,
+        fullPath,
+      });
+    } catch (error) {
+      const details = error?.message || error;
+      return res.status(500).json({
+        success: false,
+        error: details,
+      });
+    }
+  });
 
   const streamClients = new Set();
   const sendSse = (res, event) => {
@@ -824,109 +1113,262 @@ function registerChatCoreRoutes(app, deps) {
   });
 
 
-  // Rota para Listar Contatos (Sidebar)
-  app.get(['/api/contacts', '/api/chat/contacts'], async (_req, res) => {
-    const sql = `WITH ranked_contacts AS (
-        SELECT
-          cu.phone as from_number,
-          cu.contact_name as customer_contact_name,
-          cu.name as customer_name,
-          cu.company as customer_company,
-          cv.last_message_at as last_msg_time,
-          cv.id as conversation_id,
-          cv.customer_id as customer_id,
-          cv.whatsapp_account_id as whatsapp_account_id,
-          cv.owner_id as owner_id,
-          cv.status as status,
-          cv.unread_count as unread_count,
-          replace(replace(replace(ifnull(cu.phone, ''), '+', ''), ' ', ''), '-', '') as phone_digits,
-          (
-            SELECT substr(trim(ifnull(m_in.body, '')), 1, 220)
-            FROM messages m_in
-            WHERE replace(replace(replace(ifnull(m_in.from_number, ''), '+', ''), ' ', ''), '-', '') =
-                  replace(replace(replace(ifnull(cu.phone, ''), '+', ''), ' ', ''), '-', '')
-              AND lower(ifnull(m_in.direction, 'inbound')) IN ('inbound', 'in')
-            ORDER BY datetime(m_in.timestamp) DESC, m_in.id DESC
-            LIMIT 1
-          ) as last_inbound_preview,
-          (
-            SELECT substr(trim(ifnull(m_any.body, '')), 1, 220)
-            FROM messages m_any
-            WHERE replace(replace(replace(ifnull(m_any.from_number, ''), '+', ''), ' ', ''), '-', '') =
-                  replace(replace(replace(ifnull(cu.phone, ''), '+', ''), ' ', ''), '-', '')
-            ORDER BY datetime(m_any.timestamp) DESC, m_any.id DESC
-            LIMIT 1
-          ) as last_msg_preview,
-          'whatsapp' as channel,
-          CASE
-            WHEN cv.id LIKE 'conv_wa_c_%' THEN 30
-            WHEN cv.id LIKE 'conv_wa_%' THEN 20
-            WHEN cv.id LIKE 'wa_conv_%' THEN 1
-            ELSE 10
-          END as source_rank,
-          ROW_NUMBER() OVER (
-            PARTITION BY replace(replace(replace(ifnull(cu.phone, ''), '+', ''), ' ', ''), '-', '')
-            ORDER BY
-              CASE
-                WHEN cv.id LIKE 'conv_wa_c_%' THEN 30
-                WHEN cv.id LIKE 'conv_wa_%' THEN 20
-                WHEN cv.id LIKE 'wa_conv_%' THEN 1
-                ELSE 10
-              END DESC,
-              cv.unread_count DESC,
-              datetime(cv.last_message_at) DESC
-          ) as row_num
-        FROM conversations cv
-        JOIN customers cu ON cu.id = cv.customer_id
-        WHERE replace(replace(replace(ifnull(cu.phone, ''), '+', ''), ' ', ''), '-', '') <> ''
-          AND EXISTS (
-            SELECT 1
-            FROM messages m
-            WHERE replace(replace(replace(ifnull(m.from_number, ''), '+', ''), ' ', ''), '-', '') =
-                  replace(replace(replace(ifnull(cu.phone, ''), '+', ''), ' ', ''), '-', '')
+  const contactsSqlLegacy = `WITH ranked_contacts AS (
+      SELECT
+        cu.phone as from_number,
+        cu.contact_name as customer_contact_name,
+        cu.name as customer_name,
+        cu.company as customer_company,
+        cv.last_message_at as last_msg_time,
+        cv.id as conversation_id,
+        cv.customer_id as customer_id,
+        cv.whatsapp_account_id as whatsapp_account_id,
+        cv.owner_id as owner_id,
+        cv.status as status,
+        cv.unread_count as unread_count,
+        replace(replace(replace(ifnull(cu.phone, ''), '+', ''), ' ', ''), '-', '') as phone_digits,
+        (
+          SELECT substr(trim(ifnull(m_in.body, '')), 1, 220)
+          FROM messages m_in
+          WHERE replace(replace(replace(ifnull(m_in.from_number, ''), '+', ''), ' ', ''), '-', '') =
+                replace(replace(replace(ifnull(cu.phone, ''), '+', ''), ' ', ''), '-', '')
+            AND lower(ifnull(m_in.direction, 'inbound')) IN ('inbound', 'in')
+          ORDER BY datetime(m_in.timestamp) DESC, m_in.id DESC
+          LIMIT 1
+        ) as last_inbound_preview,
+        (
+          SELECT substr(trim(ifnull(m_any.body, '')), 1, 220)
+          FROM messages m_any
+          WHERE replace(replace(replace(ifnull(m_any.from_number, ''), '+', ''), ' ', ''), '-', '') =
+                replace(replace(replace(ifnull(cu.phone, ''), '+', ''), ' ', ''), '-', '')
+          ORDER BY datetime(m_any.timestamp) DESC, m_any.id DESC
+          LIMIT 1
+        ) as last_msg_preview,
+        'whatsapp' as channel,
+        CASE
+          WHEN cv.id LIKE 'conv_wa_c_%' THEN 30
+          WHEN cv.id LIKE 'conv_wa_%' THEN 20
+          WHEN cv.id LIKE 'wa_conv_%' THEN 1
+          ELSE 10
+        END as source_rank,
+        ROW_NUMBER() OVER (
+          PARTITION BY replace(replace(replace(ifnull(cu.phone, ''), '+', ''), ' ', ''), '-', '')
+          ORDER BY
+            CASE
+              WHEN cv.id LIKE 'conv_wa_c_%' THEN 30
+              WHEN cv.id LIKE 'conv_wa_%' THEN 20
+              WHEN cv.id LIKE 'wa_conv_%' THEN 1
+              ELSE 10
+            END DESC,
+            cv.unread_count DESC,
+            datetime(cv.last_message_at) DESC
+        ) as row_num
+      FROM conversations cv
+      JOIN customers cu ON cu.id = cv.customer_id
+      WHERE replace(replace(replace(ifnull(cu.phone, ''), '+', ''), ' ', ''), '-', '') <> ''
+        AND EXISTS (
+          SELECT 1
+          FROM messages m
+          WHERE replace(replace(replace(ifnull(m.from_number, ''), '+', ''), ' ', ''), '-', '') =
+                replace(replace(replace(ifnull(cu.phone, ''), '+', ''), ' ', ''), '-', '')
+        )
+    )
+    SELECT
+      rc.from_number,
+      rc.customer_contact_name,
+      rc.customer_name,
+      rc.customer_company,
+      rc.last_msg_time,
+      rc.last_msg_preview,
+      rc.last_inbound_preview,
+      rc.conversation_id,
+      rc.customer_id,
+      rc.whatsapp_account_id,
+      rc.owner_id,
+      rc.status,
+      rc.unread_count,
+      rc.channel,
+      COALESCE(bc.is_active, 0) as is_blocked,
+      bc.id as blocked_id,
+      bc.reason as blocked_reason,
+      bc.updated_at as blocked_at
+    FROM ranked_contacts rc
+    LEFT JOIN blocked_contacts bc
+      ON bc.is_active = 1
+     AND bc.channel = 'whatsapp'
+     AND (
+          bc.contact_key = rc.phone_digits
+          OR (
+            length(bc.contact_key) >= 7
+            AND length(rc.phone_digits) >= 7
+            AND (
+              bc.contact_key LIKE ('%' || rc.phone_digits)
+              OR rc.phone_digits LIKE ('%' || bc.contact_key)
+            )
           )
-      )
+        )
+    WHERE rc.row_num = 1
+    ORDER BY datetime(rc.last_msg_time) DESC`;
+
+  const contactsSqlOptimized = `WITH conversation_base AS (
+      SELECT
+        cu.phone as from_number,
+        cu.contact_name as customer_contact_name,
+        cu.name as customer_name,
+        cu.company as customer_company,
+        cv.last_message_at as last_msg_time,
+        cv.id as conversation_id,
+        cv.customer_id as customer_id,
+        cv.whatsapp_account_id as whatsapp_account_id,
+        cv.owner_id as owner_id,
+        cv.status as status,
+        cv.unread_count as unread_count,
+        replace(replace(replace(ifnull(cu.phone, ''), '+', ''), ' ', ''), '-', '') as phone_digits,
+        CASE
+          WHEN cv.id LIKE 'conv_wa_c_%' THEN 30
+          WHEN cv.id LIKE 'conv_wa_%' THEN 20
+          WHEN cv.id LIKE 'wa_conv_%' THEN 1
+          ELSE 10
+        END as source_rank
+      FROM conversations cv
+      JOIN customers cu ON cu.id = cv.customer_id
+      WHERE replace(replace(replace(ifnull(cu.phone, ''), '+', ''), ' ', ''), '-', '') <> ''
+    ),
+    ranked_conversations AS (
+      SELECT
+        cb.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY cb.phone_digits
+          ORDER BY cb.source_rank DESC, cb.unread_count DESC, datetime(cb.last_msg_time) DESC
+        ) as row_num
+      FROM conversation_base cb
+    ),
+    conversation_phone_digits AS (
+      SELECT DISTINCT phone_digits
+      FROM conversation_base
+    ),
+    messages_normalized AS (
+      SELECT
+        m.id,
+        replace(replace(replace(ifnull(m.from_number, ''), '+', ''), ' ', ''), '-', '') as from_digits,
+        substr(trim(ifnull(m.body, '')), 1, 220) as body_preview,
+        lower(ifnull(m.direction, 'inbound')) as direction_lower
+      FROM messages m
+      WHERE ifnull(m.from_number, '') <> ''
+        AND replace(replace(replace(ifnull(m.from_number, ''), '+', ''), ' ', ''), '-', '') IN (
+          SELECT phone_digits FROM conversation_phone_digits
+        )
+    ),
+    latest_any_ids AS (
+      SELECT from_digits, MAX(id) as message_id
+      FROM messages_normalized
+      GROUP BY from_digits
+    ),
+    latest_inbound_ids AS (
+      SELECT from_digits, MAX(id) as message_id
+      FROM messages_normalized
+      WHERE direction_lower IN ('inbound', 'in')
+      GROUP BY from_digits
+    ),
+    latest_any AS (
+      SELECT mn.from_digits, mn.body_preview as last_msg_preview
+      FROM messages_normalized mn
+      JOIN latest_any_ids lai
+        ON lai.from_digits = mn.from_digits
+       AND lai.message_id = mn.id
+    ),
+    latest_inbound AS (
+      SELECT mn.from_digits, mn.body_preview as last_inbound_preview
+      FROM messages_normalized mn
+      JOIN latest_inbound_ids lii
+        ON lii.from_digits = mn.from_digits
+       AND lii.message_id = mn.id
+    ),
+    ranked_contacts AS (
       SELECT
         rc.from_number,
         rc.customer_contact_name,
         rc.customer_name,
         rc.customer_company,
         rc.last_msg_time,
-        rc.last_msg_preview,
-        rc.last_inbound_preview,
+        la.last_msg_preview,
+        li.last_inbound_preview,
         rc.conversation_id,
         rc.customer_id,
         rc.whatsapp_account_id,
         rc.owner_id,
         rc.status,
         rc.unread_count,
-        rc.channel,
-        COALESCE(bc.is_active, 0) as is_blocked,
-        bc.id as blocked_id,
-        bc.reason as blocked_reason,
-        bc.updated_at as blocked_at
-      FROM ranked_contacts rc
-      LEFT JOIN blocked_contacts bc
-        ON bc.is_active = 1
-       AND bc.channel = 'whatsapp'
-       AND (
-            bc.contact_key = rc.phone_digits
-            OR (
-              length(bc.contact_key) >= 7
-              AND length(rc.phone_digits) >= 7
-              AND (
-                bc.contact_key LIKE ('%' || rc.phone_digits)
-                OR rc.phone_digits LIKE ('%' || bc.contact_key)
-              )
+        rc.phone_digits,
+        'whatsapp' as channel
+      FROM ranked_conversations rc
+      JOIN latest_any la
+        ON la.from_digits = rc.phone_digits
+      LEFT JOIN latest_inbound li
+        ON li.from_digits = rc.phone_digits
+      WHERE rc.row_num = 1
+    )
+    SELECT
+      rc.from_number,
+      rc.customer_contact_name,
+      rc.customer_name,
+      rc.customer_company,
+      rc.last_msg_time,
+      rc.last_msg_preview,
+      rc.last_inbound_preview,
+      rc.conversation_id,
+      rc.customer_id,
+      rc.whatsapp_account_id,
+      rc.owner_id,
+      rc.status,
+      rc.unread_count,
+      rc.channel,
+      COALESCE(bc.is_active, 0) as is_blocked,
+      bc.id as blocked_id,
+      bc.reason as blocked_reason,
+      bc.updated_at as blocked_at
+    FROM ranked_contacts rc
+    LEFT JOIN blocked_contacts bc
+      ON bc.is_active = 1
+     AND bc.channel = 'whatsapp'
+     AND (
+          bc.contact_key = rc.phone_digits
+          OR (
+            length(bc.contact_key) >= 7
+            AND length(rc.phone_digits) >= 7
+            AND (
+              bc.contact_key LIKE ('%' || rc.phone_digits)
+              OR rc.phone_digits LIKE ('%' || bc.contact_key)
             )
           )
-      WHERE rc.row_num = 1
-      ORDER BY datetime(rc.last_msg_time) DESC`;
+        )
+    ORDER BY datetime(rc.last_msg_time) DESC`;
 
+  // Rota para Listar Contatos (Sidebar)
+  app.get(['/api/contacts', '/api/chat/contacts'], async (_req, res) => {
     try {
       await ensureBlockedContactsTable();
       await repairOrphanConversationCustomers();
-      const rows = await dbAllAsync(sql, []);
+
+      const cachedContacts = readContactsCache();
+      if (cachedContacts) {
+        return res.json({ data: cachedContacts });
+      }
+
+      let rows = [];
+      if (contactsQueryV2Enabled) {
+        try {
+          rows = await dbAllAsync(contactsSqlOptimized, []);
+        } catch (optimizedError) {
+          logChatCore?.('contacts_query_v2_error', {
+            error: String(optimizedError?.message || optimizedError),
+          });
+          rows = await dbAllAsync(contactsSqlLegacy, []);
+        }
+      } else {
+        rows = await dbAllAsync(contactsSqlLegacy, []);
+      }
+
       let ownWhatsAppDigits = new Set();
       try {
         if (typeof getWhatsAppAccountsHealth === 'function') {
@@ -949,6 +1391,7 @@ function registerChatCoreRoutes(app, deps) {
         return false;
       });
 
+      writeContactsCache(filteredRows);
       return res.json({ data: filteredRows });
     } catch (error) {
       return res.status(400).json({ error: error?.message || error });
@@ -1074,6 +1517,7 @@ function registerChatCoreRoutes(app, deps) {
         return res.status(404).json({ success: false, error: 'Cliente não encontrado.' });
       }
       await dbRunAsync('UPDATE customers SET contact_name = ?, updated_at = ? WHERE id = ?', [contactName, nowIso(), customerId]);
+      clearInboxResponseCaches();
       logChatCore?.('customer_contact_name_updated', { customerId, contactName });
       return res.json({ success: true, contactName });
     } catch (error) {
@@ -1142,6 +1586,12 @@ function registerChatCoreRoutes(app, deps) {
     const where = [];
 
     const phoneDigits = String(phone || '').replace(/\D/g, '');
+    const messagesCacheKey = `phone:${phoneDigits || '*'}|account:${accountId || '*'}`;
+    const cachedMessages = readMessagesCache(messagesCacheKey);
+    if (cachedMessages) {
+      return res.json({ data: cachedMessages });
+    }
+
     if (phoneDigits) {
       // Fast path: from_number já é guardado só com dígitos
       where.push(`ifnull(from_number, '') = ?`);
@@ -1170,7 +1620,9 @@ function registerChatCoreRoutes(app, deps) {
         slowSql += ' ORDER BY id DESC LIMIT 50';
         rows = await dbAllAsync(slowSql, slowParams);
       }
-      res.json({ data: (Array.isArray(rows) ? rows : []).reverse() });
+      const payload = (Array.isArray(rows) ? rows : []).reverse();
+      writeMessagesCache(messagesCacheKey, payload);
+      res.json({ data: payload });
     } catch (error) {
       res.status(400).json({ error: error?.message || error });
     }
@@ -1539,6 +1991,35 @@ function registerChatCoreRoutes(app, deps) {
               }
           : autoVariables;
 
+      let outboundMediaDedupeKey = '';
+      if (outboundMediaDedupeWindowMs > 0 && (messageKind === 'image' || messageKind === 'document')) {
+        const mediaPayload = messageKind === 'image' ? outboundVariables.__image : outboundVariables.__document;
+        outboundMediaDedupeKey = buildOutboundMediaDedupeKey({
+          toNumber: formattedTo,
+          accountId: outboundAccountId || '',
+          conversationId: conversation?.id || '',
+          messageKind,
+          mediaPath: String(mediaPayload?.path || '').trim(),
+          mediaMimeType: String(mediaPayload?.mimeType || '').trim(),
+          mediaFileName: String(mediaPayload?.fileName || '').trim(),
+          messageBody,
+        });
+
+        const nowMs = Date.now();
+        cleanupRecentOutboundMediaSends(nowMs);
+        const existing = recentOutboundMediaSends.get(outboundMediaDedupeKey);
+        if (existing && nowMs - Number(existing.at || 0) <= outboundMediaDedupeWindowMs) {
+          return res.json({
+            success: true,
+            queued: true,
+            deduplicated: true,
+            queueId: existing.queueId,
+            messageId: `q_${existing.queueId}`,
+            conversationId: existing.conversationId || conversation?.id || null,
+          });
+        }
+      }
+
       const queueId = await enqueueOutboundMessage({
         conversationId: conversation?.id || null,
         accountId: outboundAccountId,
@@ -1549,6 +2030,13 @@ function registerChatCoreRoutes(app, deps) {
         variables: outboundVariables,
         createdBy: String(createdBy || '').trim() || null,
       });
+      if (outboundMediaDedupeKey) {
+        recentOutboundMediaSends.set(outboundMediaDedupeKey, {
+          queueId,
+          conversationId: conversation?.id || null,
+          at: Date.now(),
+        });
+      }
 
       await writeAuditLog({
         actorUserId: String(createdBy || '').trim() || null,
@@ -1666,7 +2154,14 @@ function registerChatCoreRoutes(app, deps) {
         media = toMessageMediaRecord(messageRow);
       }
 
-      if (!media || (!media.mediaPath && !media.mediaRemoteId && !media.mediaRemoteUrl)) {
+      const hasBaileysStreamFallback =
+        !!media &&
+        media.mediaProvider === 'baileys' &&
+        typeof downloadInboundMediaStream === 'function' &&
+        !!media.mediaMeta &&
+        !!media.fromNumber;
+
+      if (!media || (!media.mediaPath && !media.mediaRemoteId && !media.mediaRemoteUrl && !hasBaileysStreamFallback)) {
         return res.status(404).json({ success: false, error: 'Esta mensagem não tem anexo disponível para pré-visualização.' });
       }
 
@@ -1711,20 +2206,20 @@ function registerChatCoreRoutes(app, deps) {
         }
       }
 
-      if (
-        media.mediaProvider === 'baileys' &&
-        typeof downloadInboundMediaStream === 'function' &&
-        media.mediaMeta &&
-        media.fromNumber
-      ) {
+      if (hasBaileysStreamFallback) {
         try {
-          const inboundStream = await downloadInboundMediaStream({
-            accountId: media.accountId || '',
-            waId: media.waId || '',
-            fromNumber: media.fromNumber,
-            mediaKind: media.mediaKind,
-            mediaMeta: media.mediaMeta,
-          });
+          const inboundStream = await Promise.race([
+            downloadInboundMediaStream({
+              accountId: media.accountId || '',
+              waId: media.waId || '',
+              fromNumber: media.fromNumber,
+              mediaKind: media.mediaKind,
+              mediaMeta: media.mediaMeta,
+            }),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Timeout ao obter media via Baileys.')), 20000)
+            ),
+          ]);
           inboundStream
             .on('error', (streamError) => {
               if (!res.headersSent) {
@@ -1742,6 +2237,12 @@ function registerChatCoreRoutes(app, deps) {
 
       let remoteUrl = String(media.mediaRemoteUrl || '').trim();
       if (!remoteUrl && media.mediaRemoteId) {
+        if (media.mediaProvider === 'baileys') {
+          return res.status(404).json({
+            success: false,
+            error: 'Não foi possível localizar o anexo desta mensagem no armazenamento local.',
+          });
+        }
         if (!whatsappCloudToken) {
           return res.status(503).json({
             success: false,
@@ -1897,16 +2398,17 @@ function registerChatCoreRoutes(app, deps) {
   });
 
   app.delete('/api/chat/messages/:messageId', async (req, res) => {
-    const target = resolveMessageTarget(req.params.messageId);
+    let target = resolveMessageTarget(req.params.messageId);
     const actorUserId = String(req.body?.actorUserId || '').trim() || null;
     if (!target) {
       return res.status(400).json({ success: false, error: 'Mensagem inválida.' });
     }
 
     try {
+      let queueContext = null;
       if (target.kind === 'queue') {
         const queueRow = await dbGetAsync(
-          `SELECT id, status
+          `SELECT id, status, wa_id, to_number, account_id
            FROM outbound_queue
            WHERE id = ?
            LIMIT 1`,
@@ -1917,36 +2419,51 @@ function registerChatCoreRoutes(app, deps) {
         }
         const status = String(queueRow.status || '').trim();
         if (!['queued', 'retry', 'processing'].includes(status)) {
-          return res.status(409).json({ success: false, error: 'Mensagem já enviada. Só pode ser apagada localmente.' });
+          const queueWaId = String(queueRow.wa_id || '').trim();
+          if (!queueWaId) {
+            return res.status(409).json({ success: false, error: 'Mensagem já enviada. Só pode ser apagada localmente.' });
+          }
+          queueContext = {
+            toNumber: String(queueRow.to_number || '').trim(),
+            accountId: String(queueRow.account_id || '').trim(),
+          };
+          target = { kind: 'wa', waId: queueWaId };
+        } else {
+          await dbRunAsync(
+            `UPDATE outbound_queue
+             SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [target.queueId]
+          );
+          await writeAuditLog({
+            actorUserId,
+            entityType: 'outbound_queue',
+            entityId: String(target.queueId),
+            action: 'cancelled',
+            details: { reason: 'delete_from_ui' },
+          });
+          emitChatEvent?.('message_deleted', { queueId: target.queueId });
+          return res.json({
+            success: true,
+            deleted: true,
+            queueId: target.queueId,
+            deleteMode: 'queue_cancelled',
+            deletedForEveryone: false,
+          });
         }
-        await dbRunAsync(
-          `UPDATE outbound_queue
-           SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
-           WHERE id = ?`,
-          [target.queueId]
-        );
-        await writeAuditLog({
-          actorUserId,
-          entityType: 'outbound_queue',
-          entityId: String(target.queueId),
-          action: 'cancelled',
-          details: { reason: 'delete_from_ui' },
-        });
-        emitChatEvent?.('message_deleted', { queueId: target.queueId });
-        return res.json({ success: true, deleted: true, queueId: target.queueId });
       }
 
       const row =
         target.kind === 'db'
           ? await dbGetAsync(
-              `SELECT id, wa_id
+              `SELECT id, wa_id, from_number, account_id, direction, status
                FROM messages
                WHERE id = ?
                LIMIT 1`,
               [target.dbId]
             )
           : await dbGetAsync(
-              `SELECT id, wa_id
+              `SELECT id, wa_id, from_number, account_id, direction, status
                FROM messages
                WHERE wa_id = ?
                LIMIT 1`,
@@ -1957,9 +2474,36 @@ function registerChatCoreRoutes(app, deps) {
         return res.status(404).json({ success: false, error: 'Mensagem não encontrada.' });
       }
 
+      const direction = String(row.direction || '').trim().toLowerCase();
+      const waId = String(row.wa_id || '').trim();
+      const outboundToDigits = String(row.from_number || '').trim() || String(queueContext?.toNumber || '').trim();
+      const outboundAccountId = String(row.account_id || '').trim() || String(queueContext?.accountId || '').trim();
+      let deletedForEveryone = false;
+      let remoteDeleteError = '';
+      let remoteDeleteAttempted = false;
+
+      if (direction === 'outbound' && waId) {
+        remoteDeleteAttempted = true;
+        const remoteDeleteResult = await tryDeleteWhatsAppMessageForEveryone({
+          toNumber: outboundToDigits,
+          waId,
+          accountId: outboundAccountId,
+        });
+        deletedForEveryone = remoteDeleteResult.success === true;
+        remoteDeleteError = deletedForEveryone ? '' : String(remoteDeleteResult.error || '').trim();
+      }
+
       await dbRunAsync(
         `UPDATE messages
-         SET body = ?
+         SET body = ?,
+             media_kind = NULL,
+             media_path = NULL,
+             media_mime_type = NULL,
+             media_file_name = NULL,
+             media_size = NULL,
+             media_remote_id = NULL,
+             media_remote_url = NULL,
+             media_meta_json = NULL
          WHERE id = ?`,
         ['[Mensagem apagada]', Number(row.id)]
       );
@@ -1969,13 +2513,29 @@ function registerChatCoreRoutes(app, deps) {
         entityType: 'message',
         entityId: String(row.wa_id || `db_${row.id}`),
         action: 'delete',
-        details: { body: '[Mensagem apagada]' },
+        details: {
+          body: '[Mensagem apagada]',
+          remoteDeleteAttempted,
+          deletedForEveryone,
+          remoteDeleteError: remoteDeleteError || null,
+        },
       });
       emitChatEvent?.('message_deleted', {
         messageId: String(row.wa_id || `db_${row.id}`),
         dbId: Number(row.id),
+        deletedForEveryone,
       });
-      return res.json({ success: true, deleted: true, messageId: String(row.wa_id || `db_${row.id}`) });
+      return res.json({
+        success: true,
+        deleted: true,
+        messageId: String(row.wa_id || `db_${row.id}`),
+        deletedForEveryone,
+        deleteMode: deletedForEveryone ? 'remote_and_local' : 'local_only',
+        warning:
+          remoteDeleteAttempted && !deletedForEveryone
+            ? (remoteDeleteError || 'Não foi possível apagar no WhatsApp do cliente.')
+            : null,
+      });
     } catch (error) {
       const details = error?.message || error;
       return res.status(500).json({ success: false, error: details });

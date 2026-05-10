@@ -1,5 +1,7 @@
 'use strict';
 
+const crypto = require('crypto');
+
 /**
  * Internal Chat user tasks, Ponto (time tracking) & Pedidos (requests) routes.
  * Extracted from localDataRoutes.js for maintainability.
@@ -201,21 +203,138 @@ function registerPedidosPontoRoutes(context, helpers) {
         return '';
     };
 
-    async function resolveSupabasePontoContext(actorUserId) {
-        const actorId = String(actorUserId || '').trim();
-        if (!actorId) {
-            throw new Error('actorUserId é obrigatório.');
+    const USER_ID_UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    function isUuid(value) {
+        return USER_ID_UUID_REGEX.test(String(value || '').trim());
+    }
+
+    function isAliasUserId(value) {
+        const normalizedValue = String(value || '').trim().toLowerCase();
+        return normalizedValue.startsWith('ext_') || normalizedValue.startsWith('est_');
+    }
+
+    function localUserResolutionScore(userRow, requestedId) {
+        const normalizedId = String(userRow?.id || '').trim();
+        const normalizedRequestedId = String(requestedId || '').trim();
+        let score = 0;
+        if (!normalizedId) return score;
+        if (normalizedId === normalizedRequestedId) score += 25;
+        if (!isAliasUserId(normalizedId)) score += 120;
+        if (isUuid(normalizedId)) score += 60;
+        if (normalizedId.startsWith('local_')) score += 40;
+        if (/^u\d+$/i.test(normalizedId)) score += 20;
+        if (normalizedId.startsWith('ext_')) score -= 40;
+        if (normalizedId.startsWith('est_')) score -= 80;
+        if (String(userRow?.email || '').trim()) score += 5;
+        return score;
+    }
+
+    async function resolveLocalUserRow(userIdOrAlias, fallbackEmail) {
+        const requestedId = String(userIdOrAlias || '').trim();
+        const normalizedEmail = String(fallbackEmail || '').trim().toLowerCase();
+        const sourceCandidates = Array.from(
+            new Set([
+                String(parseSourceId(requestedId, '') || '').trim(),
+                requestedId.startsWith('ext_u_') ? requestedId.slice('ext_u_'.length) : '',
+                requestedId.startsWith('est_u_') ? requestedId.slice('est_u_'.length) : '',
+                requestedId,
+            ].filter(Boolean))
+        );
+
+        const candidates = [];
+        const seenIds = new Set();
+        const appendRows = (rows) => {
+            if (!Array.isArray(rows)) return;
+            rows.forEach((row) => {
+                const id = String(row?.id || '').trim();
+                if (!id || seenIds.has(id)) return;
+                seenIds.add(id);
+                candidates.push(row);
+            });
+        };
+
+        if (requestedId) {
+            appendRows(
+                await dbAllAsync(
+                    'SELECT id, source_id, name, email, password FROM users WHERE id = ?',
+                    [requestedId]
+                )
+            );
         }
 
-        const actorUser = await dbGetAsync(
-            'SELECT id, source_id, name, email, password FROM users WHERE id = ? LIMIT 1',
-            [actorId]
+        if (sourceCandidates.length > 0) {
+            const placeholders = sourceCandidates.map(() => '?').join(', ');
+            appendRows(
+                await dbAllAsync(
+                    `SELECT id, source_id, name, email, password FROM users WHERE id IN (${placeholders})`,
+                    sourceCandidates
+                )
+            );
+            appendRows(
+                await dbAllAsync(
+                    `SELECT id, source_id, name, email, password FROM users WHERE source_id IN (${placeholders})`,
+                    sourceCandidates
+                )
+            );
+        }
+
+        if (normalizedEmail) {
+            appendRows(
+                await dbAllAsync(
+                    'SELECT id, source_id, name, email, password FROM users WHERE lower(email) = lower(?)',
+                    [normalizedEmail]
+                )
+            );
+        }
+
+        if (candidates.length === 0) return null;
+        candidates.sort(
+            (a, b) => localUserResolutionScore(b, requestedId) - localUserResolutionScore(a, requestedId)
         );
-        if (!actorUser) {
-            const notFoundError = new Error('Funcionário local não encontrado.');
+        return candidates[0] || null;
+    }
+
+    async function resolveSupabaseFuncionarioContext(userIdOrAlias, fallbackEmail, errorMessages = {}) {
+        const requestedId = String(userIdOrAlias || '').trim();
+        const normalizedEmail = String(fallbackEmail || '').trim().toLowerCase();
+        const {
+            missingUserMessage = 'Identificador do funcionário é obrigatório.',
+            localUserNotFoundMessage = 'Funcionário local não encontrado.',
+            supabaseMapNotFoundMessage = 'Funcionário não mapeado no Supabase.',
+        } = errorMessages;
+
+        if (!requestedId && !normalizedEmail) {
+            const missingError = new Error(missingUserMessage);
+            missingError.statusCode = 400;
+            throw missingError;
+        }
+
+        const localUser = await resolveLocalUserRow(requestedId, normalizedEmail);
+        if (!localUser) {
+            const notFoundError = new Error(localUserNotFoundMessage);
             notFoundError.statusCode = 404;
+            notFoundError.details = {
+                requestedUserId: requestedId || null,
+                requestedEmail: normalizedEmail || null,
+            };
             throw notFoundError;
         }
+
+        const localUserId = String(localUser?.id || '').trim();
+        const localEmail = String(localUser?.email || '').trim().toLowerCase();
+        const resolvedSourceId = String(parseSourceId(localUserId, localUser?.source_id) || '').trim();
+        const sourceCandidates = Array.from(
+            new Set([
+                resolvedSourceId,
+                String(localUser?.source_id || '').trim(),
+                String(parseSourceId(requestedId, '') || '').trim(),
+                requestedId.startsWith('ext_u_') ? requestedId.slice('ext_u_'.length) : '',
+                requestedId.startsWith('est_u_') ? requestedId.slice('est_u_'.length) : '',
+                requestedId,
+                localUserId,
+            ].filter(Boolean))
+        );
 
         const funcionariosTableRequested = String(SUPABASE_FUNCIONARIOS_SOURCE || 'funcionarios').trim();
         const funcionariosTable =
@@ -223,24 +342,12 @@ function registerPedidosPontoRoutes(context, helpers) {
                 ? await resolveSupabaseTableName(funcionariosTableRequested, ['public.funcionarios', 'funcionarios'])
                 : funcionariosTableRequested;
 
-        const registosPontoTableRequested = String(process.env.SUPABASE_REGISTOS_PONTO_SOURCE || 'registos_ponto').trim();
-        const registosPontoTable =
-            typeof resolveSupabaseTableName === 'function'
-                ? await resolveSupabaseTableName(registosPontoTableRequested, ['public.registos_ponto', 'registos_ponto'])
-                : registosPontoTableRequested;
-
-        const actorEmail = String(actorUser?.email || '').trim().toLowerCase();
-        const actorSourceId = String(parseSourceId(actorId, actorUser?.source_id) || '').trim();
-        const sourceCandidates = Array.from(
-            new Set([actorSourceId, String(actorUser?.source_id || '').trim(), actorId].filter(Boolean))
-        );
-
         const canFilterFuncionarios = typeof fetchSupabaseTableWithFilters === 'function';
         let funcionarioMatch = null;
 
         if (canFilterFuncionarios) {
             const lookups = [];
-            if (actorEmail) lookups.push({ column: 'email', value: actorEmail });
+            if (localEmail) lookups.push({ column: 'email', value: localEmail });
             for (const candidate of sourceCandidates) {
                 lookups.push({ column: 'source_id', value: candidate });
                 lookups.push({ column: 'user_id', value: candidate });
@@ -268,8 +375,8 @@ function registerPedidosPontoRoutes(context, helpers) {
             });
             const funcionariosRows = Array.isArray(funcionariosRowsRaw) ? funcionariosRowsRaw : [];
 
-            const byEmail = actorEmail
-                ? funcionariosRows.find((row) => String(row?.email || '').trim().toLowerCase() === actorEmail)
+            const byEmail = localEmail
+                ? funcionariosRows.find((row) => String(row?.email || '').trim().toLowerCase() === localEmail)
                 : null;
 
             funcionarioMatch = byEmail || null;
@@ -288,45 +395,56 @@ function registerPedidosPontoRoutes(context, helpers) {
 
         const funcionarioId = String(funcionarioMatch?.id || '').trim();
         if (!funcionarioId) {
-            const mapError = new Error(
-                'Funcionário não mapeado no Supabase. Verifique o email/ligação do funcionário antes de registar ponto.'
-            );
+            const mapError = new Error(supabaseMapNotFoundMessage);
             mapError.statusCode = 404;
             mapError.details = {
-                localUserId: actorId,
-                localEmail: actorEmail || null,
+                requestedUserId: requestedId || null,
+                localUserId: localUserId || null,
+                localEmail: localEmail || null,
                 funcionariosTable,
             };
             throw mapError;
         }
 
         return {
-            actorUser,
-            actorEmail,
-            actorSourceId,
+            localUser,
+            localUserId,
+            localEmail,
+            resolvedSourceId,
             funcionarioRow: funcionarioMatch,
-            funcionarioPin: pickSupabaseFuncionarioPin(funcionarioMatch),
             funcionarioId,
             funcionariosTable,
+        };
+    }
+
+    async function resolveSupabasePontoContext(actorUserId) {
+        const context = await resolveSupabaseFuncionarioContext(actorUserId, '', {
+            missingUserMessage: 'actorUserId é obrigatório.',
+            localUserNotFoundMessage: 'Funcionário local não encontrado.',
+            supabaseMapNotFoundMessage:
+                'Funcionário não mapeado no Supabase. Verifique o email/ligação do funcionário antes de registar ponto.',
+        });
+
+        const registosPontoTableRequested = String(process.env.SUPABASE_REGISTOS_PONTO_SOURCE || 'registos_ponto').trim();
+        const registosPontoTable =
+            typeof resolveSupabaseTableName === 'function'
+                ? await resolveSupabaseTableName(registosPontoTableRequested, ['public.registos_ponto', 'registos_ponto'])
+                : registosPontoTableRequested;
+
+        return {
+            actorUser: context.localUser,
+            actorEmail: context.localEmail,
+            actorSourceId: context.resolvedSourceId,
+            funcionarioRow: context.funcionarioRow,
+            funcionarioPin: pickSupabaseFuncionarioPin(context.funcionarioRow),
+            funcionarioId: context.funcionarioId,
+            funcionariosTable: context.funcionariosTable,
             registosPontoTable,
         };
     }
 
     app.post('/api/internal-chat/ponto/supabase', async (req, res) => {
         try {
-            if (!SUPABASE_URL || !SUPABASE_KEY) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Supabase não configurado (SUPABASE_URL/SUPABASE_KEY).',
-                });
-            }
-            if (typeof fetchSupabaseTable !== 'function') {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Sync Supabase indisponível no servidor (fetchSupabaseTable).',
-                });
-            }
-
             const actorUserId = String(req.body?.actorUserId || '').trim();
             const pin = normalizePinValue(req.body?.pin);
             const origem = String(req.body?.origem || 'oracle').trim() || 'oracle';
@@ -349,6 +467,55 @@ function registerPedidosPontoRoutes(context, helpers) {
             if (!tipo) {
                 return res.status(400).json({ success: false, error: 'Tipo inválido. Use ENTRADA ou SAIDA.' });
             }
+
+            await dbRunAsync(
+                `CREATE TABLE IF NOT EXISTS hr_registos_ponto (
+                    id TEXT PRIMARY KEY,
+                    funcionario_id TEXT NOT NULL,
+                    tipo TEXT NOT NULL,
+                    momento TEXT NOT NULL,
+                    origem TEXT,
+                    supabase_payload_json TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )`
+            );
+
+            const localActorUser = await dbGetAsync('SELECT id, name, email FROM users WHERE id = ? LIMIT 1', [actorUserId]);
+            if (!localActorUser?.id) return res.status(404).json({ success: false, error: 'Utilizador local não encontrado.' });
+            const funcionario = await dbGetAsync(
+                'SELECT id, nome, pin, activo FROM hr_funcionarios WHERE lower(email) = lower(?) LIMIT 1',
+                [String(localActorUser.email || '').trim()]
+            );
+            if (!funcionario?.id) return res.status(404).json({ success: false, error: 'Funcionário não encontrado na ficha local.' });
+            if (Number(funcionario.activo ?? 1) === 0) return res.status(403).json({ success: false, error: 'Funcionário inativo.' });
+            const localExpectedPin = normalizePinValue(funcionario.pin);
+            if (!localExpectedPin) return res.status(400).json({ success: false, error: 'PIN não configurado na ficha local do funcionário.' });
+            if (pin !== localExpectedPin) return res.status(401).json({ success: false, error: `PIN inválido para ${String(localActorUser.name || 'utilizador')}.` });
+
+            const localMomentoRaw = String(req.body?.momento || req.body?.timestamp || '').trim();
+            const localParsedMoment = localMomentoRaw ? new Date(localMomentoRaw) : new Date();
+            const localMomentoIso = !Number.isNaN(localParsedMoment.getTime()) ? localParsedMoment.toISOString() : new Date().toISOString();
+            const id = typeof crypto.randomUUID === 'function'
+                ? crypto.randomUUID()
+                : `ponto_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+            await dbRunAsync(
+                `INSERT INTO hr_registos_ponto (id, funcionario_id, tipo, momento, origem, supabase_payload_json, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+                [id, String(funcionario.id), tipo, localMomentoIso, origem, JSON.stringify({ storage: 'local', actorUserId })]
+            );
+            await writeAuditLog({
+                actorUserId,
+                entityType: 'registo_ponto',
+                entityId: id,
+                action: 'create_local',
+                details: { funcionarioId: String(funcionario.id), tipo, origem, momento: localMomentoIso },
+            });
+            return res.json({
+                success: true,
+                table: 'hr_registos_ponto',
+                registo: { id, funcionarioId: String(funcionario.id), tipo, origem, momento: localMomentoIso },
+            });
 
             let pontoContext;
             try {
@@ -508,24 +675,38 @@ function registerPedidosPontoRoutes(context, helpers) {
 
     app.get('/api/internal-chat/ponto/supabase/recent', async (req, res) => {
         try {
-            if (!SUPABASE_URL || !SUPABASE_KEY) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Supabase não configurado (SUPABASE_URL/SUPABASE_KEY).',
-                });
-            }
-            if (typeof fetchSupabaseTable !== 'function') {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Sync Supabase indisponível no servidor (fetchSupabaseTable).',
-                });
-            }
-
             const actorUserId = String(req.query.actorUserId || req.query.userId || '').trim();
             const limit = Math.min(10, Math.max(1, Number(req.query.limit || 2) || 2));
             if (!actorUserId) {
                 return res.status(400).json({ success: false, error: 'actorUserId é obrigatório.' });
             }
+
+            const actorUser = await dbGetAsync('SELECT id, email FROM users WHERE id = ? LIMIT 1', [actorUserId]);
+            if (!actorUser?.id) return res.status(404).json({ success: false, error: 'Utilizador local não encontrado.' });
+            const funcionario = await dbGetAsync(
+                'SELECT id FROM hr_funcionarios WHERE lower(email) = lower(?) LIMIT 1',
+                [String(actorUser.email || '').trim()]
+            );
+            if (!funcionario?.id) return res.json({ success: true, table: 'hr_registos_ponto', data: [] });
+            const rows = await dbAllAsync(
+                `SELECT id, funcionario_id, tipo, momento, origem
+                 FROM hr_registos_ponto
+                 WHERE funcionario_id = ?
+                 ORDER BY datetime(momento) DESC
+                 LIMIT ?`,
+                [String(funcionario.id), limit]
+            );
+            return res.json({
+                success: true,
+                table: 'hr_registos_ponto',
+                data: rows.map((row) => ({
+                    id: String(row.id || ''),
+                    funcionarioId: String(row.funcionario_id || ''),
+                    tipo: String(row.tipo || '').toUpperCase() === 'SAIDA' ? 'SAIDA' : 'ENTRADA',
+                    origem: String(row.origem || 'oracle'),
+                    momento: String(row.momento || ''),
+                })),
+            });
 
             let pontoContext;
             try {
@@ -598,16 +779,10 @@ function registerPedidosPontoRoutes(context, helpers) {
 
     app.post('/api/internal-chat/pedidos/supabase', async (req, res) => {
         try {
-            if (!SUPABASE_URL || !SUPABASE_KEY) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Supabase não configurado (SUPABASE_URL/SUPABASE_KEY).',
-                });
-            }
-
             const actorUserId = String(req.body?.actorUserId || '').trim();
             const actorNameRaw = String(req.body?.actorName || '').trim();
-            const responsibleUserId = String(
+            const actorEmailRaw = String(req.body?.actorEmail || '').trim().toLowerCase();
+            const responsibleUserIdRaw = String(
                 req.body?.responsibleUserId || req.body?.funcionarioId || req.body?.funcionario_id || ''
             ).trim();
             const tipo = String(req.body?.tipo || req.body?.title || '').trim();
@@ -619,18 +794,175 @@ function registerPedidosPontoRoutes(context, helpers) {
             if (!tipo) {
                 return res.status(400).json({ success: false, error: 'Tipo do pedido é obrigatório.' });
             }
-            if (!responsibleUserId) {
+            if (!responsibleUserIdRaw) {
                 return res.status(400).json({ success: false, error: 'Funcionário responsável é obrigatório.' });
+            }
+            const actorUserRow = actorUserId || actorEmailRaw
+                ? await resolveLocalUserRow(actorUserId, actorEmailRaw)
+                : null;
+            const actorTrackingUserId = String(actorUserRow?.id || actorUserId || '').trim();
+
+            await dbRunAsync(
+                `CREATE TABLE IF NOT EXISTS hr_pedidos (
+                    id TEXT PRIMARY KEY,
+                    funcionario_id TEXT,
+                    atribuido_a TEXT,
+                    tipo TEXT NOT NULL,
+                    descricao TEXT,
+                    data_inicio TEXT,
+                    data_fim TEXT,
+                    status TEXT NOT NULL DEFAULT 'PENDENTE',
+                    resolucao TEXT,
+                    supabase_payload_json TEXT,
+                    supabase_created_at TEXT,
+                    supabase_updated_at TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )`
+            );
+            let responsibleFuncionario = await dbGetAsync('SELECT id, nome, email FROM hr_funcionarios WHERE id = ? LIMIT 1', [responsibleUserIdRaw]);
+            if (!responsibleFuncionario?.id) {
+                const responsibleLocalUser = await dbGetAsync('SELECT id, email FROM users WHERE id = ? LIMIT 1', [responsibleUserIdRaw]);
+                if (responsibleLocalUser?.email) {
+                    responsibleFuncionario = await dbGetAsync(
+                        'SELECT id, nome, email FROM hr_funcionarios WHERE lower(email) = lower(?) LIMIT 1',
+                        [String(responsibleLocalUser.email || '').trim()]
+                    );
+                }
+            }
+            if (!responsibleFuncionario?.id && actorUserRow?.email) {
+                responsibleFuncionario = await dbGetAsync(
+                    'SELECT id, nome, email FROM hr_funcionarios WHERE lower(email) = lower(?) LIMIT 1',
+                    [String(actorUserRow.email || actorEmailRaw || '').trim()]
+                );
+            }
+            if (!responsibleFuncionario?.id) {
+                return res.status(404).json({ success: false, error: 'Funcionário responsável não encontrado na ficha local.' });
+            }
+
+            const normalizeLocalDate = (value) => {
+                const raw = String(value || '').trim();
+                if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+                const parsed = raw ? new Date(raw) : null;
+                return parsed && !Number.isNaN(parsed.getTime()) ? parsed.toISOString().slice(0, 10) : '';
+            };
+            const dataInicioLocal = normalizeLocalDate(dataInicioInput) || new Date().toISOString().slice(0, 10);
+            const dataFimLocal = normalizeLocalDate(dataFimInput) || dataInicioLocal;
+            const pedidoId = typeof crypto.randomUUID === 'function'
+                ? crypto.randomUUID()
+                : `pedido_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+            const payloadLocal = {
+                id: pedidoId,
+                funcionario_id: String(responsibleFuncionario.id),
+                atribuido_a: String(responsibleFuncionario.id),
+                tipo,
+                descricao,
+                data_inicio: dataInicioLocal,
+                data_fim: dataFimLocal,
+                status,
+                storage: 'local',
+                requester_user_id: actorTrackingUserId,
+            };
+            await dbRunAsync(
+                `INSERT INTO hr_pedidos (
+                    id, funcionario_id, atribuido_a, tipo, descricao, data_inicio, data_fim, status,
+                    resolucao, supabase_payload_json, supabase_created_at, supabase_updated_at, updated_at
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, '', '', CURRENT_TIMESTAMP)`,
+                [
+                    pedidoId,
+                    String(responsibleFuncionario.id),
+                    String(responsibleFuncionario.id),
+                    tipo,
+                    descricao,
+                    dataInicioLocal,
+                    dataFimLocal,
+                    status,
+                    JSON.stringify(payloadLocal),
+                ]
+            );
+            try {
+                const managerLocalUser = await dbGetAsync('SELECT id, name, email FROM users WHERE lower(email) = lower(?) LIMIT 1', ['mpr@mpr.pt']);
+                const managerLocalUserId = String(managerLocalUser?.id || '').trim();
+                const actorName = actorNameRaw || String(actorUserRow?.name || responsibleFuncionario.nome || 'Funcionário').trim();
+                if (managerLocalUserId) {
+                    const conversationId = await ensureDirectConversationBetweenUsers({
+                        userId: managerLocalUserId,
+                        targetUserId: managerLocalUserId,
+                        titleIfSelf: 'Notas e Avisos',
+                    });
+                    if (conversationId) {
+                        await sendInternalSystemMessage({
+                            conversationId,
+                            senderUserId: actorTrackingUserId || managerLocalUserId,
+                            recipientUserId: managerLocalUserId,
+                            body: `O funcionário ${actorName} fez um novo pedido (${tipo}) de ${dataInicioLocal}${dataFimLocal !== dataInicioLocal ? ` a ${dataFimLocal}` : ''}.`,
+                        });
+                    }
+                }
+            } catch (notifyError) {
+                console.error('[Internal Chat] Aviso: falha ao enviar notificação local de pedido:', notifyError?.message || notifyError);
+            }
+            await writeAuditLog({
+                actorUserId: actorTrackingUserId || null,
+                entityType: 'pedido',
+                entityId: pedidoId,
+                action: 'create_local',
+                details: { tipo, responsibleUserId: String(responsibleFuncionario.id), status, dataInicio: dataInicioLocal, dataFim: dataFimLocal },
+            });
+            return res.json({
+                success: true,
+                table: 'hr_pedidos',
+                pedido: { id: pedidoId, funcionarioId: String(responsibleFuncionario.id), tipo, descricao, dataInicio: dataInicioLocal, dataFim: dataFimLocal, status },
+            });
+
+            let actorFuncionarioId = '';
+            if (actorUserRow?.id || actorEmailRaw) {
+                try {
+                    const actorSupabaseContext = await resolveSupabaseFuncionarioContext(
+                        String(actorUserRow?.id || actorUserId || '').trim(),
+                        actorEmailRaw || String(actorUserRow?.email || '').trim(),
+                        {
+                            localUserNotFoundMessage: 'Funcionário solicitante local não encontrado.',
+                            supabaseMapNotFoundMessage: 'Funcionário solicitante não encontrado no Supabase.',
+                        }
+                    );
+                    actorFuncionarioId = String(actorSupabaseContext?.funcionarioId || '').trim();
+                } catch (actorResolveError) {
+                    console.warn(
+                        '[Pedidos] Aviso: não foi possível mapear o solicitante para UUID de funcionário:',
+                        actorResolveError?.message || actorResolveError
+                    );
+                }
+            }
+
+            let responsibleUserId = String(responsibleUserIdRaw || '').trim();
+            if (!isUuid(responsibleUserIdRaw)) {
+                try {
+                    const responsibleSupabaseContext = await resolveSupabaseFuncionarioContext(
+                        responsibleUserIdRaw,
+                        '',
+                        {
+                            missingUserMessage: 'Funcionário responsável é obrigatório.',
+                            localUserNotFoundMessage: `ID de funcionário inválido ou não encontrado: ${responsibleUserIdRaw}`,
+                            supabaseMapNotFoundMessage:
+                                'Funcionário responsável não encontrado no Supabase. Verifique a correspondência de email/ID.',
+                        }
+                    );
+                    responsibleUserId = String(responsibleSupabaseContext?.funcionarioId || '').trim();
+                } catch (resolveError) {
+                    const statusCode = Number(resolveError?.statusCode || 400) || 400;
+                    return res.status(statusCode).json({
+                        success: false,
+                        error: resolveError?.message || 'Falha ao mapear o funcionário responsável.',
+                        details: resolveError?.details || null,
+                    });
+                }
             }
 
             const managerEmail = String(process.env.SUPABASE_PEDIDOS_MANAGER_EMAIL || 'mpr@mpr.pt')
                 .trim()
                 .toLowerCase();
-            const managerFuncionarioIdEnv = String(process.env.SUPABASE_PEDIDOS_MANAGER_ID || '').trim();
 
-            const actorUserRow = actorUserId
-                ? await dbGetAsync('SELECT id, name, email FROM users WHERE id = ? LIMIT 1', [actorUserId])
-                : null;
             const actorName = actorNameRaw || String(actorUserRow?.name || '').trim() || 'Funcionário';
             let managerLocalUser = null;
             if (managerEmail) {
@@ -660,11 +992,8 @@ function registerPedidosPontoRoutes(context, helpers) {
             const dataInicioColumn = String(process.env.SUPABASE_PEDIDOS_START_DATE_COLUMN || 'data_inicio').trim();
             const dataFimColumn = String(process.env.SUPABASE_PEDIDOS_END_DATE_COLUMN || 'data_fim').trim();
             const requesterColumn = String(process.env.SUPABASE_PEDIDOS_REQUESTER_COLUMN || '').trim();
+            const requesterLegacyColumn = String(process.env.SUPABASE_PEDIDOS_ASSIGNEE_LEGACY_COLUMN || '').trim();
             const originColumn = String(process.env.SUPABASE_PEDIDOS_ORIGIN_COLUMN || '').trim();
-            const funcionariosTableRequested = String(SUPABASE_FUNCIONARIOS_SOURCE || 'funcionarios').trim();
-            const funcionariosTable = typeof resolveSupabaseTableName === 'function'
-                ? await resolveSupabaseTableName(funcionariosTableRequested, ['public.funcionarios', 'funcionarios'])
-                : funcionariosTableRequested;
 
             const todayIso = new Date().toISOString().slice(0, 10);
             const dataInicio = /^\d{4}-\d{2}-\d{2}$/.test(dataInicioInput) ? dataInicioInput : todayIso;
@@ -673,25 +1002,8 @@ function registerPedidosPontoRoutes(context, helpers) {
                 .replace(/\s+/g, ' ')
                 .trim()
                 .toLowerCase();
-
-            let managerFuncionarioId = managerFuncionarioIdEnv;
-            if (managerEmail) {
-                const managerLookupResponse = await fetch(
-                    `${SUPABASE_URL}/rest/v1/${encodeURIComponent(funcionariosTable)}?select=id,email&email=ilike.${encodeURIComponent(managerEmail)}&limit=1`,
-                    {
-                        method: 'GET',
-                        headers: {
-                            apikey: SUPABASE_KEY,
-                            Authorization: `Bearer ${SUPABASE_KEY}`,
-                        },
-                    }
-                );
-                const managerLookupJson = await managerLookupResponse.json().catch(() => []);
-                if (managerLookupResponse.ok && Array.isArray(managerLookupJson) && managerLookupJson[0]?.id) {
-                    managerFuncionarioId = String(managerLookupJson[0].id || '').trim();
-                }
-            }
-            const pedidoOwnerFuncionarioId = managerFuncionarioId || responsibleUserId;
+            // Regista o pedido no funcionário solicitante (ex.: férias no próprio registo).
+            const pedidoOwnerFuncionarioId = responsibleUserId;
 
             const duplicateLookupUrl =
                 `${SUPABASE_URL}/rest/v1/${encodeURIComponent(pedidosTable)}` +
@@ -722,11 +1034,11 @@ function registerPedidosPontoRoutes(context, helpers) {
                 });
                 if (duplicateRow) {
                     const duplicateSupabasePedidoId = String(duplicateRow?.id || '').trim();
-                    if (duplicateSupabasePedidoId && actorUserId) {
+                    if (duplicateSupabasePedidoId && actorTrackingUserId) {
                         await upsertTrackedSupabasePedido({
                             supabasePedidoId: duplicateSupabasePedidoId,
                             supabaseTable: pedidosTable,
-                            requesterUserId: actorUserId,
+                            requesterUserId: actorTrackingUserId,
                             requesterName: actorName,
                             managerUserId: managerLocalUserId || null,
                             tipo,
@@ -752,30 +1064,87 @@ function registerPedidosPontoRoutes(context, helpers) {
             if (funcionarioColumn) payload[funcionarioColumn] = pedidoOwnerFuncionarioId;
             if (dataInicioColumn) payload[dataInicioColumn] = dataInicio;
             if (dataFimColumn) payload[dataFimColumn] = dataFim;
-            if (requesterColumn && actorUserId) payload[requesterColumn] = actorUserId;
-            if (originColumn) payload[originColumn] = 'wa_pro_internal_chat';
 
-            const response = await fetch(`${SUPABASE_URL}/rest/v1/${encodeURIComponent(pedidosTable)}`, {
-                method: 'POST',
-                headers: {
-                    apikey: SUPABASE_KEY,
-                    Authorization: `Bearer ${SUPABASE_KEY}`,
-                    'Content-Type': 'application/json',
-                    Prefer: 'return=representation',
-                },
-                body: JSON.stringify(payload),
-            });
+            const optionalPayloadColumnsByLower = new Map();
+            const addOptionalPayloadColumn = (columnName, value) => {
+                const normalizedColumn = String(columnName || '').trim();
+                if (!normalizedColumn || normalizedColumn === funcionarioColumn) return;
+                payload[normalizedColumn] = value;
+                optionalPayloadColumnsByLower.set(normalizedColumn.toLowerCase(), normalizedColumn);
+            };
 
-            const responseJson = await response.json().catch(() => ({}));
-            if (!response.ok) {
+            const requesterIdForPayload = String(actorFuncionarioId || responsibleUserId || '').trim();
+            const requesterColumns = Array.from(
+                new Set([requesterColumn, requesterLegacyColumn].map((item) => String(item || '').trim()).filter(Boolean))
+            );
+
+            if (requesterIdForPayload && requesterColumns.length > 0) {
+                for (const columnName of requesterColumns) {
+                    addOptionalPayloadColumn(columnName, requesterIdForPayload);
+                }
+            }
+            if (originColumn) addOptionalPayloadColumn(originColumn, 'wa_pro_internal_chat');
+
+            const extractMissingColumnName = (errorText) => {
+                const text = String(errorText || '');
+                const patterns = [
+                    /could not find the '([^']+)' column/i,
+                    /column "([^"]+)"(?: of relation "[^"]+")? does not exist/i,
+                    /unknown field ([a-zA-Z0-9_]+)/i,
+                ];
+                for (const pattern of patterns) {
+                    const match = text.match(pattern);
+                    if (match?.[1]) return String(match[1]).trim().toLowerCase();
+                }
+                return '';
+            };
+
+            const droppedOptionalColumns = [];
+            const maxInsertAttempts = Math.max(1, optionalPayloadColumnsByLower.size + 1);
+            let response = null;
+            let responseJson = {};
+            for (let attempt = 0; attempt < maxInsertAttempts; attempt += 1) {
+                response = await fetch(`${SUPABASE_URL}/rest/v1/${encodeURIComponent(pedidosTable)}`, {
+                    method: 'POST',
+                    headers: {
+                        apikey: SUPABASE_KEY,
+                        Authorization: `Bearer ${SUPABASE_KEY}`,
+                        'Content-Type': 'application/json',
+                        Prefer: 'return=representation',
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                responseJson = await response.json().catch(() => ({}));
+                if (response.ok) break;
+
                 const errorText =
                     (typeof responseJson?.message === 'string' && responseJson.message) ||
                     (typeof responseJson?.error === 'string' && responseJson.error) ||
-                    `HTTP ${response.status}`;
-                return res.status(response.status).json({
+                    '';
+                const missingColumnNameLower = extractMissingColumnName(errorText);
+                const optionalColumnName = missingColumnNameLower
+                    ? optionalPayloadColumnsByLower.get(missingColumnNameLower)
+                    : '';
+                if (optionalColumnName && Object.prototype.hasOwnProperty.call(payload, optionalColumnName)) {
+                    delete payload[optionalColumnName];
+                    optionalPayloadColumnsByLower.delete(missingColumnNameLower);
+                    droppedOptionalColumns.push(optionalColumnName);
+                    continue;
+                }
+                break;
+            }
+
+            if (!response || !response.ok) {
+                const errorText =
+                    (typeof responseJson?.message === 'string' && responseJson.message) ||
+                    (typeof responseJson?.error === 'string' && responseJson.error) ||
+                    `HTTP ${response?.status || 500}`;
+                return res.status(Number(response?.status || 500) || 500).json({
                     success: false,
                     error: `Falha ao criar pedido no Supabase (${pedidosTable}): ${errorText}`,
                     details: responseJson,
+                    droppedOptionalColumns,
                     requiredConfig: {
                         SUPABASE_PEDIDOS_SOURCE: pedidosTableRequested,
                         SUPABASE_PEDIDOS_TYPE_COLUMN: tipoColumn,
@@ -786,6 +1155,7 @@ function registerPedidosPontoRoutes(context, helpers) {
                         SUPABASE_PEDIDOS_END_DATE_COLUMN: dataFimColumn,
                         SUPABASE_PEDIDOS_MANAGER_EMAIL: managerEmail,
                         SUPABASE_PEDIDOS_REQUESTER_COLUMN: requesterColumn || '(opcional)',
+                        SUPABASE_PEDIDOS_ASSIGNEE_LEGACY_COLUMN: requesterLegacyColumn || '(opcional)',
                         SUPABASE_PEDIDOS_ORIGIN_COLUMN: originColumn || '(opcional)',
                     },
                 });
@@ -793,11 +1163,11 @@ function registerPedidosPontoRoutes(context, helpers) {
 
             const createdRow = Array.isArray(responseJson) ? responseJson[0] || null : responseJson || null;
             const createdSupabasePedidoId = String(createdRow?.id || '').trim();
-            if (createdSupabasePedidoId && actorUserId) {
+            if (createdSupabasePedidoId && actorTrackingUserId) {
                 await upsertTrackedSupabasePedido({
                     supabasePedidoId: createdSupabasePedidoId,
                     supabaseTable: pedidosTable,
-                    requesterUserId: actorUserId,
+                    requesterUserId: actorTrackingUserId,
                     requesterName: actorName,
                     managerUserId: managerLocalUserId || null,
                     tipo,
@@ -808,7 +1178,7 @@ function registerPedidosPontoRoutes(context, helpers) {
 
             // Notifica a gerência no canal "Notas e Avisos" quando outro funcionário cria pedido.
             try {
-                const actorIdNormalized = String(actorUserId || '').trim();
+                const actorIdNormalized = String(actorTrackingUserId || '').trim();
                 const managerIdNormalized = String(managerLocalUserId || '').trim();
                 if (managerIdNormalized && actorIdNormalized && actorIdNormalized !== managerIdNormalized) {
                     const senderUserId = actorUserRow?.id ? actorIdNormalized : managerIdNormalized;
@@ -838,7 +1208,7 @@ function registerPedidosPontoRoutes(context, helpers) {
             }
 
             await writeAuditLog({
-                actorUserId: actorUserId || null,
+                actorUserId: actorTrackingUserId || null,
                 entityType: 'pedido',
                 entityId: createdRow?.id ? String(createdRow.id) : null,
                 action: 'create_supabase',
@@ -850,7 +1220,7 @@ function registerPedidosPontoRoutes(context, helpers) {
                     dataInicio,
                     dataFim,
                     managerEmail: managerEmail || null,
-                    requesterUserId: actorUserId || null,
+                    requesterUserId: actorTrackingUserId || null,
                 },
             });
 

@@ -42,6 +42,50 @@ function createCustomerRepository(deps) {
         return '';
     }
 
+    function normalizeCredentialIdentity(value) {
+        return String(value || '')
+            .trim()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/_/g, '-')
+            .toLowerCase();
+    }
+
+    function parseRawAccessCredentialsArray(rawValue) {
+        if (Array.isArray(rawValue)) return rawValue;
+        if (typeof rawValue === 'string' && rawValue.trim()) {
+            try {
+                const parsed = JSON.parse(rawValue);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (error) {
+                return [];
+            }
+        }
+        return [];
+    }
+
+    function accessCredentialsMatch(a, b) {
+        if (!a || !b) return false;
+        if (normalizeCredentialIdentity(a.service) !== normalizeCredentialIdentity(b.service)) return false;
+        if (normalizeCredentialIdentity(a.credentialType || a.credential_type) !== normalizeCredentialIdentity(b.credentialType || b.credential_type)) return false;
+        const aUsername = normalizeCredentialIdentity(a.username);
+        const bUsername = normalizeCredentialIdentity(b.username);
+        if (aUsername && bUsername && aUsername === bUsername) return true;
+        const aEmail = normalizeCredentialIdentity(a.emailAssociado || a.email_associado || a.associatedEmail);
+        const bEmail = normalizeCredentialIdentity(b.emailAssociado || b.email_associado || b.associatedEmail);
+        return Boolean(aEmail && bEmail && aEmail === bEmail);
+    }
+
+    function preserveStoredCredentialPasswords(incomingCredentials, existingAccessCredentialsJson) {
+        const rawExistingCredentials = parseRawAccessCredentialsArray(existingAccessCredentialsJson);
+        return (Array.isArray(incomingCredentials) ? incomingCredentials : []).map((credential) => {
+            if (String(credential?.password || '').trim()) return credential;
+            const previous = rawExistingCredentials.find((candidate) => accessCredentialsMatch(credential, candidate));
+            const previousPassword = String(previous?.password || '').trim();
+            return previousPassword ? { ...credential, password: previousPassword } : credential;
+        });
+    }
+
     function normalizeCustomerNif(value) {
         return normalizeDigits(String(value || '')).slice(-9);
     }
@@ -277,7 +321,7 @@ function createCustomerRepository(deps) {
                 : parseManagersArray(existing?.managers_json);
         const finalAccessCredentialsBase =
             input.accessCredentials !== undefined
-                ? incomingAccessCredentials
+                ? preserveStoredCredentialPasswords(incomingAccessCredentials, existing?.access_credentials_json)
                 : parseAccessCredentialsArray(existing?.access_credentials_json);
         const finalAccessCredentials = applyDefaultAccessCredentialUsernames(finalAccessCredentialsBase, finalNif);
         const finalAgregadoFamiliar =

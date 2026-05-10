@@ -82,8 +82,14 @@ function createMappers(deps) {
                     service: String(item?.service || '').trim(),
                     username: String(item?.username || '').trim(),
                     password: decryptCustomerSecret(String(item?.password || '').trim()),
+                    credentialType: String(item?.credentialType || item?.credential_type || item?.tipo_credencial || '').trim(),
+                    emailAssociado: String(item?.emailAssociado || item?.email_associado || item?.associatedEmail || '').trim(),
+                    validFrom: String(item?.validFrom || item?.valid_from || '').trim(),
+                    validUntil: String(item?.validUntil || item?.valid_until || '').trim(),
+                    status: String(item?.status || '').trim(),
+                    observacoes: String(item?.observacoes || item?.notes || item?.observations || '').trim(),
                 }))
-                .filter((item) => item.service || item.username || item.password);
+                .filter((item) => item.service || item.username || item.password || item.emailAssociado || item.validUntil);
         }
 
         if (typeof rawValue === 'string' && rawValue.trim()) {
@@ -98,14 +104,22 @@ function createMappers(deps) {
     }
 
     function serializeAccessCredentialsForStorage(rawCredentials) {
-        const credentials = parseAccessCredentialsArray(rawCredentials);
+        const credentials = Array.isArray(rawCredentials)
+            ? rawCredentials
+            : parseAccessCredentialsArray(rawCredentials);
         const normalized = credentials
             .map((item) => ({
                 service: String(item?.service || '').trim(),
                 username: String(item?.username || '').trim(),
                 password: encryptCustomerSecret(String(item?.password || '').trim()),
+                credentialType: String(item?.credentialType || '').trim(),
+                emailAssociado: String(item?.emailAssociado || '').trim(),
+                validFrom: String(item?.validFrom || '').trim(),
+                validUntil: String(item?.validUntil || '').trim(),
+                status: String(item?.status || '').trim(),
+                observacoes: String(item?.observacoes || '').trim(),
             }))
-            .filter((item) => item.service || item.username || item.password);
+            .filter((item) => item.service || item.username || item.password || item.emailAssociado || item.validUntil);
         return JSON.stringify(normalized);
     }
 
@@ -304,22 +318,47 @@ function createMappers(deps) {
             ])
         );
 
-        const pushIfAny = (service, usernameRaw, passwordRaw) => {
+        const pickValidity = (candidates) => String(pickFirstValue(rawRow, candidates) || '').trim();
+        const pushIfAny = (service, usernameRaw, passwordRaw, credentialType = '', extra = {}) => {
             const username = String(usernameRaw || '').trim();
             const password = String(passwordRaw || '').trim();
-            if (!username && !password) return;
-            credentials.push({ service: String(service || '').trim(), username, password });
+            const validUntil = String(extra.validUntil || '').trim();
+            if (!username && !password && !validUntil) return;
+            credentials.push({
+                service: String(service || '').trim(),
+                username,
+                password,
+                credentialType: String(credentialType || '').trim(),
+                validUntil,
+            });
         };
 
         pushIfAny(
             'AT',
             pickFirstValue(rawRow, ['utilizador_at', 'username_at', 'user_at']),
-            pickFirstValue(rawRow, ['password_at', 'senha_at']) || fallback?.senhaFinancas
+            pickFirstValue(rawRow, ['password_at', 'senha_at']) || fallback?.senhaFinancas,
+            'principal'
         );
         pushIfAny(
             'SS',
             pickFirstValue(rawRow, ['utilizador_ss', 'username_ss', 'user_ss']),
-            pickFirstValue(rawRow, ['password_ss', 'senha_ss']) || fallback?.senhaSegurancaSocial
+            pickFirstValue(rawRow, ['password_ss', 'senha_ss']) || fallback?.senhaSegurancaSocial,
+            'principal',
+            {
+                validUntil: pickValidity([
+                    'validade_password_ss',
+                    'validade_senha_ss',
+                    'validade_ss',
+                    'data_validade_ss',
+                    'data_de_validade_ss',
+                    'validade_senha_seguranca_social',
+                    'data_validade_senha_seguranca_social',
+                    'data_de_validade_senha_seguranca_social',
+                    'ss_valid_until',
+                    'seg_social_valid_until',
+                    'valid_until_ss',
+                ]),
+            }
         );
         pushIfAny(
             'RU',
@@ -343,11 +382,17 @@ function createMappers(deps) {
             const service = String(item?.service || '').trim();
             const username = String(item?.username || '').trim();
             const password = String(item?.password || '').trim();
-            if (!service && !username && !password) return;
-            const key = service.toLowerCase() + '::' + username.toLowerCase() + '::' + password;
+            const credentialType = String(item?.credentialType || '').trim();
+            const emailAssociado = String(item?.emailAssociado || '').trim();
+            const validFrom = String(item?.validFrom || '').trim();
+            const validUntil = String(item?.validUntil || '').trim();
+            const status = String(item?.status || '').trim();
+            const observacoes = String(item?.observacoes || '').trim();
+            if (!service && !username && !password && !emailAssociado && !validUntil) return;
+            const key = [service, credentialType, username, emailAssociado, validUntil, password].join('::').toLowerCase();
             if (seen.has(key)) return;
             seen.add(key);
-            deduped.push({ service, username, password });
+            deduped.push({ service, username, password, credentialType, emailAssociado, validFrom, validUntil, status, observacoes });
         });
 
         const fallbackNif = deps.normalizeCustomerNif(

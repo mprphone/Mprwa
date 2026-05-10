@@ -10,6 +10,7 @@ import {
   sendChatMessage,
   setConversationWhatsAppAccount as apiSetConversationWhatsAppAccount,
   syncChatConversation,
+  uploadChatTempMedia,
 } from './chatCoreApi';
 
 // --- Initial Mock Data ---
@@ -177,6 +178,29 @@ const LOCAL_CUSTOMERS_KEY = 'wa_pro_local_customers_v1';
 const LOCAL_USERS_KEY = 'wa_pro_local_users_v1';
 const SESSION_USER_KEY = 'wa_pro_session_user_id';
 
+export type SaftSegSocialPasswordSyncSummary = {
+  requested: number;
+  eligible: number;
+  skippedWithSubuser: number;
+  skippedNonEnterprise: number;
+  skippedNoNif: number;
+  skippedNoSaftMatch: number;
+  skippedNoSegSocialPassword: number;
+  unchanged: number;
+  updated: number;
+  errors: string[];
+  warnings: string[];
+  updatedCustomers: Array<{ id: string; name: string; nif: string; niss: string; validUntil: string }>;
+  rawPath?: string;
+};
+
+export type SaftSegSocialPasswordSyncResult = {
+  success: boolean;
+  message: string;
+  summary: SaftSegSocialPasswordSyncSummary;
+  customers?: Customer[];
+};
+
 class MockService {
   private users = USERS;
   private customers = [...INITIAL_CUSTOMERS];
@@ -210,9 +234,21 @@ class MockService {
 
   private ensureSessionIsValid() {
     if (!CURRENT_USER_ID) return;
-    const exists = this.users.some(user => user.id === CURRENT_USER_ID);
-    if (!exists) {
+    const currentUser = this.users.find(user => user.id === CURRENT_USER_ID);
+    if (!currentUser) {
       this.setSessionUserId('');
+      return;
+    }
+
+    const normalizedEmail = String(currentUser.email || '').trim().toLowerCase();
+    if (!normalizedEmail) return;
+
+    const candidateUsers = this.users.filter(
+      (user) => String(user.email || '').trim().toLowerCase() === normalizedEmail
+    );
+    const preferredUser = this.pickPreferredUser(candidateUsers, CURRENT_USER_ID);
+    if (preferredUser?.id && preferredUser.id !== CURRENT_USER_ID) {
+      this.setSessionUserId(preferredUser.id);
     }
   }
 
@@ -292,17 +328,33 @@ class MockService {
     return /^Funcion[aá]rio\s+[a-f0-9]{6,}/i.test(name);
   }
 
+  private isExternalAliasUserId(userId: string): boolean {
+    const normalizedId = String(userId || '').trim().toLowerCase();
+    return normalizedId.startsWith('ext_') || normalizedId.startsWith('est_');
+  }
+
   private userDedupScore(user: User, currentUserId: string): number {
     const normalizedId = String(user.id || '').trim();
     const normalizedRole = String(user.role || '').trim().toUpperCase();
+    const currentUserIsAlias = this.isExternalAliasUserId(currentUserId);
     let score = 0;
-    if (normalizedId && normalizedId === currentUserId) score += 1000;
+    if (normalizedId && normalizedId === currentUserId) score += currentUserIsAlias ? 20 : 1000;
     if (normalizedRole === Role.ADMIN) score += 200;
-    if (normalizedId.startsWith('ext_u_')) score += 40;
-    if (!normalizedId.startsWith('local_')) score += 10;
+    if (!this.isExternalAliasUserId(normalizedId)) score += 120;
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalizedId)) score += 80;
+    if (normalizedId.startsWith('local_')) score += 40;
+    if (/^u\d+$/i.test(normalizedId)) score += 20;
+    if (normalizedId.startsWith('ext_u_')) score -= 40;
+    if (normalizedId.startsWith('est_')) score -= 80;
     if (String(user.avatarUrl || '').trim()) score += 5;
     if (String(user.password || '').trim()) score += 2;
     return score;
+  }
+
+  private pickPreferredUser(candidates: User[], currentUserId = ''): User | undefined {
+    return [...candidates]
+      .filter(candidate => this.isValidUser(candidate))
+      .sort((a, b) => this.userDedupScore(b, currentUserId) - this.userDedupScore(a, currentUserId))[0];
   }
 
   private getVisibleUsers(): User[] {
@@ -376,10 +428,20 @@ class MockService {
   private parseTimestampToIso(value: string): string {
     if (!value) return new Date().toISOString();
 
-    const direct = new Date(value);
+    const raw = String(value || '').trim();
+    if (!raw) return new Date().toISOString();
+
+    // SQLite CURRENT_TIMESTAMP vem tipicamente como "YYYY-MM-DD HH:mm:ss" em UTC.
+    // Forçamos parse UTC para não deslocar 1h no fuso local (ex.: Europe/Lisbon).
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)) {
+      const sqliteUtc = new Date(raw.replace(' ', 'T') + 'Z');
+      if (!Number.isNaN(sqliteUtc.getTime())) return sqliteUtc.toISOString();
+    }
+
+    const direct = new Date(raw);
     if (!Number.isNaN(direct.getTime())) return direct.toISOString();
 
-    const fallback = new Date(String(value).replace(' ', 'T') + 'Z');
+    const fallback = new Date(raw.replace(' ', 'T') + 'Z');
     if (!Number.isNaN(fallback.getTime())) return fallback.toISOString();
 
     return new Date().toISOString();
@@ -436,7 +498,16 @@ class MockService {
     if (optimistic.length === 0) return mappedMessages;
 
     const merged = [...mappedMessages];
+    const seenOptimisticIds = new Set<string>();
     for (const optimisticMessage of optimistic) {
+      const optimisticId = String(optimisticMessage.id || '').trim();
+      if (!optimisticId || seenOptimisticIds.has(optimisticId)) continue;
+      seenOptimisticIds.add(optimisticId);
+
+      if (mappedMessages.some((mapped) => String(mapped.id || '').trim() === optimisticId)) {
+        continue;
+      }
+
       const optimisticTs = new Date(optimisticMessage.timestamp).getTime();
       const hasEquivalent = mappedMessages.some((mapped) => {
         if (mapped.direction !== optimisticMessage.direction) return false;
@@ -449,7 +520,26 @@ class MockService {
       }
     }
 
-    return merged.sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
+    const uniqueById = new Map<string, Message>();
+    for (const message of merged) {
+      const messageId = String(message.id || '').trim();
+      if (!messageId) continue;
+      const current = uniqueById.get(messageId);
+      if (!current) {
+        uniqueById.set(messageId, message);
+        continue;
+      }
+      // Preferimos manter a versão não otimista quando houver colisão de ID.
+      const currentOptimistic = this.isOptimisticMessageId(current.id);
+      const nextOptimistic = this.isOptimisticMessageId(message.id);
+      if (currentOptimistic && !nextOptimistic) {
+        uniqueById.set(messageId, message);
+      }
+    }
+
+    return Array.from(uniqueById.values()).sort(
+      (left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime()
+    );
   }
 
   private findCustomerByPhone(phone: string): Customer | undefined {
@@ -759,6 +849,18 @@ class MockService {
     });
   }
 
+  private normalizeDigits(value: string): string {
+    return String(value || '').replace(/\D/g, '');
+  }
+
+  private isFilledValue(value: unknown): boolean {
+    if (value === undefined || value === null) return false;
+    if (typeof value === 'string') return value.trim() !== '';
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'object') return Object.keys(value).length > 0;
+    return typeof value === 'boolean' || typeof value === 'number';
+  }
+
   private mergeImportedCustomers(importedCustomers: Customer[]) {
     const existingById = new Map<string, number>();
     this.customers.forEach((customer, index) => {
@@ -768,23 +870,79 @@ class MockService {
     });
 
     importedCustomers.forEach((customer) => {
-      const existingIndex = existingById.get(customer.id);
+      const normalizedPhone = this.normalizeDigits(String(customer.phone || ''));
+      const normalizedEmail = String(customer.email || '').trim().toLowerCase();
+      const normalizedNif = this.normalizeDigits(String(customer.nif || '')).slice(-9);
+      const incomingSourceId = String((customer as Customer & { sourceId?: string }).sourceId || '').trim();
+      const allowWeakIdentityMatch = !incomingSourceId && !normalizedNif;
 
-      if (existingIndex !== undefined) {
-        this.customers[existingIndex] = {
-          ...this.customers[existingIndex],
-          ...customer,
-          id: customer.id,
-        };
-        existingById.set(customer.id, existingIndex);
+      let existingIndex = existingById.get(customer.id);
+      if (existingIndex === undefined) {
+        existingIndex = this.customers.findIndex((existing) => {
+          if (customer.id && existing.id === customer.id) return true;
+          if (normalizedNif) {
+            const existingNif = this.normalizeDigits(String(existing.nif || '')).slice(-9);
+            if (existingNif && existingNif === normalizedNif) return true;
+          }
+          if (!allowWeakIdentityMatch) return false;
+          if (normalizedPhone) {
+            const existingPhone = this.normalizeDigits(String(existing.phone || ''));
+            const existingNif = this.normalizeDigits(String(existing.nif || '')).slice(-9);
+            const existingSourceId = String((existing as Customer & { sourceId?: string }).sourceId || '').trim();
+            if (!existingNif && !existingSourceId && existingPhone && existingPhone === normalizedPhone) return true;
+          }
+          if (normalizedEmail) {
+            const existingEmail = String(existing.email || '').trim().toLowerCase();
+            const existingNif = this.normalizeDigits(String(existing.nif || '')).slice(-9);
+            const existingSourceId = String((existing as Customer & { sourceId?: string }).sourceId || '').trim();
+            if (!existingNif && !existingSourceId && existingEmail && existingEmail === normalizedEmail) return true;
+          }
+          return false;
+        });
+      }
+
+      if (existingIndex !== undefined && existingIndex !== -1) {
+        const existingCustomer = this.customers[existingIndex];
+        const mergedCustomer = { ...customer, ...existingCustomer, id: existingCustomer.id || customer.id };
+
+        Object.keys(existingCustomer).forEach((key) => {
+          const existingValue = existingCustomer[key as keyof Customer];
+          if (this.isFilledValue(existingValue)) {
+            mergedCustomer[key as keyof Customer] = existingValue as never;
+          }
+        });
+
+        this.customers[existingIndex] = mergedCustomer;
+        if (mergedCustomer.id) {
+          existingById.set(mergedCustomer.id, existingIndex);
+        }
         return;
       }
 
-      const hasSameId = this.customers.some(existing => existing.id === customer.id);
+      const hasSameId = this.customers.some((existing) => existing.id === customer.id);
       const nextCustomer = hasSameId ? { ...customer, id: `${customer.id}_${Date.now()}` } : customer;
       this.customers.push(nextCustomer);
       existingById.set(nextCustomer.id, this.customers.length - 1);
     });
+  }
+
+  private replaceCustomersFromServer(updatedCustomers: Customer[]) {
+    (Array.isArray(updatedCustomers) ? updatedCustomers : [])
+      .filter((customer) => this.isValidCustomer(customer))
+      .forEach((customer) => {
+        const normalizedNif = this.normalizeDigits(String(customer.nif || '')).slice(-9);
+        const index = this.customers.findIndex((existing) => {
+          if (customer.id && existing.id === customer.id) return true;
+          if (!normalizedNif) return false;
+          const existingNif = this.normalizeDigits(String(existing.nif || '')).slice(-9);
+          return Boolean(existingNif && existingNif === normalizedNif);
+        });
+        if (index >= 0) {
+          this.customers[index] = customer;
+        } else {
+          this.customers.push(customer);
+        }
+      });
   }
 
   private isValidUser(data: unknown): data is User {
@@ -855,7 +1013,6 @@ class MockService {
         });
 
         const localCustomers = this.customers.filter(customer => customer.id.startsWith('local_'));
-        this.customers = [...localCustomers];
         this.mergeImportedCustomers(remappedCustomers);
         if (localCustomers.length > 0) {
           this.mergeImportedCustomers(localCustomers);
@@ -900,7 +1057,13 @@ class MockService {
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedPassword = password.trim();
 
-    const user = this.users.find(u => (u.email || '').toLowerCase() === normalizedEmail);
+    // Procurar por email e preferir o utilizador canónico em vez de aliases ext_/est_.
+    const candidateUsers = this.users.filter(u => (u.email || '').toLowerCase() === normalizedEmail);
+    if (candidateUsers.length === 0) {
+      return { success: false, error: 'Email não encontrado.' };
+    }
+
+    const user = this.pickPreferredUser(candidateUsers);
     if (!user) {
       return { success: false, error: 'Email não encontrado.' };
     }
@@ -1227,6 +1390,280 @@ class MockService {
     };
   }
 
+  async triggerSegSocialSubUserSetup(
+    customerId: string,
+    options?: { actorUserId?: string; headless?: boolean; closeAfterSubmit?: boolean; subEmail?: string }
+  ): Promise<{ success: boolean; message: string; stage?: string; headless?: boolean }> {
+    if (!this.isBrowser()) {
+      throw new Error('Automação disponível apenas no browser.');
+    }
+
+    const targetId = String(customerId || '').trim();
+    if (!targetId) {
+      throw new Error('Cliente inválido para criação de subutilizador.');
+    }
+
+    const response = await fetch(`/api/customers/${encodeURIComponent(targetId)}/seg-social/subuser/setup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        actorUserId: String(options?.actorUserId || this.getCurrentUserId() || '').trim() || null,
+        headless: options?.headless ?? false,
+        closeAfterSubmit: options?.closeAfterSubmit ?? false,
+        subEmail: String(options?.subEmail || 'geral@mpr.pt').trim(),
+      }),
+    });
+
+    const payload = await response.json().catch(() => ({})) as {
+      success?: boolean;
+      message?: unknown;
+      error?: unknown;
+      code?: unknown;
+      stage?: unknown;
+      headless?: unknown;
+    };
+
+    if (!response.ok || !payload.success) {
+      const errorText =
+        typeof payload.error === 'string'
+          ? payload.error
+          : payload.error
+            ? JSON.stringify(payload.error)
+            : `Falha ao iniciar criação de subutilizador SS (${response.status}).`;
+      const enrichedError = new Error(errorText) as Error & { code?: string };
+      if (payload.code !== undefined && payload.code !== null && String(payload.code).trim()) {
+        enrichedError.code = String(payload.code).trim();
+      }
+      throw enrichedError;
+    }
+
+    return {
+      success: true,
+      message: String(payload.message || 'Assistente de subutilizador iniciado.'),
+      stage: payload.stage ? String(payload.stage) : undefined,
+      headless: typeof payload.headless === 'boolean' ? payload.headless : undefined,
+    };
+  }
+
+  async syncSegSocialPasswordsFromSaft(options?: {
+    customerId?: string;
+    actorUserId?: string;
+    headless?: boolean;
+    syncToSupabase?: boolean;
+  }): Promise<SaftSegSocialPasswordSyncResult> {
+    if (!this.isBrowser()) {
+      throw new Error('Sincronização SAFT disponível apenas no browser.');
+    }
+
+    const response = await fetch('/api/customers/sync/saft-ss-passwords', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customerId: String(options?.customerId || '').trim() || undefined,
+        actorUserId: String(options?.actorUserId || this.getCurrentUserId() || '').trim() || null,
+        headless: options?.headless ?? true,
+        syncToSupabase: options?.syncToSupabase ?? true,
+      }),
+    });
+
+    const payload = await response.json().catch(() => ({})) as {
+      success?: boolean;
+      message?: unknown;
+      summary?: Partial<SaftSegSocialPasswordSyncSummary>;
+      customers?: Customer[];
+      error?: unknown;
+    };
+
+    if (!response.ok || !payload.success) {
+      const errorText =
+        typeof payload.error === 'string'
+          ? payload.error
+          : payload.error
+            ? JSON.stringify(payload.error)
+            : `Falha ao sincronizar senhas SS a partir do SAFTonline (${response.status}).`;
+      throw new Error(errorText);
+    }
+
+    this.supabaseImportDone = false;
+    this.supabaseImportPromise = null;
+    await this.ensureSupabaseImport();
+    const updatedCustomers = Array.isArray(payload.customers)
+      ? payload.customers.filter((customer) => this.isValidCustomer(customer))
+      : [];
+    if (updatedCustomers.length > 0) {
+      this.replaceCustomersFromServer(updatedCustomers);
+      this.persistLocalEntities();
+    }
+
+    const summary = payload.summary || {};
+    return {
+      success: true,
+      message: String(payload.message || 'Sincronização SAFT concluída.'),
+      summary: {
+        requested: Number(summary.requested || 0),
+        eligible: Number(summary.eligible || 0),
+        skippedWithSubuser: Number(summary.skippedWithSubuser || 0),
+        skippedNonEnterprise: Number(summary.skippedNonEnterprise || 0),
+        skippedNoNif: Number(summary.skippedNoNif || 0),
+        skippedNoSaftMatch: Number(summary.skippedNoSaftMatch || 0),
+        skippedNoSegSocialPassword: Number(summary.skippedNoSegSocialPassword || 0),
+        unchanged: Number(summary.unchanged || 0),
+        updated: Number(summary.updated || 0),
+        errors: Array.isArray(summary.errors) ? summary.errors.map(String) : [],
+        warnings: Array.isArray(summary.warnings) ? summary.warnings.map(String) : [],
+        updatedCustomers: Array.isArray(summary.updatedCustomers)
+          ? summary.updatedCustomers.map((item) => ({
+              id: String(item?.id || ''),
+              name: String(item?.name || ''),
+              nif: String(item?.nif || ''),
+              niss: String(item?.niss || ''),
+              validUntil: String(item?.validUntil || ''),
+            }))
+          : [],
+        rawPath: String(summary.rawPath || ''),
+      },
+      customers: updatedCustomers,
+    };
+  }
+
+  async findLatestSegSocialSubUserPassword(params?: {
+    username?: string;
+    email?: string;
+    sinceDays?: number;
+    maxMessages?: number;
+    sinceIso?: string;
+  }): Promise<{
+    found: boolean;
+    password: string;
+    uid?: string;
+    from?: string;
+    subject?: string;
+    date?: string;
+  }> {
+    if (!this.isBrowser()) {
+      throw new Error('Leitura de email disponível apenas no browser.');
+    }
+
+    const search = new URLSearchParams();
+    if (params?.username) search.set('username', String(params.username).trim());
+    if (params?.email) search.set('email', String(params.email).trim());
+    if (params?.sinceIso) search.set('sinceIso', String(params.sinceIso).trim());
+    search.set('sinceDays', String(Math.max(1, Number(params?.sinceDays || 14) || 14)));
+    search.set('maxMessages', String(Math.max(1, Number(params?.maxMessages || 50) || 50)));
+
+    const response = await fetch(`/api/email/seg-social/latest-subuser-password?${search.toString()}`);
+    const payload = await response.json().catch(() => ({})) as {
+      success?: boolean;
+      found?: boolean;
+      error?: unknown;
+      result?: {
+        password?: unknown;
+        uid?: unknown;
+        from?: unknown;
+        subject?: unknown;
+        date?: unknown;
+      } | null;
+    };
+
+    if (!response.ok || !payload.success) {
+      const errorText =
+        typeof payload.error === 'string'
+          ? payload.error
+          : payload.error
+            ? JSON.stringify(payload.error)
+            : `Falha ao consultar email da Segurança Social (${response.status}).`;
+      throw new Error(errorText);
+    }
+
+    const result = payload.result || null;
+    return {
+      found: Boolean(payload.found && result?.password),
+      password: String(result?.password || '').trim(),
+      uid: result?.uid !== undefined ? String(result.uid || '') : undefined,
+      from: result?.from !== undefined ? String(result.from || '') : undefined,
+      subject: result?.subject !== undefined ? String(result.subject || '') : undefined,
+      date: result?.date !== undefined ? String(result.date || '') : undefined,
+    };
+  }
+
+  async enviarSegSocialValoresRemuneracao(customerId: string, payload: Record<string, unknown>, params?: Record<string, unknown>): Promise<unknown> {
+    if (!this.isBrowser()) {
+      throw new Error('Interoperabilidade disponível apenas no browser.');
+    }
+    const targetId = String(customerId || '').trim();
+    if (!targetId) throw new Error('Cliente inválido para interoperabilidade da Segurança Social.');
+
+    const search = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || String(value).trim() === '') return;
+      search.set(key, String(value));
+    });
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    const response = await fetch(`/api/customers/${encodeURIComponent(targetId)}/seg-social/interoperabilidade/valores-remuneracao${suffix}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload || {}),
+    });
+    return this.parseSegSocialInteroperabilityResponse(response);
+  }
+
+  async consultarSegSocialValoresComunicados(customerId: string, params?: Record<string, unknown>): Promise<unknown> {
+    if (!this.isBrowser()) {
+      throw new Error('Interoperabilidade disponível apenas no browser.');
+    }
+    const targetId = String(customerId || '').trim();
+    if (!targetId) throw new Error('Cliente inválido para interoperabilidade da Segurança Social.');
+
+    const search = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || String(value).trim() === '') return;
+      search.set(key, String(value));
+    });
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    const response = await fetch(`/api/customers/${encodeURIComponent(targetId)}/seg-social/interoperabilidade/valores-comunicados${suffix}`);
+    return this.parseSegSocialInteroperabilityResponse(response);
+  }
+
+  async consultarSegSocialValoresApuradosMensalmente(customerId: string, params?: Record<string, unknown>): Promise<unknown> {
+    if (!this.isBrowser()) {
+      throw new Error('Interoperabilidade disponível apenas no browser.');
+    }
+    const targetId = String(customerId || '').trim();
+    if (!targetId) throw new Error('Cliente inválido para interoperabilidade da Segurança Social.');
+
+    const search = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || String(value).trim() === '') return;
+      search.set(key, String(value));
+    });
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    const response = await fetch(`/api/customers/${encodeURIComponent(targetId)}/seg-social/interoperabilidade/valores-apurados-mensalmente${suffix}`);
+    return this.parseSegSocialInteroperabilityResponse(response);
+  }
+
+  private async parseSegSocialInteroperabilityResponse(response: Response): Promise<unknown> {
+    const payload = await response.json().catch(() => ({})) as {
+      success?: boolean;
+      error?: unknown;
+      code?: unknown;
+      data?: unknown;
+    };
+    if (!response.ok || !payload.success) {
+      const errorText =
+        typeof payload.error === 'string'
+          ? payload.error
+          : payload.error
+            ? JSON.stringify(payload.error)
+            : `Falha na interoperabilidade da Segurança Social (${response.status}).`;
+      const enrichedError = new Error(errorText) as Error & { code?: string };
+      if (payload.code !== undefined && payload.code !== null && String(payload.code).trim()) {
+        enrichedError.code = String(payload.code).trim();
+      }
+      throw enrichedError;
+    }
+    return payload;
+  }
+
   async createCustomer(
     customer: Omit<Customer, 'id' | 'allowAutoResponses'> & { allowAutoResponses?: boolean },
     options?: { syncToSupabase?: boolean }
@@ -1545,6 +1982,46 @@ class MockService {
       relativePath: String(payload.relativePath || file.name),
       fullPath: String(payload.fullPath || ''),
     };
+  }
+
+  async uploadTemporaryChatMedia(
+    file: File,
+    mediaKind: 'image' | 'document' = 'document'
+  ): Promise<{
+    fileName: string;
+    storedFileName: string;
+    size: number;
+    mimeType: string;
+    fullPath: string;
+  }> {
+    if (!this.isBrowser()) {
+      throw new Error('Upload disponível apenas no browser.');
+    }
+
+    const contentBase64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || '');
+        const base64 = result.includes(',') ? result.split(',')[1] : result;
+        resolve(base64);
+      };
+      reader.onerror = () => reject(new Error('Falha ao ler ficheiro local.'));
+      reader.readAsDataURL(file);
+    });
+
+    const uploaded = await uploadChatTempMedia({
+      fileName: file.name,
+      contentBase64,
+      mimeType: file.type || undefined,
+      mediaKind,
+      actorUserId: CURRENT_USER_ID || null,
+    });
+
+    if (!String(uploaded.fullPath || '').trim()) {
+      throw new Error('O servidor não devolveu caminho válido para o anexo.');
+    }
+
+    return uploaded;
   }
 
   async ingestCustomerDocumentWithAI(
@@ -2583,17 +3060,44 @@ class MockService {
     });
   }
 
-  async deleteMessage(conversationId: string, messageId: string): Promise<void> {
+  async deleteMessage(
+    conversationId: string,
+    messageId: string
+  ): Promise<{ deletedForEveryone: boolean; warning?: string | null }> {
+    let deleteResult: { deletedForEveryone: boolean; warning?: string | null } = {
+      deletedForEveryone: false,
+      warning: null,
+    };
     await this.ensureSupabaseImport();
 
     if (this.isBrowser()) {
-      await deleteChatMessage(messageId, CURRENT_USER_ID || null);
+      const payload = await deleteChatMessage(messageId, CURRENT_USER_ID || null);
+      deleteResult = {
+        deletedForEveryone: payload.deletedForEveryone === true,
+        warning: payload.warning || null,
+      };
     }
 
     this.messages = this.messages.map((message) => {
       if (message.conversationId !== conversationId || message.id !== messageId) return message;
-      return { ...message, body: '[Mensagem apagada]' };
+      return {
+        ...message,
+        body: '[Mensagem apagada]',
+        type: 'text',
+        mediaKind: undefined,
+        mediaPath: undefined,
+        mediaMimeType: undefined,
+        mediaFileName: undefined,
+        mediaSize: null,
+        mediaProvider: undefined,
+        mediaRemoteId: undefined,
+        mediaRemoteUrl: undefined,
+        mediaPreviewUrl: undefined,
+        mediaDownloadUrl: undefined,
+      };
     });
+
+    return deleteResult;
   }
 
   async forwardMessage(targetConversationId: string, sourceMessageBody: string): Promise<Message> {

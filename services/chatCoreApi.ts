@@ -261,6 +261,54 @@ export async function sendChatMessage(input: {
   return { messageId: payload.messageId || null };
 }
 
+export async function uploadChatTempMedia(input: {
+  fileName: string;
+  contentBase64: string;
+  mimeType?: string;
+  mediaKind?: 'image' | 'document' | string;
+  actorUserId?: string | null;
+}): Promise<{
+  fileName: string;
+  storedFileName: string;
+  size: number;
+  mimeType: string;
+  fullPath: string;
+}> {
+  const response = await fetch('/api/chat/media/upload-temp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      fileName: String(input.fileName || '').trim(),
+      contentBase64: String(input.contentBase64 || '').trim(),
+      mimeType: String(input.mimeType || '').trim() || undefined,
+      mediaKind: String(input.mediaKind || '').trim() || undefined,
+      actorUserId: String(input.actorUserId || '').trim() || undefined,
+    }),
+  });
+
+  const payload = await safeJson<{
+    success?: boolean;
+    fileName?: string;
+    storedFileName?: string;
+    size?: number;
+    mimeType?: string;
+    fullPath?: string;
+    error?: unknown;
+  }>(response);
+
+  if (!response.ok || !payload.success) {
+    throw new Error(parseError(payload, response.status, 'Falha ao preparar anexo para envio'));
+  }
+
+  return {
+    fileName: String(payload.fileName || input.fileName || '').trim(),
+    storedFileName: String(payload.storedFileName || '').trim(),
+    size: Number(payload.size || 0),
+    mimeType: String(payload.mimeType || input.mimeType || 'application/octet-stream').trim(),
+    fullPath: String(payload.fullPath || '').trim(),
+  };
+}
+
 export async function editChatMessage(messageId: string, body: string, actorUserId?: string | null): Promise<void> {
   const response = await fetch(`/api/chat/messages/${encodeURIComponent(messageId)}/edit`, {
     method: 'POST',
@@ -274,17 +322,36 @@ export async function editChatMessage(messageId: string, body: string, actorUser
   }
 }
 
-export async function deleteChatMessage(messageId: string, actorUserId?: string | null): Promise<void> {
+export async function deleteChatMessage(
+  messageId: string,
+  actorUserId?: string | null
+): Promise<{
+  deletedForEveryone: boolean;
+  deleteMode: string;
+  warning: string | null;
+}> {
   const response = await fetch(`/api/chat/messages/${encodeURIComponent(messageId)}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ actorUserId: actorUserId || null }),
   });
 
-  const payload = await safeJson<{ success?: boolean; error?: unknown }>(response);
+  const payload = await safeJson<{
+    success?: boolean;
+    error?: unknown;
+    deletedForEveryone?: boolean;
+    deleteMode?: string;
+    warning?: string | null;
+  }>(response);
   if (!response.ok || !payload.success) {
     throw new Error(parseError(payload, response.status, 'Falha ao apagar mensagem'));
   }
+
+  return {
+    deletedForEveryone: payload.deletedForEveryone === true,
+    deleteMode: String(payload.deleteMode || 'local_only').trim() || 'local_only',
+    warning: payload.warning ? String(payload.warning) : null,
+  };
 }
 
 export async function fetchWhatsAppHealth(accountId?: string | null): Promise<WhatsAppProviderHealth> {

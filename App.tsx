@@ -7,6 +7,7 @@ import Tasks from './pages/Tasks';
 import Occurrences from './pages/Occurrences';
 import Customers from './pages/Customers';
 import Employees from './pages/Employees';
+import Pedidos from './pages/Pedidos';
 import Reports from './pages/Reports';
 import CallImport from './pages/CallImport';
 import AutoResponses from './pages/AutoResponses';
@@ -30,6 +31,7 @@ const ProtectedApp: React.FC = () => {
         <Route path="/occurrences" element={<Occurrences />} />
         <Route path="/customers" element={<Customers />} />
         <Route path="/employees" element={<Employees />} />
+        <Route path="/pedidos" element={<Pedidos />} />
         <Route path="/software" element={<SoftwareHub />} />
         <Route path="/automation" element={<AutoResponses />} />
         <Route path="/response-forms" element={<ResponseForms />} />

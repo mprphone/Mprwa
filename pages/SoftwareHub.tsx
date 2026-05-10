@@ -17,6 +17,13 @@ type DesktopBuild = {
   updatedAt: string | null;
 };
 
+type DesktopBuildsPayload = {
+  builds: DesktopBuild[];
+  appVersion: string;
+  latestBuildVersion: string;
+  hasCurrentBuild: boolean;
+};
+
 const STORAGE_KEY = 'wa_pro_software_links_v1';
 
 const DEFAULT_SOFTWARES: SoftwareLink[] = [
@@ -140,6 +147,23 @@ async function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
+async function fetchDesktopBuilds(): Promise<DesktopBuildsPayload> {
+  const response = await fetch('/api/desktop/builds', {
+    cache: 'no-store',
+    headers: { Accept: 'application/json' },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload?.success) {
+    throw new Error(payload?.error || 'Falha ao listar builds desktop.');
+  }
+  return {
+    builds: Array.isArray(payload?.builds) ? payload.builds : [],
+    appVersion: String(payload?.appVersion || '').trim(),
+    latestBuildVersion: String(payload?.latestBuildVersion || '').trim(),
+    hasCurrentBuild: payload?.hasCurrentBuild !== false,
+  };
+}
+
 function formatBytes(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return '--';
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -250,16 +274,12 @@ const SoftwareHub: React.FC = () => {
       setDesktopLoading(true);
       setDesktopError('');
       try {
-        const response = await fetch('/api/desktop/builds');
-        const payload = await response.json();
-        if (!response.ok || !payload?.success) {
-          throw new Error(payload?.error || 'Falha ao listar builds desktop.');
-        }
+        const payload = await fetchDesktopBuilds();
         if (!cancelled) {
-          setDesktopBuilds(Array.isArray(payload?.builds) ? payload.builds : []);
-          setDesktopAppVersion(String(payload?.appVersion || '').trim());
-          setDesktopLatestBuildVersion(String(payload?.latestBuildVersion || '').trim());
-          setDesktopHasCurrentBuild(payload?.hasCurrentBuild !== false);
+          setDesktopBuilds(payload.builds);
+          setDesktopAppVersion(payload.appVersion);
+          setDesktopLatestBuildVersion(payload.latestBuildVersion);
+          setDesktopHasCurrentBuild(payload.hasCurrentBuild);
         }
       } catch (error: any) {
         if (!cancelled) {
@@ -391,12 +411,26 @@ const SoftwareHub: React.FC = () => {
     window.open(targetUrl, '_blank', 'noopener,noreferrer');
   };
 
-  const downloadDesktop = () => {
-    if (!preferredDesktopBuild) {
-      window.alert('Ainda não existe build desktop disponível no servidor.');
-      return;
+  const downloadDesktop = async () => {
+    try {
+      const fresh = await fetchDesktopBuilds();
+      setDesktopBuilds(fresh.builds);
+      setDesktopAppVersion(fresh.appVersion);
+      setDesktopLatestBuildVersion(fresh.latestBuildVersion);
+      setDesktopHasCurrentBuild(fresh.hasCurrentBuild);
+      const latestZip =
+        fresh.builds.find((item) => String(item.version || '') === fresh.latestBuildVersion && /\.zip$/i.test(item.name)) ||
+        fresh.builds.find((item) => /\.zip$/i.test(item.name)) ||
+        fresh.builds[0] ||
+        null;
+      if (!latestZip) {
+        window.alert('Ainda não existe build desktop disponível no servidor.');
+        return;
+      }
+      window.open(`/api/desktop/download/${encodeURIComponent(latestZip.name)}`, '_blank');
+    } catch (error: any) {
+      window.alert(String(error?.message || 'Falha ao preparar download da app desktop.'));
     }
-    window.open(`/api/desktop/download/${encodeURIComponent(preferredDesktopBuild.name)}`, '_blank');
   };
 
   return (

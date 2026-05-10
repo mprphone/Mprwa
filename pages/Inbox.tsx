@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { ImagePlus, MessageCircle, Paperclip, Lock, Send, UserX, X } from 'lucide-react';
+import { ArrowDown, ImagePlus, MessageCircle, Paperclip, Lock, Send, UserX, X } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Conversation, Message, Customer, Task, TaskAttachment, ConversationStatus, TaskStatus, TaskPriority, User as UserType, CustomerType } from '../types';
 import { mockService, CURRENT_USER_ID, USERS } from '../services/mockData';
@@ -26,6 +26,7 @@ import type { OccurrenceRow } from '../services/occurrencesApi';
 
 const MESSAGE_UI_META_STORAGE_KEY = 'wa_pro_message_ui_meta_v1';
 const OPEN_CUSTOMER_PROFILE_STORAGE_KEY = 'wa_pro_open_customer_id';
+const DEFAULT_CUSTOMER_BY_PHONE_STORAGE_KEY = 'wa_pro_default_customer_by_phone_v1';
 const LOCAL_FINANCAS_AUTOMATION_BRIDGE_URL = String(
   import.meta.env?.VITE_LOCAL_AUTOMATION_BRIDGE_URL || 'http://127.0.0.1:30777/financas-autologin'
 ).trim();
@@ -241,6 +242,7 @@ const Inbox: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomerIdOverride, setSelectedCustomerIdOverride] = useState<string | null>(null);
+  const [defaultCustomerIdByPhoneDigits, setDefaultCustomerIdByPhoneDigits] = useState<Record<string, string>>({});
   const [tasks, setTasks] = useState<Task[]>([]);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [openOccurrences, setOpenOccurrences] = useState<OccurrenceRow[]>([]);
@@ -321,6 +323,8 @@ const Inbox: React.FC = () => {
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [forwardSearch, setForwardSearch] = useState('');
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [isSendingAttachment, setIsSendingAttachment] = useState(false);
   const [isSendingImage, setIsSendingImage] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
   const [isCustomerProfileOpen, setIsCustomerProfileOpen] = useState(false);
@@ -331,10 +335,12 @@ const Inbox: React.FC = () => {
   const [financasAutologinBusyCustomerId, setFinancasAutologinBusyCustomerId] = useState<string | null>(null);
   const [segSocialAutologinBusyCustomerId, setSegSocialAutologinBusyCustomerId] = useState<string | null>(null);
   const [inboundToast, setInboundToast] = useState<{ from: string; body: string; convId: string } | null>(null);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const inboundToastTimerRef = useRef<number | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageComposerRef = useRef<HTMLTextAreaElement | null>(null);
+  const chatAttachmentInputRef = useRef<HTMLInputElement>(null);
   const documentInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const selectedConvRef = useRef<string | null>(null);
@@ -351,8 +357,10 @@ const Inbox: React.FC = () => {
   const lastNotificationSoundAtRef = useRef(0);
   const messageSnapshotRef = useRef<Record<string, { lastInboundId: string; lastInboundAt: string }>>({});
   const chatContactsRef = useRef<ChatContactRow[]>([]);
+  const shouldAutoScrollMessagesRef = useRef(true);
 
   const selectedConversation = conversations.find(c => c.id === selectedConvId);
+  const isChatSendBusy = isSendingMessage || isSendingAttachment || isSendingImage;
   const selectedCustomerId = selectedCustomerIdOverride || selectedConversation?.customerId || null;
   const selectedCustomer = selectedCustomerId
     ? customers.find(c => c.id === selectedCustomerId) || null
@@ -363,6 +371,31 @@ const Inbox: React.FC = () => {
     const defaultAccount = (Array.isArray(whatsAppAccounts) ? whatsAppAccounts : []).find((item) => item.isDefault);
     return String(defaultAccount?.accountId || '').trim() || null;
   }, [selectedConversation?.whatsappAccountId, whatsAppAccounts]);
+
+  const getMessageScrollContainer = useCallback(() => {
+    return messagesEndRef.current?.parentElement as HTMLDivElement | null;
+  }, []);
+
+  const isMessageScrollNearBottom = useCallback(() => {
+    const container = getMessageScrollContainer();
+    if (!container) return true;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    return distanceFromBottom <= 160;
+  }, [getMessageScrollContainer]);
+
+  const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    shouldAutoScrollMessagesRef.current = true;
+    setShowJumpToLatest(false);
+    window.requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
+    });
+  }, []);
+
+  const updateMessageScrollLock = useCallback(() => {
+    const isNearBottom = isMessageScrollNearBottom();
+    shouldAutoScrollMessagesRef.current = isNearBottom;
+    setShowJumpToLatest(!isNearBottom && Boolean(selectedConvRef.current));
+  }, [isMessageScrollNearBottom]);
 
   const ensureNotificationAudioContext = useCallback(() => {
     if (typeof window === 'undefined') return null;
@@ -554,6 +587,17 @@ const Inbox: React.FC = () => {
     if (phone) return phone;
     return contactName || name || company || '';
   };
+  const isLikelyPlaceholderCustomer = (customer?: Customer | null) => {
+    if (!customer) return true;
+    const name = String(customer.name || '').trim();
+    const phone = String(customer.phone || '').trim();
+    const company = String(customer.company || '').trim().toLowerCase();
+    if (!name) return true;
+    if (phone && name === phone) return true;
+    if (name.startsWith('+') && name.replace(/\D/g, '').length >= 6) return true;
+    if (looksLikePhoneLabel(name) && (!company || company === 'whatsapp')) return true;
+    return false;
+  };
   const ownBusinessNames = new Set(['mpr negocios', 'mpr negócios', 'mpr geral', 'mpr']);
   const isOwnBusinessName = (value?: string | null) => ownBusinessNames.has(String(value || '').toLowerCase().trim());
   const resolveChatContactPrimaryLabel = (row?: ChatContactRow | null) => {
@@ -618,6 +662,88 @@ const Inbox: React.FC = () => {
     return unique;
   }, [selectedConversation, customers, selectedCustomerIdOverride]);
 
+  const selectedConversationPhoneDigits = useMemo(() => {
+    if (!selectedConversation) return '';
+    const fromConversationId = extractPhoneDigitsFromConversationId(selectedConversation.id);
+    if (fromConversationId) return fromConversationId;
+    const fromConversationCustomer = customers.find((item) => item.id === selectedConversation.customerId);
+    const fromCustomerPhone = normalizePhoneDigits(String(fromConversationCustomer?.phone || ''));
+    if (fromCustomerPhone) return fromCustomerPhone;
+    return normalizePhoneDigits(resolveConversationFallbackPhone(selectedConversation));
+  }, [selectedConversation, customers, chatContacts]);
+
+  const preferredRelatedCustomerIdForSelectedNumber = useMemo(() => {
+    if (!selectedConversation) return null as string | null;
+    if (relatedCustomersForSelectedNumber.length === 0) return null;
+
+    const relatedById = new Map(relatedCustomersForSelectedNumber.map((customer) => [String(customer.id || '').trim(), customer]));
+    const fromSavedDefault =
+      selectedConversationPhoneDigits && defaultCustomerIdByPhoneDigits[selectedConversationPhoneDigits]
+        ? String(defaultCustomerIdByPhoneDigits[selectedConversationPhoneDigits] || '').trim()
+        : '';
+    if (fromSavedDefault && relatedById.has(fromSavedDefault)) {
+      return fromSavedDefault;
+    }
+
+    const currentConversationCustomerId = String(selectedConversation.customerId || '').trim();
+    const currentConversationCustomer = currentConversationCustomerId
+      ? relatedById.get(currentConversationCustomerId) || null
+      : null;
+    if (currentConversationCustomer && !isLikelyPlaceholderCustomer(currentConversationCustomer)) {
+      return currentConversationCustomerId;
+    }
+
+    const customerWithDocuments = relatedCustomersForSelectedNumber.find(
+      (customer) => String(customer.documentsFolder || '').trim().length > 0
+    );
+    if (customerWithDocuments?.id) return String(customerWithDocuments.id);
+
+    const customerWithStructuredData = relatedCustomersForSelectedNumber.find((customer) => {
+      return (
+        String(customer.nif || '').trim().length > 0 ||
+        String(customer.niss || '').trim().length > 0 ||
+        String(customer.documentsFolder || '').trim().length > 0 ||
+        String(customer.email || '').trim().length > 0
+      );
+    });
+    if (customerWithStructuredData?.id) return String(customerWithStructuredData.id);
+
+    if (currentConversationCustomer?.id) return String(currentConversationCustomer.id);
+    return String(relatedCustomersForSelectedNumber[0]?.id || '').trim() || null;
+  }, [
+    selectedConversation,
+    relatedCustomersForSelectedNumber,
+    selectedConversationPhoneDigits,
+    defaultCustomerIdByPhoneDigits,
+  ]);
+
+  const relatedCustomerDisplayItems = useMemo(() => {
+    const baseLabels = relatedCustomersForSelectedNumber.map((customer) => {
+      return resolveCustomerPrimaryLabel(customer, customer.phone) || customer.name || 'Sem nome';
+    });
+    const counts = new Map<string, number>();
+    baseLabels.forEach((label) => counts.set(label, Number(counts.get(label) || 0) + 1));
+    const runningIndex = new Map<string, number>();
+
+    return relatedCustomersForSelectedNumber.map((customer, index) => {
+      const baseLabel = baseLabels[index];
+      const total = Number(counts.get(baseLabel) || 0);
+      if (total <= 1) {
+        return { customer, label: baseLabel, title: baseLabel };
+      }
+
+      const nextIndex = Number(runningIndex.get(baseLabel) || 0) + 1;
+      runningIndex.set(baseLabel, nextIndex);
+      const disambiguator =
+        String(customer.nif || '').trim() ||
+        String(customer.sourceId || '').trim() ||
+        String(customer.id || '').trim().slice(-6);
+      const label = `${baseLabel} (${nextIndex})`;
+      const title = `${baseLabel} · ${disambiguator}`;
+      return { customer, label, title };
+    });
+  }, [relatedCustomersForSelectedNumber]);
+
   const requestedConversationIdFromUrl = useMemo(() => {
     try {
       const params = new URLSearchParams(location.search || '');
@@ -673,6 +799,54 @@ const Inbox: React.FC = () => {
   }, [messageUiMetaByConversation]);
 
   useEffect(() => {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    try {
+      const raw = window.localStorage.getItem(DEFAULT_CUSTOMER_BY_PHONE_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      if (!parsed || typeof parsed !== 'object') return;
+      const normalized: Record<string, string> = {};
+      Object.entries(parsed).forEach(([phoneDigits, customerId]) => {
+        const digits = normalizePhoneDigits(phoneDigits);
+        const normalizedCustomerId = String(customerId || '').trim();
+        if (!digits || !normalizedCustomerId) return;
+        normalized[digits] = normalizedCustomerId;
+      });
+      setDefaultCustomerIdByPhoneDigits(normalized);
+    } catch (error) {
+      console.warn('[Inbox] falha ao carregar ficha por defeito:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    try {
+      window.localStorage.setItem(
+        DEFAULT_CUSTOMER_BY_PHONE_STORAGE_KEY,
+        JSON.stringify(defaultCustomerIdByPhoneDigits)
+      );
+    } catch (error) {
+      console.warn('[Inbox] falha ao guardar ficha por defeito:', error);
+    }
+  }, [defaultCustomerIdByPhoneDigits]);
+
+  useEffect(() => {
+    if (!selectedConversation?.id) return;
+    if (selectedCustomerIdOverride) return;
+    const preferredId = String(preferredRelatedCustomerIdForSelectedNumber || '').trim();
+    const currentConversationCustomerId = String(selectedConversation.customerId || '').trim();
+    if (!preferredId || preferredId === currentConversationCustomerId) return;
+    if (!relatedCustomersForSelectedNumber.some((customer) => String(customer.id || '').trim() === preferredId)) return;
+    setSelectedCustomerIdOverride(preferredId);
+  }, [
+    selectedConversation?.id,
+    selectedConversation?.customerId,
+    selectedCustomerIdOverride,
+    preferredRelatedCustomerIdForSelectedNumber,
+    relatedCustomersForSelectedNumber,
+  ]);
+
+  useEffect(() => {
     selectedConvRef.current = selectedConvId;
   }, [selectedConvId]);
 
@@ -708,6 +882,8 @@ const Inbox: React.FC = () => {
 
   useEffect(() => {
     if (selectedConvId) {
+      shouldAutoScrollMessagesRef.current = true;
+      setShowJumpToLatest(false);
       loadMessagesRequestRef.current += 1;
       loadTasksRequestRef.current += 1;
       setMessages([]);
@@ -730,6 +906,25 @@ const Inbox: React.FC = () => {
     setSelectedMessageIds([]);
     setDetailsMessage(null);
   }, [selectedConvId, markSelectedConversationReadIfActive]);
+
+  useEffect(() => {
+    const container = getMessageScrollContainer();
+    if (!container) return;
+
+    container.addEventListener('scroll', updateMessageScrollLock, { passive: true });
+    updateMessageScrollLock();
+
+    return () => {
+      container.removeEventListener('scroll', updateMessageScrollLock);
+    };
+  }, [getMessageScrollContainer, updateMessageScrollLock, selectedConvId]);
+
+  useEffect(() => {
+    shouldAutoScrollMessagesRef.current = true;
+    setShowJumpToLatest(false);
+    const timer = window.setTimeout(() => scrollMessagesToBottom('auto'), 0);
+    return () => window.clearTimeout(timer);
+  }, [selectedConvId, scrollMessagesToBottom]);
 
   useEffect(() => {
     if (!selectedConvId) return;
@@ -910,8 +1105,12 @@ const Inbox: React.FC = () => {
   }, [requestedConversationIdFromUrl, conversations]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (shouldAutoScrollMessagesRef.current) {
+      scrollMessagesToBottom('smooth');
+      return;
+    }
+    setShowJumpToLatest(messages.length > 0);
+  }, [messages, scrollMessagesToBottom]);
 
   useEffect(() => {
     if (!selectedCustomer?.id) {
@@ -951,12 +1150,11 @@ const Inbox: React.FC = () => {
   }, [selectedCustomer?.id]);
 
   useEffect(() => {
-    const conversation = conversations.find((item) => item.id === selectedConvId);
-    const customer = conversation ? customers.find((item) => item.id === conversation.customerId) : null;
-    if (customer?.id) {
-      if (lastDocumentsCustomerIdRef.current === customer.id) return;
-      lastDocumentsCustomerIdRef.current = customer.id;
-      void loadCustomerDocuments(customer.id);
+    const customerId = String(selectedCustomer?.id || '').trim();
+    if (customerId) {
+      if (lastDocumentsCustomerIdRef.current === customerId) return;
+      lastDocumentsCustomerIdRef.current = customerId;
+      void loadCustomerDocuments(customerId);
       return;
     }
     lastDocumentsCustomerIdRef.current = null;
@@ -967,7 +1165,7 @@ const Inbox: React.FC = () => {
     setCanGoUpDocumentsPath(false);
     setCustomerDocsConfigured(false);
     setDocsError(null);
-  }, [selectedConvId, conversations, customers]);
+  }, [selectedCustomer?.id]);
 
   useEffect(() => {
     const customerId = String(selectedCustomer?.id || '').trim();
@@ -1203,7 +1401,7 @@ const Inbox: React.FC = () => {
     }
   };
 
-  const triggerDocumentPicker = async () => {
+  const triggerCustomerDocumentPicker = async () => {
     if (!selectedCustomer?.id) return;
 
     const pickerFn = (window as unknown as { showOpenFilePicker?: (options?: Record<string, unknown>) => Promise<Array<{ getFile: () => Promise<File> }>> }).showOpenFilePicker;
@@ -1238,7 +1436,7 @@ const Inbox: React.FC = () => {
     documentInputRef.current?.click();
   };
 
-  const handleDocumentUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCustomerDocumentUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
@@ -1260,41 +1458,45 @@ const Inbox: React.FC = () => {
   };
 
   const handleDropLocalFilesToConversation = async (files: File[]) => {
-    if (!selectedConvId || !selectedCustomer?.id || files.length === 0) return;
+    if (!selectedConvId || files.length === 0) return;
+    if (isChatSendBusy) return;
     if (!isWithin24hWindow) {
       alert('Janela de 24h fechada. Só é permitido template nesta fase.');
       return;
     }
 
-    for (const file of files) {
-      try {
-        const uploaded = await mockService.uploadCustomerDocument(
-          selectedCustomer.id,
-          file,
-          customerDocumentsCurrentPath
-        );
-        const isImage = String(file.type || '').startsWith('image/');
-        if (isImage) {
-          await mockService.sendImageMessage(selectedConvId, {
-            mediaPath: uploaded.fullPath,
-            fileName: uploaded.fileName || file.name,
-            mimeType: file.type,
-          });
-        } else {
-          await mockService.sendDocumentMessage(selectedConvId, {
-            mediaPath: uploaded.fullPath,
-            fileName: uploaded.fileName || file.name,
-            mimeType: file.type,
-          });
+    setIsSendingAttachment(true);
+    try {
+      for (const file of files) {
+        try {
+          const isImage = String(file.type || '').startsWith('image/');
+          const uploaded = await mockService.uploadTemporaryChatMedia(
+            file,
+            isImage ? 'image' : 'document'
+          );
+          if (isImage) {
+            await mockService.sendImageMessage(selectedConvId, {
+              mediaPath: uploaded.fullPath,
+              fileName: uploaded.fileName || uploaded.storedFileName || file.name,
+              mimeType: uploaded.mimeType || file.type,
+            });
+          } else {
+            await mockService.sendDocumentMessage(selectedConvId, {
+              mediaPath: uploaded.fullPath,
+              fileName: uploaded.fileName || uploaded.storedFileName || file.name,
+              mimeType: uploaded.mimeType || file.type,
+            });
+          }
+        } catch (error) {
+          alert(error instanceof Error ? error.message : `Falha ao processar ficheiro ${file.name}.`);
         }
-      } catch (error) {
-        alert(error instanceof Error ? error.message : `Falha ao processar ficheiro ${file.name}.`);
       }
-    }
 
-    await loadMessages(selectedConvId);
-    await loadCustomerDocuments(selectedCustomer.id, customerDocumentsCurrentPath);
-    await loadData();
+      await loadMessages(selectedConvId);
+      await loadData();
+    } finally {
+      setIsSendingAttachment(false);
+    }
   };
 
   const handleDropCustomerDocumentToConversation = async (relativePath: string, fileName: string) => {
@@ -1339,6 +1541,57 @@ const Inbox: React.FC = () => {
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Falha ao enviar documento na conversa.');
     }
+  };
+
+  const triggerChatAttachmentPicker = async () => {
+    if (!selectedConvId) return;
+    if (isChatSendBusy) return;
+    if (!isWithin24hWindow) {
+      alert('Janela de 24h fechada. Só é permitido template nesta fase.');
+      return;
+    }
+
+    const pickerFn = (window as unknown as {
+      showOpenFilePicker?: (options?: Record<string, unknown>) => Promise<Array<{ getFile: () => Promise<File> }>>;
+    }).showOpenFilePicker;
+    if (typeof pickerFn === 'function') {
+      try {
+        const handles = await pickerFn({
+          id: `chat-attachments-${selectedConvId}`,
+          multiple: false,
+          types: [
+            {
+              description: 'Anexos',
+              accept: {
+                '*/*': ['.pdf', '.xml', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.txt'],
+              },
+            },
+          ],
+          excludeAcceptAllOption: false,
+        });
+        const file = await handles?.[0]?.getFile?.();
+        if (file) {
+          await handleDropLocalFilesToConversation([file]);
+        }
+        return;
+      } catch (error) {
+        const name = (error as { name?: string })?.name || '';
+        if (name !== 'AbortError') {
+          console.warn('[Chat] showOpenFilePicker indisponível/erro, fallback input file:', error);
+        } else {
+          return;
+        }
+      }
+    }
+
+    chatAttachmentInputRef.current?.click();
+  };
+
+  const handleChatAttachmentUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    await handleDropLocalFilesToConversation([file]);
   };
 
   const extractFirstUrlFromText = (value: string) => {
@@ -1589,6 +1842,15 @@ const Inbox: React.FC = () => {
     window.requestAnimationFrame(() => {
       const input = messageComposerRef.current;
       if (!input || input.disabled) return;
+      const activeElement = document.activeElement as HTMLElement | null;
+      if (activeElement && activeElement !== input) {
+        const tagName = String(activeElement.tagName || '').toLowerCase();
+        const isTypingTarget =
+          tagName === 'input' ||
+          tagName === 'textarea' ||
+          activeElement.isContentEditable;
+        if (isTypingTarget) return;
+      }
       input.focus();
       const endPos = input.value.length;
       try {
@@ -1602,6 +1864,7 @@ const Inbox: React.FC = () => {
   const handleSendClick = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!selectedConvId) return;
+      if (isChatSendBusy) return;
 
       if (editingMessage) {
         const nextText = newMessage.trim();
@@ -1630,6 +1893,10 @@ const Inbox: React.FC = () => {
 
   const performSendMessage = async (type: 'text' | 'template', templateId?: string) => {
     if (!selectedConvId) return;
+    if (isSendingMessage) return;
+    shouldAutoScrollMessagesRef.current = true;
+    setShowJumpToLatest(false);
+    setIsSendingMessage(true);
     try {
       const activeTemplate = managedTemplates.find(item => item.id === templateId);
       const variables = {
@@ -1674,6 +1941,8 @@ const Inbox: React.FC = () => {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Falha ao enviar mensagem.';
       alert(`Erro no envio: ${message}`);
+    } finally {
+      setIsSendingMessage(false);
     }
   };
 
@@ -1832,6 +2101,23 @@ const Inbox: React.FC = () => {
     if (!customerId) return;
 
     const { username, password } = resolveSsAccessFromCustomer(customer);
+    window.open(SEG_SOCIAL_LOGIN_URL, '_blank', 'noopener,noreferrer');
+    let manualClipboardCopied = false;
+    if (username && password && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(`Utilizador SS: ${username}\nSenha SS: ${password}`);
+        manualClipboardCopied = true;
+      } catch {
+        manualClipboardCopied = false;
+      }
+    }
+    window.alert(
+      manualClipboardCopied
+        ? 'Abri a Segurança Social para uso manual e copiei as credenciais para colar. Este botão não faz login automático nem tenta 2FA.'
+        : 'Abri a Segurança Social para uso manual. Este botão não faz login automático nem tenta 2FA.'
+    );
+    return;
+
     const loginUrl = SEG_SOCIAL_LOGIN_URL;
     const isDesktopShell = Boolean(window.waDesktop?.isDesktop);
     const hasDesktopAutologinApi = typeof window.waDesktop?.financasAutologin === 'function';
@@ -2113,7 +2399,14 @@ const Inbox: React.FC = () => {
     const confirmed = window.confirm('Apagar esta mensagem nesta conversa?');
     if (!confirmed) return;
     try {
-      await mockService.deleteMessage(selectedConvId, message.id);
+      const deleteResult = await mockService.deleteMessage(selectedConvId, message.id);
+      if (message.direction === 'out' && !deleteResult?.deletedForEveryone) {
+        window.alert(
+          deleteResult?.warning
+            ? `Mensagem apagada localmente. No cliente não foi possível: ${deleteResult.warning}`
+            : 'Mensagem apagada localmente. No cliente não foi possível apagar para todos.'
+        );
+      }
       await loadMessages(selectedConvId);
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Falha ao apagar mensagem.');
@@ -2186,12 +2479,14 @@ const Inbox: React.FC = () => {
   };
 
   const triggerImagePicker = () => {
+    if (isChatSendBusy) return;
     if (selectedConversation?.status === ConversationStatus.CLOSED) return;
     imageInputRef.current?.click();
   };
 
   const sendImageFileToChat = async (file: File) => {
-    if (!file || !selectedConvId || !selectedCustomer?.id) return;
+    if (!file || !selectedConvId) return;
+    if (isChatSendBusy) return;
     if (!String(file.type || '').toLowerCase().startsWith('image/')) {
       alert('Só é possível colar/enviar imagens nesta ação.');
       return;
@@ -2202,12 +2497,14 @@ const Inbox: React.FC = () => {
     }
 
     setIsSendingImage(true);
+    shouldAutoScrollMessagesRef.current = true;
+    setShowJumpToLatest(false);
     try {
-      const uploaded = await mockService.uploadCustomerDocument(selectedCustomer.id, file, customerDocumentsCurrentPath);
+      const uploaded = await mockService.uploadTemporaryChatMedia(file, 'image');
       const sent = await mockService.sendImageMessage(selectedConvId, {
         mediaPath: uploaded.fullPath,
-        fileName: uploaded.fileName || file.name,
-        mimeType: file.type,
+        fileName: uploaded.fileName || uploaded.storedFileName || file.name,
+        mimeType: uploaded.mimeType || file.type,
         caption: newMessage.trim() || undefined,
       });
       setMessages((prev) => {
@@ -2222,7 +2519,6 @@ const Inbox: React.FC = () => {
           void loadMessages(selectedConvId);
         }
       }, 900);
-      await loadCustomerDocuments(selectedCustomer.id, customerDocumentsCurrentPath);
       await loadData();
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Falha ao enviar imagem.');
@@ -2407,6 +2703,16 @@ const Inbox: React.FC = () => {
       setShowLinkModal(true);
   };
 
+  const saveDefaultCustomerForSelectedNumber = (customerId: string) => {
+    const phoneDigits = normalizePhoneDigits(selectedConversationPhoneDigits);
+    const normalizedCustomerId = String(customerId || '').trim();
+    if (!phoneDigits || !normalizedCustomerId) return;
+    setDefaultCustomerIdByPhoneDigits((previous) => ({
+      ...previous,
+      [phoneDigits]: normalizedCustomerId,
+    }));
+  };
+
   const handleLinkToExisting = async (customerId: string) => {
       const activeConversationId = String(selectedConvId || '').trim();
       const targetCustomerId = String(customerId || '').trim();
@@ -2421,6 +2727,7 @@ const Inbox: React.FC = () => {
         if (targetConversation?.id) {
           setSelectedConvId(targetConversation.id);
         }
+        saveDefaultCustomerForSelectedNumber(targetCustomerId);
         setSelectedCustomerIdOverride(null);
         setShowLinkModal(false);
       } catch (error) {
@@ -2433,6 +2740,7 @@ const Inbox: React.FC = () => {
     if ((selectedCustomerIdOverride || selectedConversation?.customerId) === customerId) return;
 
     setSelectedCustomerIdOverride(customerId);
+    saveDefaultCustomerForSelectedNumber(customerId);
     try {
       await loadCustomerDocuments(customerId, '');
     } catch (error) {
@@ -2499,6 +2807,7 @@ const Inbox: React.FC = () => {
         if (targetConversation?.id) {
           setSelectedConvId(targetConversation.id);
         }
+        saveDefaultCustomerForSelectedNumber(newCust.id);
         setSelectedCustomerIdOverride(null);
         setShowLinkModal(false);
       } catch (error) {
@@ -2814,8 +3123,11 @@ const Inbox: React.FC = () => {
 
   const loggedUser = USERS.find(u => u.id === CURRENT_USER_ID);
   const selectedConversationLabel = selectedConversation
-    ? String(conversationDisplayNameById[String(selectedConversation.id || '').trim()] || '').trim() ||
-      resolveConversationDisplayLabel(selectedConversation)
+    ? String(
+        resolveCustomerPrimaryLabel(selectedCustomer, resolveConversationFallbackPhone(selectedConversation)) ||
+          conversationDisplayNameById[String(selectedConversation.id || '').trim()] ||
+          ''
+      ).trim() || resolveConversationDisplayLabel(selectedConversation)
     : resolveConversationDisplayLabel(selectedConversation);
   const inboxUnreadTotal = filteredConversations.reduce((sum, conversation) => {
     return sum + Math.max(0, Number(conversation.unreadCount || 0));
@@ -2825,12 +3137,7 @@ const Inbox: React.FC = () => {
     ? USERS.find(u => u.id === selectedCustomer.ownerId) 
     : null;
     
-  // Check if customer is "unknown" (temp logic: if name equals phone or generic ID).
-  // Phone stores chat_id in some legacy configurations.
-  const isUnknownCustomer =
-    !selectedCustomer ||
-    (!false &&
-      String(selectedCustomer.name || '').trim() === String(selectedCustomer.phone || '').trim());
+  const isUnknownCustomer = isLikelyPlaceholderCustomer(selectedCustomer);
 
 
   // Filter for Link Search
@@ -2952,9 +3259,9 @@ const Inbox: React.FC = () => {
                 <span className="text-[11px] font-semibold text-gray-500 whitespace-nowrap">
                   Fichas deste número:
                 </span>
-                {relatedCustomersForSelectedNumber.map((customer) => {
-                  const isActive = (selectedCustomerIdOverride || selectedConversation?.customerId) === customer.id;
-                  const customerLabel = resolveCustomerPrimaryLabel(customer, customer.phone) || customer.name || 'Sem nome';
+                {relatedCustomerDisplayItems.map((item) => {
+                  const customer = item.customer;
+                  const isActive = String(selectedCustomer?.id || '').trim() === String(customer.id || '').trim();
                   return (
                     <button
                       key={customer.id}
@@ -2964,9 +3271,9 @@ const Inbox: React.FC = () => {
                           ? 'bg-whatsapp-100 border-whatsapp-300 text-whatsapp-800'
                           : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
                       }`}
-                      title={customerLabel}
+                      title={item.title}
                     >
-                      {customerLabel}
+                      {item.label}
                     </button>
                   );
                 })}
@@ -2993,6 +3300,17 @@ const Inbox: React.FC = () => {
             onTogglePinMessage={handleTogglePinMessage}
             onShowMessageDetails={handleShowMessageDetails}
           />
+          {showJumpToLatest && (
+            <button
+              type="button"
+              onClick={() => scrollMessagesToBottom('smooth')}
+              className="absolute bottom-24 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-lg hover:bg-gray-50"
+              title="Ir para o fim da conversa"
+            >
+              <ArrowDown size={14} />
+              Fim
+            </button>
+          )}
           
           {/* Unknown Number Warning */}
           {isUnknownCustomer && (
@@ -3048,17 +3366,17 @@ const Inbox: React.FC = () => {
                 <form onSubmit={handleSendClick} className="flex gap-2 items-end">
                    <button
                       type="button"
-                      onClick={triggerDocumentPicker}
-                      disabled={isUploadingDocument || !selectedCustomer?.id}
+                      onClick={triggerChatAttachmentPicker}
+                      disabled={!isWithin24hWindow || isChatSendBusy}
                       className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
-                      title="Guardar ficheiro na pasta do cliente"
+                      title="Enviar anexo"
                     >
                       <Paperclip size={20} />
                    </button>
                    <button
                       type="button"
                       onClick={triggerImagePicker}
-                      disabled={isSendingImage || !selectedCustomer?.id || !isWithin24hWindow}
+                      disabled={!isWithin24hWindow || isChatSendBusy}
                       className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
                       title="Enviar imagem"
                     >
@@ -3081,7 +3399,7 @@ const Inbox: React.FC = () => {
                         onKeyDown={(e) => {
                            if (e.key === 'Enter' && !e.shiftKey) {
                              e.preventDefault();
-                             if ((isWithin24hWindow || editingMessage) && newMessage.trim()) {
+                             if ((isWithin24hWindow || editingMessage) && newMessage.trim() && !isChatSendBusy) {
                                void handleSendClick(e as unknown as React.FormEvent);
                              }
                            }
@@ -3110,7 +3428,7 @@ const Inbox: React.FC = () => {
                    ) : (
                        <button 
                         type="submit" 
-                        disabled={!newMessage.trim()}
+                        disabled={!newMessage.trim() || isChatSendBusy}
                         className={`p-2 text-white rounded-full disabled:opacity-50 disabled:cursor-not-allowed ${editingMessage ? 'bg-amber-500 hover:bg-amber-600' : 'bg-whatsapp-600 hover:bg-whatsapp-700'}`}
                        >
                           <Send size={20} />
@@ -3120,9 +3438,15 @@ const Inbox: React.FC = () => {
                 </>
             )}
             <input
+              ref={chatAttachmentInputRef}
+              type="file"
+              onChange={handleChatAttachmentUpload}
+              className="hidden"
+            />
+            <input
               ref={documentInputRef}
               type="file"
-              onChange={handleDocumentUpload}
+              onChange={handleCustomerDocumentUpload}
               className="hidden"
             />
             <input
@@ -3213,7 +3537,7 @@ const Inbox: React.FC = () => {
               void handleDropMessageToCurrentFolder(messageBody);
             }}
             onChooseCustomerFolder={chooseCustomerFolder}
-            onTriggerDocumentPicker={triggerDocumentPicker}
+            onTriggerDocumentPicker={triggerCustomerDocumentPicker}
             onDownloadDocument={handleDocumentDownload}
             onSaftRequest={handleSaftRequest}
             onSyncCompanyDocs={handleSyncCompanyDocs}
