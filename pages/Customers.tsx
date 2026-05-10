@@ -11,8 +11,9 @@ import {
   CustomerHouseholdRelation,
   CustomerRelatedRecord,
 } from '../types';
-import { Plus, Search, Edit2, Trash2, FolderOpen, Eye, RefreshCw, Upload, FileText, Folder } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, FolderOpen, Eye, RefreshCw, Upload } from 'lucide-react';
 import { CustomerAccessTab, type CustomerCredentialPreset } from './customers/CustomerAccessTab';
+import { CustomerDocumentBrowser } from './customers/CustomerDocumentBrowser';
 import { useCustomerDocuments } from './customers/hooks/useCustomerDocuments';
 import {
   SegSocialSubUserState,
@@ -877,14 +878,6 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     if (normalized === 'RESOLVIDA') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
     if (normalized === 'ATRASADA') return 'border-rose-200 bg-rose-50 text-rose-700';
     return 'border-blue-200 bg-blue-50 text-blue-700';
-  };
-
-  const formatBytes = (bytes: number): string => {
-    if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
-    const value = bytes / Math.pow(1024, index);
-    return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
   };
 
   const resolveSuggestedCustomerName = (suggested: Partial<Customer> | undefined, suggestedNif = ''): string => {
@@ -4455,88 +4448,30 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <div className="text-sm font-semibold text-gray-800">Pasta da sociedade</div>
-                          <div className="text-xs text-gray-500 break-all">{sociedadeDocsPath || formData.documentsFolder || 'Sem pasta definida na ficha do cliente.'}</div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => loadSociedadeDocuments(editingCustomer.id, sociedadeCurrentPath || SOCIEDADE_BASE_PATH)}
-                            className="px-2 py-1 text-xs border rounded-md bg-white hover:bg-slate-50"
-                            title="Atualizar"
-                          >
-                            <RefreshCw size={13} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={goUpSociedadeFolder}
-                            disabled={!sociedadeCanGoUp}
-                            className="px-2 py-1 text-xs border rounded-md bg-white hover:bg-slate-50 disabled:opacity-40"
-                            title="Subir pasta"
-                          >
-                            ..
-                          </button>
-                          <button
-                            type="button"
-                            onClick={triggerSociedadeDocumentPicker}
-                            disabled={sociedadeUploadingDoc}
-                            className="px-2 py-1 text-xs border rounded-md bg-whatsapp-50 text-whatsapp-700 hover:bg-whatsapp-100 disabled:opacity-40 inline-flex items-center gap-1"
-                            title="Adicionar ficheiro"
-                          >
-                            <Upload size={13} />
-                            {sociedadeUploadingDoc ? 'A guardar...' : 'Adicionar'}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="text-xs text-gray-500">
-                        Subpasta atual: <span className="font-mono">{sociedadeCurrentPath || SOCIEDADE_BASE_PATH}</span>
-                        {!sociedadeDocsConfigured && (
-                          <span className="ml-2 text-amber-600">Pasta automática ativa. Defina caminho específico na ficha para fixar.</span>
-                        )}
-                      </div>
-
-                      {sociedadeDocsError && <div className="text-xs text-red-600">{sociedadeDocsError}</div>}
-
-                      <div className="max-h-72 overflow-y-auto border rounded-md p-2 space-y-1 bg-slate-50">
-                        {sociedadeDocsLoading && <div className="text-xs text-gray-500">A carregar documentos...</div>}
-                        {!sociedadeDocsLoading && sociedadeDocs.length === 0 && <div className="text-xs text-gray-500">Sem ficheiros/subpastas neste local.</div>}
-
-                        {!sociedadeDocsLoading && sociedadeDocs.map((entry) => (
-                          <button
-                            key={`sociedade-${entry.relativePath}:${entry.type}`}
-                            type="button"
-                            onClick={() => {
-                              if (entry.type === 'directory') {
-                                void openSociedadeFolder(entry.relativePath);
-                                return;
-                              }
-                              openCustomerDocument(editingCustomer.id, entry.relativePath, sociedadeDocsPath || formData.documentsFolder);
-                            }}
-                            className="w-full text-left border border-slate-200 rounded-md px-2 py-1.5 bg-white hover:bg-slate-100 flex items-center justify-between gap-2"
-                          >
-                            <span className="inline-flex items-center gap-2 min-w-0">
-                              {entry.type === 'directory' ? <Folder size={14} className="text-amber-600 shrink-0" /> : <FileText size={14} className="text-blue-600 shrink-0" />}
-                              <span className="truncate text-sm text-slate-800">{entry.name}</span>
-                            </span>
-                            <span className="text-[11px] text-slate-500 shrink-0">
-                              {entry.type === 'directory' ? 'Pasta' : formatBytes(Number(entry.size || 0))}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-
-                      <p className="text-xs text-gray-400">
-                        Clique numa pasta para navegar e clique num ficheiro para abrir.
-                      </p>
-
-                      <input
-                        ref={sociedadeFileInputRef}
-                        type="file"
-                        className="hidden"
-                        onChange={handleSociedadeDocumentUpload}
+                      <CustomerDocumentBrowser
+                        title="Pasta da sociedade"
+                        folderPath={sociedadeDocsPath}
+                        fallbackFolderPath={formData.documentsFolder}
+                        currentPath={sociedadeCurrentPath}
+                        rootPathLabel={SOCIEDADE_BASE_PATH}
+                        configured={sociedadeDocsConfigured}
+                        loading={sociedadeDocsLoading}
+                        uploading={sociedadeUploadingDoc}
+                        error={sociedadeDocsError}
+                        entries={sociedadeDocs}
+                        canGoUp={sociedadeCanGoUp}
+                        fileInputRef={sociedadeFileInputRef}
+                        itemKeyPrefix="sociedade"
+                        onRefresh={() => loadSociedadeDocuments(editingCustomer.id, sociedadeCurrentPath || SOCIEDADE_BASE_PATH)}
+                        onGoUp={goUpSociedadeFolder}
+                        onTriggerUpload={triggerSociedadeDocumentPicker}
+                        onUpload={handleSociedadeDocumentUpload}
+                        onOpenDirectory={(relativePath) => {
+                          void openSociedadeFolder(relativePath);
+                        }}
+                        onOpenFile={(relativePath) => {
+                          openCustomerDocument(editingCustomer.id, relativePath, sociedadeDocsPath || formData.documentsFolder);
+                        }}
                       />
                     </>
                   )}
@@ -4610,88 +4545,27 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         />
                       </div>
 
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <div className="text-sm font-semibold text-gray-800">Documentos da pasta do cliente</div>
-                          <div className="text-xs text-gray-500 break-all">{modalDocsPath || formData.documentsFolder || 'Sem pasta definida na ficha do cliente.'}</div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => loadModalDocuments(editingCustomer.id, modalDocsCurrentPath)}
-                            className="px-2 py-1 text-xs border rounded-md bg-white hover:bg-slate-50"
-                            title="Atualizar"
-                          >
-                            <RefreshCw size={13} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={goUpModalDocumentsFolder}
-                            disabled={!modalCanGoUp}
-                            className="px-2 py-1 text-xs border rounded-md bg-white hover:bg-slate-50 disabled:opacity-40"
-                            title="Subir pasta"
-                          >
-                            ..
-                          </button>
-                          <button
-                            type="button"
-                            onClick={triggerModalDocumentPicker}
-                            disabled={modalUploadingDoc}
-                            className="px-2 py-1 text-xs border rounded-md bg-whatsapp-50 text-whatsapp-700 hover:bg-whatsapp-100 disabled:opacity-40 inline-flex items-center gap-1"
-                            title="Adicionar ficheiro"
-                          >
-                            <Upload size={13} />
-                            {modalUploadingDoc ? 'A guardar...' : 'Adicionar'}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="text-xs text-gray-500">
-                        Subpasta atual: <span className="font-mono">{modalDocsCurrentPath || '/'}</span>
-                        {!modalDocsConfigured && (
-                          <span className="ml-2 text-amber-600">Pasta automática ativa. Defina caminho específico na ficha para fixar.</span>
-                        )}
-                      </div>
-
-                      {modalDocsError && <div className="text-xs text-red-600">{modalDocsError}</div>}
-
-                      <div className="max-h-72 overflow-y-auto border rounded-md p-2 space-y-1 bg-slate-50">
-                        {modalDocsLoading && <div className="text-xs text-gray-500">A carregar documentos...</div>}
-                        {!modalDocsLoading && modalDocs.length === 0 && <div className="text-xs text-gray-500">Sem ficheiros/subpastas neste local.</div>}
-
-                        {!modalDocsLoading && modalDocs.map((entry) => (
-                          <button
-                            key={`${entry.relativePath}:${entry.type}`}
-                            type="button"
-                            onClick={() => {
-                              if (entry.type === 'directory') {
-                                void openModalDocumentsFolder(entry.relativePath);
-                                return;
-                              }
-                              openModalDocument(entry.relativePath);
-                            }}
-                            className="w-full text-left border border-slate-200 rounded-md px-2 py-1.5 bg-white hover:bg-slate-100 flex items-center justify-between gap-2"
-                          >
-                            <span className="inline-flex items-center gap-2 min-w-0">
-                              {entry.type === 'directory' ? <Folder size={14} className="text-amber-600 shrink-0" /> : <FileText size={14} className="text-blue-600 shrink-0" />}
-                              <span className="truncate text-sm text-slate-800">{entry.name}</span>
-                            </span>
-                            <span className="text-[11px] text-slate-500 shrink-0">
-                              {entry.type === 'directory' ? 'Pasta' : formatBytes(Number(entry.size || 0))}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-
-                      <p className="text-xs text-gray-400">
-                        Clique numa pasta para navegar e clique num ficheiro para abrir.
-                      </p>
-
-                      <input
-                        ref={modalFileInputRef}
-                        type="file"
-                        className="hidden"
-                        onChange={handleModalDocumentUpload}
+                      <CustomerDocumentBrowser
+                        title="Documentos da pasta do cliente"
+                        folderPath={modalDocsPath}
+                        fallbackFolderPath={formData.documentsFolder}
+                        currentPath={modalDocsCurrentPath}
+                        rootPathLabel="/"
+                        configured={modalDocsConfigured}
+                        loading={modalDocsLoading}
+                        uploading={modalUploadingDoc}
+                        error={modalDocsError}
+                        entries={modalDocs}
+                        canGoUp={modalCanGoUp}
+                        fileInputRef={modalFileInputRef}
+                        onRefresh={() => loadModalDocuments(editingCustomer.id, modalDocsCurrentPath)}
+                        onGoUp={goUpModalDocumentsFolder}
+                        onTriggerUpload={triggerModalDocumentPicker}
+                        onUpload={handleModalDocumentUpload}
+                        onOpenDirectory={(relativePath) => {
+                          void openModalDocumentsFolder(relativePath);
+                        }}
+                        onOpenFile={openModalDocument}
                       />
                     </>
                   )}
