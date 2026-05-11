@@ -28,6 +28,7 @@ import {
   normalizeAccessService,
   normalizeNifDigits,
   normalizeNissDigits,
+  normalizeStoredSegSocialUsername,
   preserveExistingCredentialSecrets,
   resolveAtAccessFromCustomer,
   resolveSegSocialInteropAccessFromCustomer,
@@ -2701,10 +2702,24 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     { key: 'ss_interop', label: 'Seg. Social Plataforma Interoperabilidade', icon: 'SS', service: 'Segurança Social', credentialType: 'token', usernameFallback: formData.niss ? `${normalizeNissDigits(formData.niss)}-1` : '', passwordFallback: '', validity: true },
   ];
 
+  const credentialMatchesPresetService = (
+    credential: CustomerAccessCredential,
+    preset: CustomerCredentialPreset
+  ): boolean => {
+    const presetService = normalizeAccessService(String(preset.service || ''));
+    const credentialService = normalizeAccessService(String(credential.service || ''));
+    if (presetService === 'ss' || presetService.includes('seguranca social') || presetService.includes('seg_social')) {
+      return isSegSocialCredential(credential);
+    }
+    if (presetService === 'at' || presetService.includes('autoridade') || presetService.includes('financ')) {
+      return credentialService === 'at' || credentialService.includes('autoridade') || credentialService.includes('financ');
+    }
+    return normalizeAccessIdentity(String(credential.service || '')) === normalizeAccessIdentity(preset.service);
+  };
+
   const findCredentialIndexForPreset = (preset: CustomerCredentialPreset) => {
-    const targetService = normalizeAccessIdentity(preset.service);
     return formData.accessCredentials.findIndex((credential) => (
-      normalizeAccessIdentity(String(credential.service || '')) === targetService &&
+      credentialMatchesPresetService(credential, preset) &&
       accessTypeMatchesPreset(String(credential.credentialType || ''), preset.credentialType)
     ));
   };
@@ -2760,7 +2775,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
   };
 
   const isCredentialCoveredByPreset = (credential: CustomerAccessCredential) => credentialPresets.some((preset) => (
-    normalizeAccessIdentity(String(credential.service || '')) === normalizeAccessIdentity(preset.service) &&
+    credentialMatchesPresetService(credential, preset) &&
     accessTypeMatchesPreset(String(credential.credentialType || ''), preset.credentialType)
   ));
 
