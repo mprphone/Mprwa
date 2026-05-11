@@ -2027,6 +2027,11 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
         const guardedCredentials = preserveExistingCredentialSecrets(nextCredentials, customer.accessCredentials || [], customer.niss || '');
         await mockService.updateCustomer(customerId, { accessCredentials: guardedCredentials }, { syncToSupabase: false });
         setFormData((current) => ({ ...current, accessCredentials: guardedCredentials }));
+        setEditingCustomer((current) => (
+          current && current.id === customerId
+            ? { ...current, accessCredentials: guardedCredentials }
+            : current
+        ));
 
         const desktopResult = await desktopSetup({
           username,
@@ -2078,6 +2083,11 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
           });
           await mockService.updateCustomer(customerId, { accessCredentials: confirmedCredentials }, { syncToSupabase: false });
           setFormData((current) => ({ ...current, accessCredentials: confirmedCredentials }));
+          setEditingCustomer((current) => (
+            current && current.id === customerId
+              ? { ...current, accessCredentials: confirmedCredentials }
+              : current
+          ));
         }
         await loadCustomers();
         if (flowSucceeded) {
