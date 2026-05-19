@@ -104,6 +104,160 @@ function parseAddressFieldsFromText(rawText) {
   return fields;
 }
 
+
+function normalizeNifValue(value) {
+  const digits = String(value || '').replace(/\D+/g, '');
+  if (digits.length < 9) return '';
+  return digits.slice(-9);
+}
+
+function normalizeTipoContabilidade(value) {
+  const raw = cleanExtractedValue(value);
+  const normalized = normalizeSearchText(raw);
+  if (!normalized) return '';
+  if (normalized.includes('nao organizada') || normalized.includes('não organizada')) return 'NAO_ORGANIZADA';
+  if (normalized.includes('organizada')) return 'ORGANIZADA';
+  if (normalized.includes('regime simplificado') || normalized.includes('simplificada')) return 'REGIME_SIMPLIFICADO';
+  return raw;
+}
+
+function normalizeManager(manager) {
+  const nif = normalizeNifValue(manager?.nif || manager?.vat || manager?.taxId || '');
+  const name = cleanExtractedValue(manager?.name || manager?.nome || '')
+    .replace(/\b(?:NIF|Nome|Gerente|Administrador|Administra[cç][aã]o|S[oó]cio)\b/ig, '')
+    .replace(/\b\d{9}\b/g, '')
+    .trim();
+  const email = String(manager?.email || '').trim().toLowerCase();
+  const phone = String(manager?.phone || manager?.telefone || '').trim();
+  if (!name && !nif && !email && !phone) return null;
+  return { name, nif, email, phone };
+}
+
+function mergeManagers(existing = [], incoming = []) {
+  const out = [];
+  const upsert = (manager) => {
+    const normalized = normalizeManager(manager);
+    if (!normalized) return;
+    const key = normalized.nif || normalizeSearchText(normalized.name);
+    const foundIndex = out.findIndex((item) => {
+      const itemKey = item.nif || normalizeSearchText(item.name);
+      return itemKey && key && itemKey === key;
+    });
+    if (foundIndex >= 0) {
+      out[foundIndex] = {
+        ...out[foundIndex],
+        ...Object.fromEntries(Object.entries(normalized).filter(([, value]) => String(value || '').trim())),
+      };
+    } else {
+      out.push(normalized);
+    }
+  };
+  (Array.isArray(existing) ? existing : []).forEach(upsert);
+  (Array.isArray(incoming) ? incoming : []).forEach(upsert);
+  return out;
+}
+
+function parseManagersFromText(text) {
+  const raw = String(text || '');
+  if (!/Ger[eê]ncia|Administra[cç][aã]o|Gerente|Administrador|Representante|[ÓO]rg[aã]o Social|Rela[cç][oõ]es Intersujeitos/i.test(raw)) return [];
+
+  const relationRegex = /ger[eê]ncia|gerente|administra[cç][aã]o|administrador|representante|[óo]rg[aã]o social|s[oó]cio gerente|membro/i;
+  const headerRegex = /^(NIF|NIPC|Nome|Denomina[cç][aã]o|Tipo|Rela[cç][aã]o|Data|In[ií]cio|Fim|Rela[cç][oõ]es Intersujeitos Passivos)$/i;
+  const cleanNameCandidate = (value) => cleanExtractedValue(String(value || '')
+    .replace(/\b\d{9}\b/g, '')
+    .replace(/Ger[eê]ncia|Administra[cç][aã]o|Gerente|Administrador|Representante Legal|[ÓO]rg[aã]o Social|S[oó]cio Gerente|Membro/ig, '')
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, '')
+    .replace(/\b(NIF|NIPC|Nome|Tipo|Rela[cç][aã]o|Data|In[ií]cio|Fim)\b/ig, '')
+  );
+  const isNameCandidate = (value) => {
+    const text = cleanNameCandidate(value);
+    if (!text || text.length < 3) return false;
+    if (headerRegex.test(text)) return false;
+    if (/^[-–—]+$/.test(text)) return false;
+    if (/^\d+$/.test(text)) return false;
+    return /[A-ZÀ-Ýa-zà-ý]{3,}/.test(text);
+  };
+  const hasRelationNearNif = (context, nif, maxDistance = 180) => {
+    const text = String(context || '');
+    const nifIndex = text.indexOf(nif);
+    if (nifIndex < 0) return false;
+    const windowText = text.slice(Math.max(0, nifIndex - maxDistance), nifIndex + nif.length + maxDistance);
+    return relationRegex.test(windowText);
+  };
+
+  const managers = [];
+  const lines = raw.split(/\n+/).map((line) => compactSpaces(line)).filter(Boolean);
+  for (let index = 0; index < lines.length; index += 1) {
+    const nifMatch = lines[index].match(/\b\d{9}\b/);
+    if (!nifMatch) continue;
+    const contextLines = lines.slice(Math.max(0, index - 3), Math.min(lines.length, index + 5));
+    const context = contextLines.join(' ');
+    if (!hasRelationNearNif(context, nifMatch[0])) continue;
+
+    const nameLine = contextLines.find((line, offset) => {
+      const absoluteIndex = Math.max(0, index - 3) + offset;
+      if (absoluteIndex === index && line.replace(/\b\d{9}\b/g, '').trim().length < 3) return false;
+      if (line.includes(nifMatch[0]) && !/[A-ZÀ-Ýa-zà-ý]{3,}/.test(line.replace(nifMatch[0], ''))) return false;
+      if (relationRegex.test(line) && !line.includes(nifMatch[0])) return false;
+      return isNameCandidate(line);
+    });
+    const manager = normalizeManager({ nif: nifMatch[0], name: cleanNameCandidate(nameLine || lines[index]) });
+    if (manager) managers.push(manager);
+  }
+
+  const relationBlock = extractBlock(raw, /Rela[cç][oõ]es Intersujeitos Passivos/i, [/IBANs\b/i, /Ve[ií]culos\b/i, /Contactos\b/i, /Atividade\s+Exercida\b/i, /Actividade\s+Exercida\b/i]);
+  const compact = compactSpaces(relationBlock || raw);
+  for (const match of compact.matchAll(/\b\d{9}\b/g)) {
+    const nif = match[0];
+    const start = match.index || 0;
+    const end = start + nif.length;
+    const before = compact.slice(Math.max(0, start - 100), start);
+    const after = compact.slice(end, Math.min(compact.length, end + 160));
+    const context = `${before} ${after}`;
+    if (!relationRegex.test(context)) continue;
+
+    let name = firstRegexValue(after, [
+      /^\s+([A-ZÀ-Ý][A-ZÀ-Ýa-zà-ý .'’`´,-]{3,}?)(?:\s+(?:Ger[eê]ncia|Gerente|Administra[cç][aã]o|Administrador|Representante|[ÓO]rg[aã]o Social|S[oó]cio Gerente|Membro)\b|\s+\d{4}-\d{1,2}-\d{1,2}|\s+Data\b|$)/i,
+    ]);
+    if (!name) {
+      name = firstRegexValue(before, [
+        /([A-ZÀ-Ý][A-ZÀ-Ýa-zà-ý .'’`´,-]{3,}?)\s+(?:NIF|NIPC|$)/i,
+      ]);
+    }
+    const manager = normalizeManager({ nif, name: cleanNameCandidate(name) });
+    if (manager) managers.push(manager);
+  }
+
+  return mergeManagers([], managers);
+}
+
+async function extractManagersFromDom(page) {
+  const rows = await page.evaluate(() => {
+    const normalize = (value) => String(value || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+    return Array.from(document.querySelectorAll('tr')).map((row) =>
+      Array.from(row.querySelectorAll('th,td')).map((cell) => normalize(cell.textContent)).filter(Boolean)
+    ).filter((cells) => cells.length >= 2);
+  }).catch(() => []);
+
+  const managers = [];
+  const relationRegex = /ger[eê]ncia|gerente|administra[cç][aã]o|administrador|representante|[óo]rg[aã]o social/i;
+  for (const cells of rows) {
+    const joined = cells.join(' ');
+    if (!relationRegex.test(joined)) continue;
+    const nif = normalizeNifValue(joined.match(/\b\d{9}\b/)?.[0] || '');
+    if (!nif) continue;
+    const candidates = cells.filter((cell) => {
+      if (/\b\d{9}\b/.test(cell)) return false;
+      if (/\b\d{4}-\d{2}-\d{2}\b/.test(cell)) return false;
+      if (relationRegex.test(cell)) return false;
+      if (/^(NIF|Nome|Tipo|Rela[cç][aã]o|Data|In[ií]cio|Fim)$/i.test(cell)) return false;
+      return /[A-ZÀ-Ýa-zà-ý]{3,}/.test(cell);
+    });
+    const manager = normalizeManager({ nif, name: candidates[0] || '' });
+    if (manager) managers.push(manager);
+  }
+  return mergeManagers([], managers);
+}
 function normalizeTipoIva(value) {
   const raw = cleanExtractedValue(value);
   const normalized = normalizeSearchText(raw);
@@ -182,6 +336,15 @@ function parseFieldsFromText(text) {
     /Enquadramento\s+(.+?)\s+Data\s+de\s+Enquadramento/i,
   ]);
   if (tipoIva) fields.tipoIva = normalizeTipoIva(tipoIva);
+
+  const tipoContabilidade = firstRegexValue(raw, [
+    /Contabilidade\s+Tipo de Contabilidade\s+Local de Centraliza[cç][aã]o\s+(.+?)\s+(?:Sede|N[aã]o possui|Morada|Contabilista Certificado|Operador Econ[oó]mico)/i,
+    /Tipo de Contabilidade\s+(.+?)\s+Local de Centraliza[cç][aã]o/i,
+  ]);
+  if (tipoContabilidade) fields.tipoContabilidade = normalizeTipoContabilidade(tipoContabilidade);
+
+  const managers = parseManagersFromText(text);
+  if (managers.length) fields.managers = managers;
 
   return fields;
 }
@@ -275,6 +438,9 @@ function mapPairsToFields(pairs) {
   const tipoIva = findByLabels(['regime de iva', 'periodicidade iva', 'periodicidade do iva', 'tipo de iva']);
   if (tipoIva) fields.tipoIva = normalizeTipoIva(tipoIva);
 
+  const tipoContabilidade = findByLabels(['tipo de contabilidade', 'contabilidade']);
+  if (tipoContabilidade) fields.tipoContabilidade = normalizeTipoContabilidade(tipoContabilidade);
+
   const caePrincipal = findByLabels(['cae principal', 'cae']);
   const caeMatch = String(caePrincipal || '').match(/\b\d{5}\b/);
   if (caeMatch) fields.caePrincipal = caeMatch[0];
@@ -316,9 +482,13 @@ async function tryReadCurrentPage(page) {
   const pairResult = mapPairsToFields(Array.isArray(pairs) ? pairs : []);
   const text = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
   const textFields = parseFieldsFromText(text);
+  const managersFromDom = await extractManagersFromDom(page).catch(() => []);
+  const managers = mergeManagers([...(pairResult.fields?.managers || []), ...(textFields.managers || [])], managersFromDom);
+  const fields = { ...pairResult.fields, ...textFields };
+  if (managers.length) fields.managers = managers;
 
   return {
-    fields: { ...pairResult.fields, ...textFields },
+    fields,
     rawMatches: pairResult.rawMatches,
     textPreview: compactSpaces(text).slice(0, 500),
   };
@@ -410,6 +580,42 @@ async function navigateToActivityPage(page) {
   return false;
 }
 
+function buildRelationsUrlFromCurrent(urlText) {
+  const raw = String(urlText || '').trim();
+  if (!raw || !/sitfiscal\.portaldasfinancas\.gov\.pt\/integrada\/presentation/i.test(raw)) return '';
+  try {
+    const url = new URL(raw);
+    const queryString = url.searchParams.get('queryStringS') || '';
+    if (!queryString) return '';
+    const decoded = decodeURIComponent(queryString);
+    if (!/targetScreen=/i.test(decoded)) return '';
+    const nextDecoded = decoded.replace(/targetScreen=[^&]+/i, 'targetScreen=ecraListaRelacoes');
+    url.searchParams.set('queryStringS', nextDecoded);
+    return url.toString();
+  } catch (_) {
+    return raw.replace(/targetScreen%3D[^%&]+/i, 'targetScreen%3DecraListaRelacoes');
+  }
+}
+
+async function navigateToRelationsPage(page) {
+  if (await clickIntegratedMenuItem(page, 'Relações Intersujeitos Passivos')) return true;
+  if (await clickIntegratedMenuItem(page, 'Relacoes Intersujeitos Passivos')) return true;
+
+  await page.goto('https://sitfiscal.portaldasfinancas.gov.pt/integrada/presentation', { waitUntil: 'domcontentloaded', timeout: 15_000 }).catch(() => null);
+  await page.waitForTimeout(700).catch(() => null);
+  if (await clickIntegratedMenuItem(page, 'Relações Intersujeitos Passivos')) return true;
+  if (await clickIntegratedMenuItem(page, 'Relacoes Intersujeitos Passivos')) return true;
+
+  const directUrl = buildRelationsUrlFromCurrent(page.url());
+  if (directUrl && directUrl !== page.url()) {
+    await page.goto(directUrl, { waitUntil: 'domcontentloaded', timeout: 15_000 }).catch(() => null);
+    await page.waitForTimeout(900).catch(() => null);
+    const text = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '');
+    if (/Rela[cç][oõ]es Intersujeitos|Ger[eê]ncia|Administrador|Gerente/i.test(text)) return true;
+  }
+  return false;
+}
+
 
 
 function fieldQuality(key, value) {
@@ -431,6 +637,11 @@ function fieldQuality(key, value) {
 
 function mergeCollectedFields(target, incoming) {
   Object.entries(incoming || {}).forEach(([key, rawValue]) => {
+    if (key === 'managers') {
+      const managers = mergeManagers(target.managers || [], Array.isArray(rawValue) ? rawValue : []);
+      if (managers.length) target.managers = managers;
+      return;
+    }
     const value = cleanExtractedValue(rawValue);
     if (!value) return;
     if (key === 'morada') {
@@ -487,9 +698,17 @@ async function collectFinancasAtProfile(page, options = {}) {
     if (moved) await readAndMerge('identification');
   };
 
+  const tryRelationsIfUseful = async () => {
+    const isCollective = String(options.expectedEntityKind || '').toUpperCase() === 'EMPRESA' || ['5', '6', '9'].includes(String(options.nif || '')[0] || '');
+    if (!isCollective || (Array.isArray(mergedFields.managers) && mergedFields.managers.length > 0)) return;
+    const moved = await navigateToRelationsPage(page).catch(() => false);
+    if (moved) await readAndMerge('relations');
+  };
+
   await readAndMerge('current');
   await tryIdentificationIfUseful();
   await tryActivityIfUseful();
+  await tryRelationsIfUseful();
   await tryIdentificationIfUseful();
 
   // If the browser landed elsewhere after login, try the explicit candidates.
@@ -501,6 +720,7 @@ async function collectFinancasAtProfile(page, options = {}) {
         await readAndMerge(`candidate:${url}`);
         await tryIdentificationIfUseful();
         await tryActivityIfUseful();
+        await tryRelationsIfUseful();
         await tryIdentificationIfUseful();
         if (countCollectedFields(mergedFields) > 0 && mergedFields.morada && mergedFields.codigoReparticaoFinancas) break;
       } catch (error) {
@@ -518,12 +738,14 @@ async function collectFinancasAtProfile(page, options = {}) {
     await readAndMerge('watch-current');
     await tryIdentificationIfUseful();
     await tryActivityIfUseful();
+    await tryRelationsIfUseful();
   }
 
   // If we only got one side of the fiscal profile, do one last pass through both screens.
   if (countCollectedFields(mergedFields) > 0) {
     await tryIdentificationIfUseful();
     await tryActivityIfUseful();
+    await tryRelationsIfUseful();
     await tryIdentificationIfUseful();
   }
 

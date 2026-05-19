@@ -57,11 +57,12 @@ function createMappers(deps) {
         if (Array.isArray(rawValue)) {
             return rawValue
                 .map((item) => ({
-                    name: String(item?.name || '').trim(),
+                    name: String(item?.name || item?.nome || '').trim(),
+                    nif: deps.normalizeCustomerNif(item?.nif || item?.vat || item?.tax_id || item?.numero_contribuinte || ''),
                     email: String(item?.email || '').trim().toLowerCase(),
-                    phone: normalizePhone(String(item?.phone || '')),
+                    phone: normalizePhone(String(item?.phone || item?.telefone || '')),
                 }))
-                .filter((item) => item.name || item.email || item.phone);
+                .filter((item) => item.name || item.nif || item.email || item.phone);
         }
 
         if (typeof rawValue === 'string' && rawValue.trim()) {
@@ -293,11 +294,12 @@ function createMappers(deps) {
         if (parsed.length > 0) return parsed;
 
         const managerName = String(pickFirstValue(rawRow, ['gerente', 'manager', 'administrador', 'nome_gerente']) || '').trim();
+        const managerNif = deps.normalizeCustomerNif(pickFirstValue(rawRow, ['nif_gerente', 'gerente_nif', 'manager_nif', 'administrador_nif']) || '');
         const managerEmail = String(pickFirstValue(rawRow, ['email_gerente', 'manager_email']) || '').trim().toLowerCase();
         const managerPhone = normalizePhone(String(pickFirstValue(rawRow, ['telefone_gerente', 'manager_phone']) || ''));
 
-        if (managerName || managerEmail || managerPhone) {
-            return [{ name: managerName, email: managerEmail, phone: managerPhone }];
+        if (managerName || managerNif || managerEmail || managerPhone) {
+            return [{ name: managerName, nif: managerNif, email: managerEmail, phone: managerPhone }];
         }
 
         return [];

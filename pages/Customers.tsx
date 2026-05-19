@@ -88,7 +88,7 @@ type LocalFinancasAutologinResponse = {
 };
 
 type FinancasAtProfileFields = Partial<Pick<CustomerFormState,
-  'morada' | 'codigoPostal' | 'dataNascimento' | 'dataConstituicao' | 'inicioAtividade' | 'tipoIva' | 'caePrincipal' | 'codigoReparticaoFinancas'
+  'morada' | 'codigoPostal' | 'dataNascimento' | 'dataConstituicao' | 'inicioAtividade' | 'tipoIva' | 'caePrincipal' | 'codigoReparticaoFinancas' | 'tipoContabilidade' | 'managers'
 >>;
 
 type LocalFinancasAtProfileResponse = {
@@ -1264,6 +1264,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                 managers: Array.isArray(suggested.managers)
                   ? suggested.managers.map((manager) => ({
                       name: String((manager as { name?: string }).name || '').trim(),
+                      nif: String((manager as { nif?: string }).nif || '').trim(),
                       email: String((manager as { email?: string }).email || '').trim(),
                       phone: String((manager as { phone?: string }).phone || '').trim(),
                     }))
@@ -1423,6 +1424,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
             managers: Array.isArray(suggested.managers)
               ? suggested.managers.map((manager) => ({
                   name: String((manager as { name?: string }).name || '').trim(),
+                  nif: String((manager as { nif?: string }).nif || '').trim(),
                   email: String((manager as { email?: string }).email || '').trim(),
                   phone: String((manager as { phone?: string }).phone || '').trim(),
                 }))
@@ -1711,6 +1713,10 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       assignIfFilled('tipoIva');
       assignIfFilled('caePrincipal');
       assignIfFilled('codigoReparticaoFinancas');
+      assignIfFilled('tipoContabilidade');
+      if (Array.isArray(fields.managers) && fields.managers.length > 0) {
+        updates.managers = fields.managers;
+      }
 
       if (updatedCustomer) {
         setEditingCustomer(updatedCustomer);
@@ -2778,10 +2784,11 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       managers: (Array.isArray(formData.managers) ? formData.managers : [])
         .map((manager) => ({
           name: String(manager.name || '').trim(),
+          nif: String(manager.nif || '').trim(),
           email: String(manager.email || '').trim(),
           phone: String(manager.phone || '').trim(),
         }))
-        .filter((manager) => manager.name || manager.email || manager.phone),
+        .filter((manager) => manager.name || manager.nif || manager.email || manager.phone),
       accessCredentials: preserveExistingCredentialSecrets(
         applyAtUsernameFallback(
           (Array.isArray(formData.accessCredentials) ? formData.accessCredentials : [])
@@ -2852,7 +2859,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
   const addManager = () => {
     setFormData({
       ...formData,
-      managers: [...formData.managers, { name: '', email: '', phone: '' }],
+      managers: [...formData.managers, { name: '', nif: '', email: '', phone: '' }],
     });
   };
 
@@ -4232,7 +4239,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="text-base font-semibold text-slate-900">Gerência / Administração</h3>
-                        <p className="text-xs text-slate-500">Adicionar gerentes com nome, email e telefone.</p>
+                        <p className="text-xs text-slate-500">Adicionar gerentes com NIF, nome, email e telefone.</p>
                       </div>
                       <button
                         type="button"
@@ -4247,6 +4254,13 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         <div key={`manager-${index}`} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border rounded-md p-2 bg-white">
                           <input
                             type="text"
+                            placeholder="NIF"
+                            className="md:col-span-2 text-sm border rounded-md p-2 font-mono"
+                            value={manager.nif || ''}
+                            onChange={(e) => updateManager(index, 'nif', e.target.value)}
+                          />
+                          <input
+                            type="text"
                             placeholder="Nome"
                             className="md:col-span-4 text-sm border rounded-md p-2"
                             value={manager.name || ''}
@@ -4255,14 +4269,14 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                           <input
                             type="email"
                             placeholder="Email"
-                            className="md:col-span-4 text-sm border rounded-md p-2"
+                            className="md:col-span-3 text-sm border rounded-md p-2"
                             value={manager.email || ''}
                             onChange={(e) => updateManager(index, 'email', e.target.value)}
                           />
                           <input
                             type="text"
                             placeholder="Telefone"
-                            className="md:col-span-3 text-sm border rounded-md p-2"
+                            className="md:col-span-2 text-sm border rounded-md p-2"
                             value={manager.phone || ''}
                             onChange={(e) => updateManager(index, 'phone', e.target.value)}
                           />

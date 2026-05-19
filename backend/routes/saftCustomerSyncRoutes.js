@@ -861,17 +861,59 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                 return res.status(400).json({ success: false, error: 'Este cliente não tem utilizador/senha AT completos na ficha.' });
             }
 
+            const customerNif = cleanText(customer.nif || credentials.username);
+            const isCollectiveNif = /^[569]/.test(customerNif);
             const collected = await collectFinancasAtProfileInOracle(credentials, {
                 timeoutMs: Number(body.timeoutMs || process.env.PORTAL_FINANCAS_TIMEOUT_MS || 120000) || 120000,
                 profileCollectTimeoutMs: Number(body.profileCollectTimeoutMs || 45000) || 45000,
                 headless: body.headless !== false,
+                nif: customerNif,
+                expectedEntityKind: isCollectiveNif ? 'EMPRESA' : 'PARTICULAR',
             });
             const fields = collected?.fields && typeof collected.fields === 'object' ? collected.fields : {};
             const updates = {};
-            ['morada', 'codigoPostal', 'dataNascimento', 'dataConstituicao', 'inicioAtividade', 'tipoIva', 'caePrincipal', 'codigoReparticaoFinancas'].forEach((key) => {
+            ['morada', 'codigoPostal', 'dataNascimento', 'dataConstituicao', 'inicioAtividade', 'tipoIva', 'caePrincipal', 'codigoReparticaoFinancas', 'tipoContabilidade'].forEach((key) => {
                 const value = cleanText(fields[key]);
                 if (value) updates[key] = value;
             });
+
+            const normalizeNif = (value) => {
+                const digits = String(value || '').replace(/\D+/g, '');
+                return digits.length >= 9 ? digits.slice(-9) : '';
+            };
+            const normalizeManager = (manager) => {
+                const name = cleanText(manager?.name || manager?.nome);
+                const nif = normalizeNif(manager?.nif || manager?.vat || manager?.taxId || manager?.tax_id);
+                const email = String(manager?.email || '').trim().toLowerCase();
+                const phone = String(manager?.phone || manager?.telefone || '').trim();
+                if (!name && !nif && !email && !phone) return null;
+                return { name, nif, email, phone };
+            };
+            const mergeManagers = (existing = [], incoming = []) => {
+                const merged = [];
+                const upsert = (manager) => {
+                    const normalized = normalizeManager(manager);
+                    if (!normalized) return;
+                    const key = normalized.nif || cleanText(normalized.name).toLowerCase();
+                    const index = merged.findIndex((item) => {
+                        const itemKey = item.nif || cleanText(item.name).toLowerCase();
+                        return key && itemKey === key;
+                    });
+                    const filled = Object.fromEntries(
+                        Object.entries(normalized).filter(([, value]) => cleanText(value))
+                    );
+                    if (index >= 0) merged[index] = { ...merged[index], ...filled };
+                    else merged.push(normalized);
+                };
+                (Array.isArray(existing) ? existing : []).forEach(upsert);
+                (Array.isArray(incoming) ? incoming : []).forEach(upsert);
+                return merged;
+            };
+            const collectedManagers = Array.isArray(fields.managers) ? fields.managers : [];
+            if (collectedManagers.length > 0) {
+                const managers = mergeManagers(customer.managers || [], collectedManagers);
+                if (managers.length > 0) updates.managers = managers;
+            }
 
             if (Object.keys(updates).length === 0) {
                 return res.status(422).json({

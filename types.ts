@@ -49,6 +49,7 @@ export interface SubContact {
 
 export interface CustomerManager {
   name: string;
+  nif?: string;
   email?: string;
   phone?: string;
 }
