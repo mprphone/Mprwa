@@ -313,8 +313,11 @@ async function collectFinancasAtProfileInOracle(credentials, options = {}) {
       ...options,
       profileCollectTimeoutMs: options.profileCollectTimeoutMs || 45000,
     });
+    const missingIdentificationFields = !collected.fields?.morada || !collected.fields?.codigoReparticaoFinancas;
     if (!Object.keys(collected.fields || {}).length) {
       await debugSnapshot(page, 'no-fields-after-collect');
+    } else if (missingIdentificationFields) {
+      await debugSnapshot(page, 'missing-identification-after-collect');
     }
     return {
       success: true,

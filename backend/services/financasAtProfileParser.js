@@ -364,9 +364,11 @@ async function navigateToIdentificationPage(page) {
     if (/Dados Gerais de Identifica|Identifica[cç][aã]o do Contribuinte|Moradas|Servi[cç]o de Finan[cç]as Competente/i.test(text)) return true;
   }
 
-  if (await clickIntegratedMenuItem(page, 'Resumo')) return true;
+  if (await clickIntegratedMenuItem(page, 'Dados Gerais de Identificação')) return true;
+  if (await clickIntegratedMenuItem(page, 'Dados Gerais de Identificacao')) return true;
   if (await clickIntegratedMenuItem(page, 'Identificação')) return true;
   if (await clickIntegratedMenuItem(page, 'Identificacao')) return true;
+  if (await clickIntegratedMenuItem(page, 'Resumo')) return true;
   return false;
 }
 
