@@ -30,6 +30,8 @@ function cleanExtractedValue(value) {
 
 function normalizeDateToIso(value) {
   const raw = compactSpaces(value);
+  const isoMatch = raw.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
   const match = raw.match(/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\b/);
   if (!match) return raw;
   const day = match[1].padStart(2, '0');
@@ -52,43 +54,51 @@ function uniqueList(values) {
   return Array.from(new Set(values.map(cleanExtractedValue).filter(Boolean)));
 }
 
+function firstRegexValue(text, patterns) {
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) return cleanExtractedValue(match[1]);
+  }
+  return '';
+}
+
 function parseFieldsFromText(text) {
   const raw = compactSpaces(text);
   const normalized = stripAccents(raw);
   const fields = {};
 
-  const firstMatch = (patterns) => {
-    for (const pattern of patterns) {
-      const match = raw.match(pattern) || normalized.match(pattern);
-      if (match?.[1]) return cleanExtractedValue(match[1]);
-    }
-    return '';
-  };
-
-  const morada = firstMatch([
-    /(?:Domic[ií]lio\s+Fiscal|Morada(?:\s+Fiscal)?)\s*[:\-–—]?\s*(.{8,180}?)(?=\s+(?:C[oó]digo|CAE|Atividade|Actividade|Regime|Servi[cç]o|Reparti[cç][aã]o|NIF|Nome)\b|$)/i,
+  const codigoReparticaoFinancas = firstRegexValue(normalized, [
+    /Servico de Financas Competente\s+(\d{3,5})(?:\s+[A-ZÀ-Ý0-9-]+)?/i,
+    /(?:Codigo\s+)?(?:do\s+)?Servico\s+de\s+Financas\s+(\d{3,5})\b/i,
   ]);
-  if (morada) fields.morada = morada;
+  if (codigoReparticaoFinancas) fields.codigoReparticaoFinancas = codigoReparticaoFinancas;
 
-  const inicioAtividade = firstMatch([
-    /(?:In[ií]cio\s+de\s+(?:Atividade|Actividade)|Data\s+de\s+In[ií]cio)\s*[:\-–—]?\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
+  const morada = firstRegexValue(raw, [
+    /(?:Resid[eê]ncia\s*\([^)]*\)|Sede\s+ou\s+Estabelecimento\s+Est[aá]vel\s*\([^)]*\))\s+Morada\s+(.+?)\s+Localidade\s+/i,
+    /Morada\s+(.+?)\s+Localidade\s+/i,
+  ]);
+  if (morada) {
+    const localidade = firstRegexValue(raw, [/Localidade\s+(.+?)\s+C[oó]digo Postal\s+/i]);
+    const codigoPostal = firstRegexValue(raw, [/C[oó]digo Postal\s+(.+?)\s+Distrito\s+/i]);
+    fields.morada = [morada, localidade, codigoPostal].filter(Boolean).join(', ');
+  }
+
+  const inicioAtividade = firstRegexValue(raw, [
+    /Dados Gerais de Atividade\s+Data de In[ií]cio\s+(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
+    /Data de In[ií]cio\s+(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
   ]);
   if (inicioAtividade) fields.inicioAtividade = normalizeDateToIso(inicioAtividade);
 
-  const tipoIva = firstMatch([
-    /(?:Regime\s+de\s+IVA|Periodicidade\s+do?\s+IVA|Periodicidade\s+IVA|Tipo\s+de\s+IVA)\s*[:\-–—]?\s*([A-Za-zÀ-ÿ ]{4,60}?)(?=\s+(?:CAE|Atividade|Actividade|Servi[cç]o|Reparti[cç][aã]o|Data|Morada)\b|$)/i,
-  ]);
-  if (tipoIva) fields.tipoIva = normalizeTipoIva(tipoIva);
-
-  const caePrincipal = firstMatch([
-    /(?:CAE\s+Principal|CAE)\s*[:\-–—]?\s*(\d{5})\b/i,
+  const caePrincipal = firstRegexValue(raw, [
+    /CAE\s+Principal\s+(\d{5})\b/i,
   ]);
   if (caePrincipal) fields.caePrincipal = caePrincipal;
 
-  const codigoReparticaoFinancas = firstMatch([
-    /(?:C[oó]digo\s+(?:do\s+)?(?:Servi[cç]o|Reparti[cç][aã]o)\s+(?:de\s+)?Finan[cç]as|Reparti[cç][aã]o\s+de\s+Finan[cç]as|Servi[cç]o\s+de\s+Finan[cç]as)\s*[:\-–—]?\s*(\d{3,5})\b/i,
+  const tipoIva = firstRegexValue(raw, [
+    /Atividade\s+em\s+IVA\s+Enquadramento\s+(.+?)\s+Data\s+de\s+Enquadramento/i,
+    /Enquadramento\s+(.+?)\s+Data\s+de\s+Enquadramento/i,
   ]);
-  if (codigoReparticaoFinancas) fields.codigoReparticaoFinancas = codigoReparticaoFinancas;
+  if (tipoIva) fields.tipoIva = normalizeTipoIva(tipoIva);
 
   return fields;
 }
@@ -190,6 +200,8 @@ function resolveCandidateUrls(options = {}) {
     ...fromPayload,
     ...fromSingle,
     ...fromEnv,
+    'https://sitfiscal.portaldasfinancas.gov.pt/integrada/presentation?queryStringS=targetScreen%3DdecrIdentificacao',
+    'https://sitfiscal.portaldasfinancas.gov.pt/integrada/presentation?queryStringS=targetScreen%3DdecrActividade',
     'https://www.portaldasfinancas.gov.pt/pt/main.jsp',
   ]).filter((url) => /^https?:\/\//i.test(url));
 }
@@ -204,44 +216,107 @@ async function tryReadCurrentPage(page) {
   const textFields = parseFieldsFromText(text);
 
   return {
-    fields: { ...textFields, ...pairResult.fields },
+    fields: { ...pairResult.fields, ...textFields },
     rawMatches: pairResult.rawMatches,
     textPreview: compactSpaces(text).slice(0, 500),
   };
 }
 
+
+function buildActivityUrlFromCurrent(urlText) {
+  const raw = String(urlText || '').trim();
+  if (!raw || !/sitfiscal\.portaldasfinancas\.gov\.pt\/integrada\/presentation/i.test(raw)) return '';
+  try {
+    const url = new URL(raw);
+    const queryString = url.searchParams.get('queryStringS') || '';
+    if (!queryString) return '';
+    const decoded = decodeURIComponent(queryString);
+    if (!/targetScreen=/i.test(decoded)) return '';
+    const nextDecoded = decoded.replace(/targetScreen=[^&]+/i, 'targetScreen=decrActividade');
+    url.searchParams.set('queryStringS', nextDecoded);
+    return url.toString();
+  } catch (_) {
+    return raw.replace(/targetScreen%3D[^%&]+/i, 'targetScreen%3DdecrActividade');
+  }
+}
+
+async function clickIntegratedMenuItem(page, label) {
+  const candidates = [
+    `a:has-text("${label}")`,
+    `button:has-text("${label}")`,
+    `text=${label}`,
+  ];
+  for (const selector of candidates) {
+    const locator = page.locator(selector).first();
+    const visible = await locator.isVisible({ timeout: 1200 }).catch(() => false);
+    if (!visible) continue;
+    await Promise.allSettled([
+      page.waitForLoadState('domcontentloaded', { timeout: 8000 }).catch(() => null),
+      locator.click({ timeout: 2500 }),
+    ]);
+    await page.waitForTimeout(700).catch(() => null);
+    return true;
+  }
+  return false;
+}
+
+async function navigateToActivityPage(page) {
+  const directUrl = buildActivityUrlFromCurrent(page.url());
+  if (directUrl && directUrl !== page.url()) {
+    await page.goto(directUrl, { waitUntil: 'domcontentloaded', timeout: 15_000 }).catch(() => null);
+    await page.waitForTimeout(900).catch(() => null);
+    const text = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '');
+    if (/Atividade Exercida|Actividade Exercida|CAE Principal|Atividade em IVA/i.test(text)) return true;
+  }
+
+  if (await clickIntegratedMenuItem(page, 'Atividade Exercida')) return true;
+  if (await clickIntegratedMenuItem(page, 'Actividade Exercida')) return true;
+  return false;
+}
+
 async function collectFinancasAtProfile(page, options = {}) {
   const urls = resolveCandidateUrls(options);
   const attempts = [];
+  const mergedFields = {};
+  let sourceUrl = page.url();
+  let rawMatches = [];
 
-  const current = await tryReadCurrentPage(page);
-  attempts.push({ url: page.url(), ...current });
-  if (Object.keys(current.fields).length >= 2) {
-    return { fields: current.fields, sourceUrl: page.url(), rawMatches: current.rawMatches, attempts };
+  const readAndMerge = async (stage) => {
+    const result = await tryReadCurrentPage(page);
+    attempts.push({ stage, url: page.url(), ...result });
+    Object.assign(mergedFields, result.fields || {});
+    rawMatches = [...rawMatches, ...(result.rawMatches || [])];
+    sourceUrl = page.url();
+    return result;
+  };
+
+  await readAndMerge('current');
+
+  // AT split: identification has address/tax office; activity has start date/CAE/IVA.
+  const needsActivity = !mergedFields.inicioAtividade || !mergedFields.caePrincipal || !mergedFields.tipoIva;
+  if (needsActivity) {
+    await navigateToActivityPage(page).catch(() => false);
+    await readAndMerge('activity');
   }
 
-  for (const url of urls) {
-    if (page.url().replace(/#.*$/, '') === url.replace(/#.*$/, '')) continue;
-    try {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: Number(options.navigationTimeoutMs || 30_000) || 30_000 });
-      const result = await tryReadCurrentPage(page);
-      attempts.push({ url: page.url(), ...result });
-      if (Object.keys(result.fields).length >= 2) {
-        return { fields: result.fields, sourceUrl: page.url(), rawMatches: result.rawMatches, attempts };
+  // If the browser landed elsewhere after login, try the explicit candidates.
+  if (!mergedFields.morada && !mergedFields.codigoReparticaoFinancas && !mergedFields.inicioAtividade) {
+    for (const url of urls) {
+      if (page.url().replace(/#.*$/, '') === url.replace(/#.*$/, '')) continue;
+      try {
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: Number(options.navigationTimeoutMs || 30_000) || 30_000 });
+        await readAndMerge(`candidate:${url}`);
+        if (mergedFields.morada || mergedFields.codigoReparticaoFinancas || mergedFields.inicioAtividade) break;
+      } catch (error) {
+        attempts.push({ url, error: String(error?.message || error) });
       }
-    } catch (error) {
-      attempts.push({ url, error: String(error?.message || error) });
     }
   }
 
-  const best = attempts
-    .filter((attempt) => attempt && attempt.fields)
-    .sort((a, b) => Object.keys(b.fields || {}).length - Object.keys(a.fields || {}).length)[0];
-
   return {
-    fields: best?.fields || {},
-    sourceUrl: best?.url || page.url(),
-    rawMatches: best?.rawMatches || [],
+    fields: mergedFields,
+    sourceUrl,
+    rawMatches,
     attempts,
   };
 }
