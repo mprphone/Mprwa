@@ -274,6 +274,8 @@ function resolveCandidateUrls(options = {}) {
     ...fromPayload,
     ...fromSingle,
     ...fromEnv,
+    'https://sitfiscal.portaldasfinancas.gov.pt/integrada/presentation?queryStringS=targetScreen%3DecraIdentificacao',
+    'https://sitfiscal.portaldasfinancas.gov.pt/integrada/presentation?queryStringS=targetScreen%3DecraActividade',
     'https://sitfiscal.portaldasfinancas.gov.pt/integrada/presentation?queryStringS=targetScreen%3DecrIdentificacao',
     'https://sitfiscal.portaldasfinancas.gov.pt/integrada/presentation?queryStringS=targetScreen%3DecrActividade',
     'https://sitfiscal.portaldasfinancas.gov.pt/integrada/presentation?queryStringS=targetScreen%3DdecrIdentificacao',
@@ -308,11 +310,11 @@ function buildActivityUrlFromCurrent(urlText) {
     if (!queryString) return '';
     const decoded = decodeURIComponent(queryString);
     if (!/targetScreen=/i.test(decoded)) return '';
-    const nextDecoded = decoded.replace(/targetScreen=[^&]+/i, 'targetScreen=ecrActividade');
+    const nextDecoded = decoded.replace(/targetScreen=[^&]+/i, 'targetScreen=ecraActividade');
     url.searchParams.set('queryStringS', nextDecoded);
     return url.toString();
   } catch (_) {
-    return raw.replace(/targetScreen%3D[^%&]+/i, 'targetScreen%3DecrActividade');
+    return raw.replace(/targetScreen%3D[^%&]+/i, 'targetScreen%3DecraActividade');
   }
 }
 
