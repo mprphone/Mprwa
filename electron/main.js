@@ -530,6 +530,80 @@ async function submitDesktopAutologinCredentials(page, targets, config) {
   ]);
 }
 
+
+async function clickFirstFinancasTextLink(page, labels, timeoutMs = 2500) {
+  const list = Array.isArray(labels) ? labels : [labels];
+  for (const label of list) {
+    const selectors = [
+      `a:has-text("${label}")`,
+      `button:has-text("${label}")`,
+      `text=${label}`,
+    ];
+    for (const selector of selectors) {
+      const locator = page.locator(selector).first();
+      const visible = await locator.isVisible({ timeout: Math.min(timeoutMs, 1500) }).catch(() => false);
+      if (!visible) continue;
+      await Promise.allSettled([
+        page.waitForLoadState('domcontentloaded', { timeout: 10_000 }).catch(() => null),
+        locator.click({ timeout: timeoutMs }),
+      ]);
+      await page.waitForTimeout(900).catch(() => null);
+      return true;
+    }
+  }
+  return false;
+}
+
+async function hasFinancasPasswordForm(page) {
+  const selectors = [
+    'form[name="loginForm"] input[name="password"]',
+    'input[name="password"]',
+    'input[type="password"]',
+  ];
+  for (const selector of selectors) {
+    const visible = await page.locator(selector).first().isVisible({ timeout: 700 }).catch(() => false);
+    if (visible) return true;
+  }
+  return false;
+}
+
+async function ensureFinancasFiscalIntegratedPage(page, selectors, config) {
+  const readBody = async () => String(await page.locator('body').innerText({ timeout: 3000 }).catch(() => '') || '');
+  const isFiscalPage = (text) => /Dados Gerais de Identifica|Atividade Exercida|Actividade Exercida|Situa[cç][aã]o Fiscal Integrada/i.test(text || '')
+    && /NIF|Moradas|CAE|Servi[cç]o de Finan[cç]as|Atividade em IVA/i.test(text || '');
+
+  await page.waitForLoadState('domcontentloaded', { timeout: Math.min(12_000, config.timeoutMs) }).catch(() => null);
+  let body = await readBody();
+  if (isFiscalPage(body)) return;
+
+  // The AT often drops the session on the public homepage first. Use the real signed link from that page.
+  await clickFirstFinancasTextLink(page, ['Situação fiscal integrada', 'Situacao fiscal integrada']).catch(() => false);
+  body = await readBody();
+  if (isFiscalPage(body)) return;
+
+  // If the signed link sent us to a login form, authenticate again and return through the same real link.
+  if (await hasFinancasPasswordForm(page)) {
+    const targets = await findDesktopAutologinFormTargets(page, selectors, config);
+    await submitDesktopAutologinCredentials(page, targets, config);
+    await page.waitForLoadState('domcontentloaded', { timeout: Math.min(12_000, config.timeoutMs) }).catch(() => null);
+    await page.waitForTimeout(1000).catch(() => null);
+  } else {
+    const clickedLogin = await clickFirstFinancasTextLink(page, ['Iniciar Sessão', 'Iniciar Sessao'], 2500).catch(() => false);
+    if (clickedLogin && await hasFinancasPasswordForm(page)) {
+      const targets = await findDesktopAutologinFormTargets(page, selectors, config);
+      await submitDesktopAutologinCredentials(page, targets, config);
+      await page.waitForLoadState('domcontentloaded', { timeout: Math.min(12_000, config.timeoutMs) }).catch(() => null);
+      await page.waitForTimeout(1000).catch(() => null);
+    }
+  }
+
+  body = await readBody();
+  if (isFiscalPage(body)) return;
+  await clickFirstFinancasTextLink(page, ['Situação fiscal integrada', 'Situacao fiscal integrada']).catch(() => false);
+  await page.waitForLoadState('domcontentloaded', { timeout: Math.min(12_000, config.timeoutMs) }).catch(() => null);
+  await page.waitForTimeout(1000).catch(() => null);
+}
+
 async function resolveDesktopAutologinCompletion(page, selectors, controller) {
   const matchedSuccessTarget = await findFirstVisibleLocatorTarget(page, selectors.successSelectors, {
     waitTimeoutMs: 1500,
@@ -619,6 +693,7 @@ async function performDesktopFinancasAtProfile(payload = {}) {
     await submitDesktopAutologinCredentials(page, targets, config);
     await runDesktopAutologinPostSubmitFlow(page, context, payload, config).catch(() => ({}));
     await page.waitForLoadState('domcontentloaded', { timeout: Math.min(12_000, config.timeoutMs) }).catch(() => null);
+    await ensureFinancasFiscalIntegratedPage(page, selectors, config).catch(() => null);
 
     const collected = await collectFinancasAtProfile(page, payload || {});
     const fields = collected?.fields && typeof collected.fields === 'object' ? collected.fields : {};
