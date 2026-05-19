@@ -88,7 +88,7 @@ type LocalFinancasAutologinResponse = {
 };
 
 type FinancasAtProfileFields = Partial<Pick<CustomerFormState,
-  'morada' | 'codigoPostal' | 'dataNascimento' | 'inicioAtividade' | 'tipoIva' | 'caePrincipal' | 'codigoReparticaoFinancas'
+  'morada' | 'codigoPostal' | 'dataNascimento' | 'dataConstituicao' | 'inicioAtividade' | 'tipoIva' | 'caePrincipal' | 'codigoReparticaoFinancas'
 >>;
 
 type LocalFinancasAtProfileResponse = {
@@ -1706,6 +1706,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       assignIfFilled('morada');
       assignIfFilled('codigoPostal');
       assignIfFilled('dataNascimento');
+      assignIfFilled('dataConstituicao');
       assignIfFilled('inicioAtividade');
       assignIfFilled('tipoIva');
       assignIfFilled('caePrincipal');

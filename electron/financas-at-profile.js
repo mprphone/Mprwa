@@ -145,7 +145,22 @@ function parseFieldsFromText(text) {
     /Data de Nascimento\s+Sexo\s+(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
     /Data de Nascimento\s+(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
   ]);
-  if (dataNascimento) fields.dataNascimento = normalizeDateToIso(dataNascimento);
+  if (dataNascimento) {
+    fields.dataNascimento = normalizeDateToIso(dataNascimento);
+    fields.tipoEntidadeAt = 'PARTICULAR';
+  }
+
+  const dataConstituicao = firstRegexValue(raw, [
+    /Data de Constitui[cç][aã]o da Sociedade\s+Data de Dissolu[cç][aã]o da Sociedade\s+Data de Cancelamento da Matr[ií]cula\s+(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
+    /Data de Constitui[cç][aã]o(?: da Sociedade)?\s+(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
+  ]);
+  if (dataConstituicao) {
+    fields.dataConstituicao = normalizeDateToIso(dataConstituicao);
+    fields.tipoEntidadeAt = 'EMPRESA';
+  }
+  if (!fields.tipoEntidadeAt && /Dados da Entidade|Natureza Jur[ií]dica|Denomina[cç][aã]o/i.test(raw)) {
+    fields.tipoEntidadeAt = 'EMPRESA';
+  }
 
   const inicioAtividade = firstRegexValue(raw, [
     /Dados Gerais de Atividade\s+Data de In[ií]cio\s+Tipo de Sujeito Passivo\s+(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
@@ -243,7 +258,16 @@ function mapPairsToFields(pairs) {
   if (codigoPostal) fields.codigoPostal = codigoPostal;
 
   const dataNascimento = findByLabels(['data de nascimento', 'nascimento']);
-  if (dataNascimento) fields.dataNascimento = normalizeDateToIso(dataNascimento);
+  if (dataNascimento) {
+    fields.dataNascimento = normalizeDateToIso(dataNascimento);
+    fields.tipoEntidadeAt = 'PARTICULAR';
+  }
+
+  const dataConstituicao = findByLabels(['data de constituicao da sociedade', 'data de constituição da sociedade', 'data de constituicao']);
+  if (dataConstituicao) {
+    fields.dataConstituicao = normalizeDateToIso(dataConstituicao);
+    fields.tipoEntidadeAt = 'EMPRESA';
+  }
 
   const inicioAtividade = findByLabels(['inicio de atividade', 'inicio de actividade', 'data de inicio']);
   if (inicioAtividade) fields.inicioAtividade = normalizeDateToIso(inicioAtividade);
