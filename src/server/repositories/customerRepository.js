@@ -159,6 +159,7 @@ function createCustomerRepository(deps) {
             rcbeNumero: profile.rcbeNumero || undefined,
             rcbeData: profile.rcbeData || undefined,
             dataConstituicao: profile.dataConstituicao || undefined,
+            dataNascimento: profile.dataNascimento || undefined,
             inicioAtividade: profile.inicioAtividade || undefined,
             caePrincipal: profile.caePrincipal || undefined,
             codigoReparticaoFinancas: profile.codigoReparticaoFinancas || undefined,

@@ -45,6 +45,7 @@ function normalizeAddressValue(value) {
   const folded = normalizeSearchText(cleaned);
   if (!cleaned) return '';
   if (folded === 'av rua' || folded === 'av rua rua' || folded === 'avenida rua') return '';
+  if (/^av\.?\s*\/?\s*rua\b/i.test(cleaned) && !/\d/.test(cleaned)) return '';
   if (folded === 'morada' || folded === 'localidade' || folded === 'codigo postal') return '';
   if (/^av\.?\s*\/\s*rua$/i.test(cleaned)) return '';
   if (cleaned.length < 5) return '';
@@ -60,6 +61,47 @@ function normalizePostalCodeValue(value) {
     return locality ? `${match[1]}-${match[2]} ${locality}` : `${match[1]}-${match[2]}`;
   }
   return /^[-–—]+$/.test(cleaned) ? '' : cleaned;
+}
+
+
+function extractBlock(rawText, startPattern, endPatterns = []) {
+  const source = compactSpaces(rawText);
+  const startMatch = source.match(startPattern);
+  if (!startMatch) return '';
+  const startIndex = startMatch.index || 0;
+  let endIndex = source.length;
+  for (const pattern of endPatterns) {
+    const rest = source.slice(startIndex + startMatch[0].length);
+    const endMatch = rest.match(pattern);
+    if (endMatch && typeof endMatch.index === 'number') {
+      endIndex = Math.min(endIndex, startIndex + startMatch[0].length + endMatch.index);
+    }
+  }
+  return source.slice(startIndex, endIndex).trim();
+}
+
+function parseAddressFieldsFromText(rawText) {
+  const fields = {};
+  const block = extractBlock(rawText, /Moradas\b/i, [/Contactos\b/i, /ViaCTT\b/i, /Atividade\s+Exercida\b/i, /Actividade\s+Exercida\b/i]);
+  const source = block || rawText;
+  const morada = normalizeAddressValue(firstRegexValue(source, [
+    /(?:Resid[eê]ncia\s*\([^)]*\)|Sede\s+ou\s+Estabelecimento\s+Est[aá]vel\s*\([^)]*\))\s+Morada\s+(.+?)\s+Localidade\b/i,
+    /Morada\s+(.+?)\s+Localidade\b/i,
+  ]));
+  const postalMatch = source.match(/\b(\d{4})\s*[- ]\s*(\d{3})(?:\s+([A-ZÀ-Ý][A-ZÀ-Ý0-9ªº .,'()\-]+?))?(?=\s+(?:Distrito|Concelho|Freguesia|Data\s+de\s+Produ[cç][aã]o|Contactos|ViaCTT|$))/i);
+  const codigoPostal = postalMatch ? normalizePostalCodeValue(postalMatch[0]) : '';
+
+  let localidade = cleanExtractedValue(firstRegexValue(source, [
+    /Localidade\s+C[oó]digo Postal\s+(.+?)\s+\d{4}\s*[- ]\s*\d{3}/i,
+    /Localidade\s+(.+?)\s+C[oó]digo Postal\s+/i,
+    /Localidade\s+(.+?)\s+\d{4}\s*[- ]\s*\d{3}/i,
+  ]));
+  localidade = localidade.replace(/\bC[oó]digo Postal\b/ig, '').trim();
+  if (/^(Distrito|Concelho|Freguesia)$/i.test(localidade)) localidade = '';
+
+  if (morada) fields.morada = [morada, localidade].filter(Boolean).join(', ');
+  if (codigoPostal) fields.codigoPostal = codigoPostal;
+  return fields;
 }
 
 function normalizeTipoIva(value) {
@@ -91,22 +133,24 @@ function parseFieldsFromText(text) {
   const fields = {};
 
   const codigoReparticaoFinancas = firstRegexValue(normalized, [
-    /Servico de Financas Competente\s+(\d{3,5})(?:\s+[A-ZÀ-Ý0-9-]+)?/i,
+    /Servico de Financas Competente\s+(?:NIF\s+IVA[^0-9]+)?(?:NIF\s+no[^0-9]+)?(\d{3,5})\b/i,
+    /Servico de Financas Competente(?:\s+[A-Z][A-Za-z ]+){0,8}\s+(\d{3,5})\b/i,
     /(?:Codigo\s+)?(?:do\s+)?Servico\s+de\s+Financas\s+(\d{3,5})\b/i,
   ]);
   if (codigoReparticaoFinancas) fields.codigoReparticaoFinancas = codigoReparticaoFinancas;
 
-  const morada = normalizeAddressValue(firstRegexValue(raw, [
-    /(?:Resid[eê]ncia\s*\([^)]*\)|Sede\s+ou\s+Estabelecimento\s+Est[aá]vel\s*\([^)]*\))\s+Morada\s+(.+?)\s+Localidade\s+/i,
-    /Morada\s+(.+?)\s+Localidade\s+/i,
-  ]));
-  const localidade = cleanExtractedValue(firstRegexValue(raw, [/Localidade\s+(.+?)\s+C[oó]digo Postal\s+/i]));
-  const codigoPostal = normalizePostalCodeValue(firstRegexValue(raw, [/C[oó]digo Postal\s+(.+?)\s+Distrito\s+/i]));
-  if (morada) fields.morada = [morada, localidade].filter(Boolean).join(', ');
-  if (codigoPostal) fields.codigoPostal = codigoPostal;
+  Object.assign(fields, parseAddressFieldsFromText(raw));
+
+  const dataNascimento = firstRegexValue(raw, [
+    /Data de Nascimento\s+Sexo\s+(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
+    /Data de Nascimento\s+(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
+  ]);
+  if (dataNascimento) fields.dataNascimento = normalizeDateToIso(dataNascimento);
 
   const inicioAtividade = firstRegexValue(raw, [
+    /Dados Gerais de Atividade\s+Data de In[ií]cio\s+Tipo de Sujeito Passivo\s+(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
     /Dados Gerais de Atividade\s+Data de In[ií]cio\s+(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
+    /Data de In[ií]cio\s+Tipo de Sujeito Passivo\s+(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
     /Data de In[ií]cio\s+(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
   ]);
   if (inicioAtividade) fields.inicioAtividade = normalizeDateToIso(inicioAtividade);
@@ -117,6 +161,8 @@ function parseFieldsFromText(text) {
   if (caePrincipal) fields.caePrincipal = caePrincipal;
 
   const tipoIva = firstRegexValue(raw, [
+    /Atividade\s+em\s+IVA\s+Enquadramento\s+Data\s+de\s+Enquadramento\s+Situa[cç][aã]o\s+(.+?)\s+\d{4}-\d{1,2}-\d{1,2}/i,
+    /Enquadramento\s+Data\s+de\s+Enquadramento\s+Situa[cç][aã]o\s+(.+?)\s+\d{4}-\d{1,2}-\d{1,2}/i,
     /Atividade\s+em\s+IVA\s+Enquadramento\s+(.+?)\s+Data\s+de\s+Enquadramento/i,
     /Enquadramento\s+(.+?)\s+Data\s+de\s+Enquadramento/i,
   ]);
@@ -195,6 +241,9 @@ function mapPairsToFields(pairs) {
 
   const codigoPostal = normalizePostalCodeValue(findByLabels(['codigo postal', 'cod postal', 'cp']));
   if (codigoPostal) fields.codigoPostal = codigoPostal;
+
+  const dataNascimento = findByLabels(['data de nascimento', 'nascimento']);
+  if (dataNascimento) fields.dataNascimento = normalizeDateToIso(dataNascimento);
 
   const inicioAtividade = findByLabels(['inicio de atividade', 'inicio de actividade', 'data de inicio']);
   if (inicioAtividade) fields.inicioAtividade = normalizeDateToIso(inicioAtividade);

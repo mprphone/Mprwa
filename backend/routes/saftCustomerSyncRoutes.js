@@ -868,7 +868,7 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
             });
             const fields = collected?.fields && typeof collected.fields === 'object' ? collected.fields : {};
             const updates = {};
-            ['morada', 'codigoPostal', 'inicioAtividade', 'tipoIva', 'caePrincipal', 'codigoReparticaoFinancas'].forEach((key) => {
+            ['morada', 'codigoPostal', 'dataNascimento', 'inicioAtividade', 'tipoIva', 'caePrincipal', 'codigoReparticaoFinancas'].forEach((key) => {
                 const value = cleanText(fields[key]);
                 if (value) updates[key] = value;
             });

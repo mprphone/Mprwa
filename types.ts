@@ -107,6 +107,7 @@ export interface Customer {
   rcbeNumero?: string;
   rcbeData?: string;
   dataConstituicao?: string;
+  dataNascimento?: string;
   inicioAtividade?: string;
   caePrincipal?: string;
   codigoReparticaoFinancas?: string;

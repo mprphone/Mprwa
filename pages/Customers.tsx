@@ -88,7 +88,7 @@ type LocalFinancasAutologinResponse = {
 };
 
 type FinancasAtProfileFields = Partial<Pick<CustomerFormState,
-  'morada' | 'codigoPostal' | 'inicioAtividade' | 'tipoIva' | 'caePrincipal' | 'codigoReparticaoFinancas'
+  'morada' | 'codigoPostal' | 'dataNascimento' | 'inicioAtividade' | 'tipoIva' | 'caePrincipal' | 'codigoReparticaoFinancas'
 >>;
 
 type LocalFinancasAtProfileResponse = {
@@ -641,6 +641,7 @@ type CustomerFormState = {
   rcbeNumero: string;
   rcbeData: string;
   dataConstituicao: string;
+  dataNascimento: string;
   inicioAtividade: string;
   caePrincipal: string;
   codigoReparticaoFinancas: string;
@@ -680,6 +681,7 @@ const emptyFormState = (): CustomerFormState => ({
   rcbeNumero: '',
   rcbeData: '',
   dataConstituicao: '',
+  dataNascimento: '',
   inicioAtividade: '',
   caePrincipal: '',
   codigoReparticaoFinancas: '',
@@ -944,6 +946,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     rcbeNumero: customer.rcbeNumero || '',
     rcbeData: customer.rcbeData || '',
     dataConstituicao: customer.dataConstituicao || '',
+    dataNascimento: customer.dataNascimento || '',
     inicioAtividade: customer.inicioAtividade || '',
     caePrincipal: customer.caePrincipal || '',
     codigoReparticaoFinancas: customer.codigoReparticaoFinancas || '',
@@ -1702,6 +1705,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       };
       assignIfFilled('morada');
       assignIfFilled('codigoPostal');
+      assignIfFilled('dataNascimento');
       assignIfFilled('inicioAtividade');
       assignIfFilled('tipoIva');
       assignIfFilled('caePrincipal');
@@ -2761,6 +2765,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       rcbeNumero: String(formData.rcbeNumero || '').trim(),
       rcbeData: String(formData.rcbeData || '').trim(),
       dataConstituicao: String(formData.dataConstituicao || '').trim(),
+      dataNascimento: String(formData.dataNascimento || '').trim(),
       inicioAtividade: String(formData.inicioAtividade || '').trim(),
       caePrincipal: String(formData.caePrincipal || '').trim(),
       codigoReparticaoFinancas: String(formData.codigoReparticaoFinancas || '').trim(),
@@ -3960,6 +3965,15 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                           className="mt-1 w-full border rounded-md p-2 font-mono"
                           value={formData.niss}
                           onChange={(e) => setFormData({ ...formData, niss: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Data de nascimento</label>
+                        <input
+                          type="date"
+                          className="mt-1 w-full border rounded-md p-2"
+                          value={formData.dataNascimento}
+                          onChange={(e) => setFormData({ ...formData, dataNascimento: e.target.value })}
                         />
                       </div>
                       <div>

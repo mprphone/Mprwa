@@ -1837,6 +1837,7 @@ Regras:
         setIfColumnExists(['rcbe_numero', 'rcbe_n', 'rcbe'], localCustomer?.rcbeNumero || null);
         setIfColumnExists(['rcbe_data'], toSupabaseDateValue(localCustomer?.rcbeData));
         setIfColumnExists(['data_constituicao'], toSupabaseDateValue(localCustomer?.dataConstituicao));
+        setIfColumnExists(['data_nascimento', 'nascimento', 'birth_date', 'date_of_birth'], toSupabaseDateValue(localCustomer?.dataNascimento));
         setIfColumnExists(['inicio_atividade', 'data_inicio_atividade'], toSupabaseDateValue(localCustomer?.inicioAtividade));
         setIfColumnExists(['cae_principal', 'cae'], localCustomer?.caePrincipal || null);
         setIfColumnExists(['codigo_reparticao_financas', 'reparticao_financas'], localCustomer?.codigoReparticaoFinancas || null);
@@ -2001,6 +2002,7 @@ Regras:
             rcbeNumero: candidate.rcbeNumero || undefined,
             rcbeData: candidate.rcbeData || undefined,
             dataConstituicao: candidate.dataConstituicao || undefined,
+            dataNascimento: candidate.dataNascimento || undefined,
             inicioAtividade: candidate.inicioAtividade || undefined,
             caePrincipal: candidate.caePrincipal || undefined,
             codigoReparticaoFinancas: candidate.codigoReparticaoFinancas || undefined,

@@ -676,6 +676,7 @@ function createSaftService(deps) {
         const rcbeNumero = String(pickFirstValue(rawRow, ['rcbe_numero', 'rcbe_n', 'rcbe']) || '').trim();
         const rcbeData = String(pickFirstValue(rawRow, ['rcbe_data']) || '').trim();
         const dataConstituicao = String(pickFirstValue(rawRow, ['data_constituicao']) || '').trim();
+        const dataNascimento = String(pickFirstValue(rawRow, ['data_nascimento', 'nascimento', 'birth_date', 'date_of_birth']) || '').trim();
         const inicioAtividade = String(pickFirstValue(rawRow, ['inicio_atividade', 'data_inicio_atividade']) || '').trim();
         const caePrincipal = String(pickFirstValue(rawRow, ['cae_principal', 'cae']) || '').trim();
         const codigoReparticaoFinancas = String(
@@ -719,6 +720,7 @@ function createSaftService(deps) {
             rcbeNumero,
             rcbeData,
             dataConstituicao,
+            dataNascimento,
             inicioAtividade,
             caePrincipal,
             codigoReparticaoFinancas,
