@@ -16,10 +16,16 @@ contextBridge.exposeInMainWorld('waDesktop', {
   financasAutologin: async (payload) => {
     return ipcRenderer.invoke('wa:financas-autologin', payload || {});
   },
+  financasAtProfile: async (payload) => {
+    return ipcRenderer.invoke('wa:financas-at-profile', payload || {});
+  },
   readClipboardText: async () => {
     return ipcRenderer.invoke('wa:read-clipboard-text');
   },
   notifyInboundMessage: (payload) => {
     ipcRenderer.send('wa:notify-inbound-message', payload || {});
+  },
+  openAsApp: (url) => {
+    ipcRenderer.invoke('wa:open-as-app', url);
   },
 });

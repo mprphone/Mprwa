@@ -1427,6 +1427,8 @@ class MockService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: draftCustomer.id,
+          sourceId: String((draftCustomer as Customer & { sourceId?: string }).sourceId || '').trim() || (draftCustomer.id.startsWith('ext_c_') ? draftCustomer.id.slice(6) : undefined),
+          forceLocalToSupabase: syncToSupabase,
           name: draftCustomer.name,
           contactName: draftCustomer.contactName || '',
           company: draftCustomer.company,
@@ -1510,7 +1512,8 @@ class MockService {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 id: nextCustomer.id,
-                sourceId: nextCustomer.id.startsWith('ext_c_') ? nextCustomer.id.slice(6) : undefined,
+                sourceId: String((nextCustomer as Customer & { sourceId?: string }).sourceId || '').trim() || (nextCustomer.id.startsWith('ext_c_') ? nextCustomer.id.slice(6) : undefined),
+                forceLocalToSupabase: syncToSupabase,
                 name: nextCustomer.name,
                 contactName: nextCustomer.contactName || '',
                 company: nextCustomer.company,

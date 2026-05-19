@@ -1,0 +1,65 @@
+{
+  "manifest_version": 3,
+  "name": "WA PRO Auto Login",
+  "description": "Autologin assistido da WA PRO para Autoridade Tributária e Segurança Social.",
+  "version": "0.4.7",
+  "action": {
+    "default_title": "WA PRO Auto Login",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png",
+      "256": "icons/icon-256.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png",
+    "256": "icons/icon-256.png"
+  },
+  "permissions": [
+    "tabs",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://wa.mpr.pt/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "https://www.acesso.gov.pt/*",
+    "https://*.portaldasfinancas.gov.pt/*",
+    "https://www.seg-social.pt/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://wa.mpr.pt/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": [
+        "wa-bridge.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://www.acesso.gov.pt/*",
+        "https://*.portaldasfinancas.gov.pt/*",
+        "https://www.seg-social.pt/*"
+      ],
+      "js": [
+        "portal-autofill.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}

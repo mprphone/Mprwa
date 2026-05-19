@@ -62,6 +62,24 @@ export type ProjectSupportDetail = {
     relatorio: string;
     notas: string;
   };
+  medidaApoio: {
+    candidatoNome: string;
+    candidatoNif: string;
+    candidatoNiss: string;
+    candidatoContacto: string;
+    situacaoAtual: string;
+    centroEmprego: string;
+    medidaIefp: string;
+    processoOferta: string;
+    entidadeGestora: string;
+    contactoIefp: string;
+    dataPedido: string;
+    dataSubmissao: string;
+    dataDecisao: string;
+    valorPrevisto: string;
+    valorAprovado: string;
+    notas: string;
+  };
   dossieEletronico: {
     modelo: string;
     naoAplicavelPorItem: Record<string, boolean>;
@@ -203,6 +221,24 @@ export function createEmptyProjectSupportDetail(): ProjectSupportDetail {
       relatorio: '',
       notas: '',
     },
+    medidaApoio: {
+      candidatoNome: '',
+      candidatoNif: '',
+      candidatoNiss: '',
+      candidatoContacto: '',
+      situacaoAtual: '',
+      centroEmprego: '',
+      medidaIefp: '',
+      processoOferta: '',
+      entidadeGestora: '',
+      contactoIefp: '',
+      dataPedido: '',
+      dataSubmissao: '',
+      dataDecisao: '',
+      valorPrevisto: '',
+      valorAprovado: '',
+      notas: '',
+    },
     dossieEletronico: {
       modelo: 'IAPMEI',
       naoAplicavelPorItem: {},
@@ -227,6 +263,9 @@ export function normalizeProjectSupportDetail(input: unknown): ProjectSupportDet
     : {}) as Record<string, unknown>;
   const dossieRaw = (src.dossieEletronico && typeof src.dossieEletronico === 'object'
     ? src.dossieEletronico
+    : {}) as Record<string, unknown>;
+  const medidaApoioRaw = (src.medidaApoio && typeof src.medidaApoio === 'object'
+    ? src.medidaApoio
     : {}) as Record<string, unknown>;
 
   const candidaturaInvestimento = normalizeSimpleList(candidaturaRaw.investimento);
@@ -295,6 +334,24 @@ export function normalizeProjectSupportDetail(input: unknown): ProjectSupportDet
       relatorio: toText(encerramentoRaw.relatorio),
       notas: toText(encerramentoRaw.notas),
     },
+    medidaApoio: {
+      candidatoNome: toText(medidaApoioRaw.candidatoNome),
+      candidatoNif: toText(medidaApoioRaw.candidatoNif),
+      candidatoNiss: toText(medidaApoioRaw.candidatoNiss),
+      candidatoContacto: toText(medidaApoioRaw.candidatoContacto),
+      situacaoAtual: toText(medidaApoioRaw.situacaoAtual),
+      centroEmprego: toText(medidaApoioRaw.centroEmprego),
+      medidaIefp: toText(medidaApoioRaw.medidaIefp),
+      processoOferta: toText(medidaApoioRaw.processoOferta),
+      entidadeGestora: toText(medidaApoioRaw.entidadeGestora),
+      contactoIefp: toText(medidaApoioRaw.contactoIefp),
+      dataPedido: toText(medidaApoioRaw.dataPedido),
+      dataSubmissao: toText(medidaApoioRaw.dataSubmissao),
+      dataDecisao: toText(medidaApoioRaw.dataDecisao),
+      valorPrevisto: toText(medidaApoioRaw.valorPrevisto),
+      valorAprovado: toText(medidaApoioRaw.valorAprovado),
+      notas: toText(medidaApoioRaw.notas),
+    },
     dossieEletronico: {
       modelo: toText(dossieRaw.modelo) || 'IAPMEI',
       naoAplicavelPorItem:
@@ -318,4 +375,13 @@ export function isProjectSupportTypeName(typeName: string): boolean {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
   return normalized.includes('projeto') || normalized.includes('medidas de apoio') || normalized.includes('medida de apoio');
+}
+
+
+export function isSupportMeasureTypeName(typeName: string): boolean {
+  const normalized = String(typeName || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+  return normalized.includes('medidas de apoio') || normalized.includes('medida de apoio') || normalized.includes('iefp');
 }

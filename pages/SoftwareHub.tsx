@@ -25,6 +25,8 @@ type DesktopBuildsPayload = {
 };
 
 const STORAGE_KEY = 'wa_pro_software_links_v1';
+const CHROME_EXTENSION_STORE_URL = String((import.meta as any)?.env?.VITE_CHROME_EXTENSION_STORE_URL || '').trim();
+
 
 const DEFAULT_SOFTWARES: SoftwareLink[] = [
   { id: 'sw_1', name: 'Divisão de faturas', url: '', imageUrl: '' },
@@ -302,23 +304,32 @@ const SoftwareHub: React.FC = () => {
 
   const canSave = useMemo(() => String(name || '').trim() && String(url || '').trim(), [name, url]);
 
+  const desktopInstallerBuilds = useMemo(
+    () => desktopBuilds.filter((item) => !/chrome[-_ ]extension/i.test(item.name)),
+    [desktopBuilds],
+  );
+
   const preferredDesktopBuild = useMemo(() => {
-    if (!desktopBuilds.length) return null;
+    if (!desktopInstallerBuilds.length) return null;
     const appVersion = String(desktopAppVersion || '').trim();
     if (appVersion) {
-      const currentExe = desktopBuilds.find((item) => item.version === appVersion && /\.exe$/i.test(item.name));
+      const currentExe = desktopInstallerBuilds.find((item) => item.version === appVersion && /\.exe$/i.test(item.name));
       if (currentExe) return currentExe;
-      const currentZip = desktopBuilds.find((item) => item.version === appVersion && /\.zip$/i.test(item.name));
+      const currentZip = desktopInstallerBuilds.find((item) => item.version === appVersion && /\.zip$/i.test(item.name));
       if (currentZip) return currentZip;
-      const currentAny = desktopBuilds.find((item) => item.version === appVersion);
+      const currentAny = desktopInstallerBuilds.find((item) => item.version === appVersion);
       if (currentAny) return currentAny;
     }
-    const exe = desktopBuilds.find((item) => /\.exe$/i.test(item.name));
+    const exe = desktopInstallerBuilds.find((item) => /\.exe$/i.test(item.name));
     if (exe) return exe;
-    const zip = desktopBuilds.find((item) => /\.zip$/i.test(item.name));
+    const zip = desktopInstallerBuilds.find((item) => /\.zip$/i.test(item.name));
     if (zip) return zip;
-    return desktopBuilds[0];
-  }, [desktopBuilds, desktopAppVersion]);
+    return desktopInstallerBuilds[0];
+  }, [desktopInstallerBuilds, desktopAppVersion]);
+
+  const preferredChromeExtensionBuild = useMemo(() => (
+    desktopBuilds.find((item) => /chrome[-_ ]extension/i.test(item.name) && /\.zip$/i.test(item.name)) || null
+  ), [desktopBuilds]);
 
   const clearForm = () => {
     setName('');
@@ -418,10 +429,11 @@ const SoftwareHub: React.FC = () => {
       setDesktopAppVersion(fresh.appVersion);
       setDesktopLatestBuildVersion(fresh.latestBuildVersion);
       setDesktopHasCurrentBuild(fresh.hasCurrentBuild);
+      const desktopBuildsOnly = fresh.builds.filter((item) => !/chrome[-_ ]extension/i.test(item.name));
       const latestZip =
-        fresh.builds.find((item) => String(item.version || '') === fresh.latestBuildVersion && /\.zip$/i.test(item.name)) ||
-        fresh.builds.find((item) => /\.zip$/i.test(item.name)) ||
-        fresh.builds[0] ||
+        desktopBuildsOnly.find((item) => String(item.version || '') === fresh.latestBuildVersion && /\.zip$/i.test(item.name)) ||
+        desktopBuildsOnly.find((item) => /\.zip$/i.test(item.name)) ||
+        desktopBuildsOnly[0] ||
         null;
       if (!latestZip) {
         window.alert('Ainda não existe build desktop disponível no servidor.');
@@ -430,6 +442,29 @@ const SoftwareHub: React.FC = () => {
       window.open(`/api/desktop/download/${encodeURIComponent(latestZip.name)}`, '_blank');
     } catch (error: any) {
       window.alert(String(error?.message || 'Falha ao preparar download da app desktop.'));
+    }
+  };
+
+  const downloadChromeExtension = async () => {
+    if (CHROME_EXTENSION_STORE_URL) {
+      window.open(CHROME_EXTENSION_STORE_URL, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    try {
+      const fresh = await fetchDesktopBuilds();
+      setDesktopBuilds(fresh.builds);
+      setDesktopAppVersion(fresh.appVersion);
+      setDesktopLatestBuildVersion(fresh.latestBuildVersion);
+      setDesktopHasCurrentBuild(fresh.hasCurrentBuild);
+      const extensionZip = fresh.builds.find((item) => /chrome[-_ ]extension/i.test(item.name) && /\.zip$/i.test(item.name));
+      if (!extensionZip) {
+        window.alert('Ainda não existe link da Chrome Web Store nem ZIP da extensão disponível no servidor.');
+        return;
+      }
+      window.open(`/api/desktop/download/${encodeURIComponent(extensionZip.name)}`, '_blank');
+    } catch (error: any) {
+      window.alert(String(error?.message || 'Falha ao preparar download da extensão Chrome.'));
     }
   };
 
@@ -453,6 +488,17 @@ const SoftwareHub: React.FC = () => {
               Instalar App Desktop
             </button>
 
+            <button
+              type="button"
+              onClick={downloadChromeExtension}
+              disabled={desktopLoading || (!CHROME_EXTENSION_STORE_URL && !preferredChromeExtensionBuild)}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs md:text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+              title={CHROME_EXTENSION_STORE_URL ? 'Instalar pela Chrome Web Store. As atualizações passam a ser automáticas pelo Chrome.' : 'Descarrega o ZIP da extensão. Depois extrai e escolhe a pasta extraída em chrome://extensions > Carregar expandida.'}
+            >
+              <Download size={16} />
+              {CHROME_EXTENSION_STORE_URL ? 'Instalar Extensão Chrome' : 'Extensão Chrome'}
+            </button>
+
             {isAdmin && (
               <button
                 type="button"
@@ -470,7 +516,12 @@ const SoftwareHub: React.FC = () => {
           {desktopLoading && <span>A verificar versão desktop disponível...</span>}
           {!desktopLoading && preferredDesktopBuild && (
             <span>
-              Build disponível: <strong>{preferredDesktopBuild.name}</strong> ({formatBytes(preferredDesktopBuild.sizeBytes)})
+              Build desktop: <strong>{preferredDesktopBuild.name}</strong> ({formatBytes(preferredDesktopBuild.sizeBytes)})
+            </span>
+          )}
+          {!desktopLoading && preferredChromeExtensionBuild && (
+            <span className="ml-3">
+              Extensão Chrome: <strong>{preferredChromeExtensionBuild.name}</strong> ({formatBytes(preferredChromeExtensionBuild.sizeBytes)})
             </span>
           )}
           {!desktopLoading && !preferredDesktopBuild && !desktopError && (

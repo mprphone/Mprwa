@@ -42,6 +42,9 @@ const OPEN_CUSTOMER_PROFILE_STORAGE_KEY = 'wa_pro_open_customer_id';
 const LOCAL_FINANCAS_AUTOMATION_BRIDGE_URL = String(
   import.meta.env?.VITE_LOCAL_AUTOMATION_BRIDGE_URL || 'http://127.0.0.1:30777/financas-autologin'
 ).trim();
+const LOCAL_FINANCAS_AT_PROFILE_BRIDGE_URL = String(
+  import.meta.env?.VITE_LOCAL_AT_PROFILE_BRIDGE_URL || LOCAL_FINANCAS_AUTOMATION_BRIDGE_URL.replace(/\/financas-autologin\/?$/, '/financas-at-profile')
+).trim();
 const SEG_SOCIAL_LOGIN_URL = 'https://www.seg-social.pt/sso/login?service=https%3A%2F%2Fwww.seg-social.pt%2Fptss%2Fcaslogin';
 const SEG_SOCIAL_ACTIVATE_URL = 'https://www.seg-social.pt/ptss/gus/atribuir-palavra-chave/codigo-verificacao';
 const SEG_SOCIAL_USERNAME_SELECTORS = [
@@ -82,6 +85,18 @@ type LocalFinancasAutologinResponse = {
   message?: unknown;
   error?: unknown;
   loginState?: unknown;
+};
+
+type FinancasAtProfileFields = Partial<Pick<CustomerFormState,
+  'morada' | 'inicioAtividade' | 'tipoIva' | 'caePrincipal' | 'codigoReparticaoFinancas'
+>>;
+
+type LocalFinancasAtProfileResponse = {
+  success?: boolean;
+  message?: unknown;
+  error?: unknown;
+  sourceUrl?: unknown;
+  fields?: FinancasAtProfileFields;
 };
 
 function isLocalAutomationBridgeUnavailable(rawMessage: string): boolean {
@@ -138,6 +153,73 @@ function classifyAutologinFallbackReason(rawMessage: string): AutologinFallbackR
   return null;
 }
 
+async function triggerChromeExtensionAutologin(params: {
+  username: string;
+  password: string;
+  loginUrl?: string;
+  credentialLabel?: string;
+  usernameSelectors?: string[];
+  passwordSelectors?: string[];
+  submitSelectors?: string[];
+  successSelectors?: string[];
+  clickSubmit?: boolean;
+}): Promise<boolean> {
+  if (typeof window === 'undefined' || typeof window.postMessage !== 'function') return false;
+
+  const requestId = `wa-pro-autologin-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const payload = {
+    username: String(params.username || '').trim(),
+    password: String(params.password || '').trim(),
+    loginUrl: String(params.loginUrl || '').trim() || undefined,
+    credentialLabel: String(params.credentialLabel || '').trim() || undefined,
+    usernameSelectors: Array.isArray(params.usernameSelectors) ? params.usernameSelectors : undefined,
+    passwordSelectors: Array.isArray(params.passwordSelectors) ? params.passwordSelectors : undefined,
+    submitSelectors: Array.isArray(params.submitSelectors) ? params.submitSelectors : undefined,
+    successSelectors: Array.isArray(params.successSelectors) ? params.successSelectors : undefined,
+    clickSubmit: params.clickSubmit !== false,
+  };
+
+  if (!payload.username || !payload.password || !payload.loginUrl) return false;
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      window.removeEventListener('message', onMessage);
+      window.clearTimeout(timeoutId);
+    };
+    const finish = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== window) return;
+      const data = event.data || {};
+      if (data.source !== 'WA_PRO_CHROME_EXTENSION' || data.type !== 'AUTLOGIN_RESPONSE') return;
+      if (data.requestId !== requestId) return;
+      const response = data.response || {};
+      if (response.success) finish(true);
+      else fail(new Error(String(response.error || 'A extensão Chrome recusou o pedido de autologin.')));
+    };
+
+    const timeoutId = window.setTimeout(() => finish(false), 700);
+    window.addEventListener('message', onMessage);
+    window.postMessage({
+      source: 'WA_PRO',
+      type: 'AUTLOGIN_REQUEST',
+      requestId,
+      payload,
+    }, window.location.origin);
+  });
+}
+
 async function triggerLocalFinancasAutologinBridge(params: {
   username: string;
   password: string;
@@ -145,6 +227,7 @@ async function triggerLocalFinancasAutologinBridge(params: {
   targetUrl?: string;
   timeoutMs?: number;
   closeAfterSubmit?: boolean;
+  returnAfterSubmit?: boolean;
   credentialLabel?: string;
   usernameSelectors?: string[];
   passwordSelectors?: string[];
@@ -166,6 +249,7 @@ async function triggerLocalFinancasAutologinBridge(params: {
           ? Math.max(20000, Math.min(180000, Math.trunc(params.timeoutMs)))
           : undefined,
       closeAfterSubmit: params.closeAfterSubmit === true,
+      returnAfterSubmit: params.returnAfterSubmit === true,
       credentialLabel: String(params.credentialLabel || '').trim() || undefined,
       usernameSelectors: Array.isArray(params.usernameSelectors) ? params.usernameSelectors : undefined,
       passwordSelectors: Array.isArray(params.passwordSelectors) ? params.passwordSelectors : undefined,
@@ -192,6 +276,59 @@ async function triggerLocalFinancasAutologinBridge(params: {
     success: true,
     message: String(payload.message || 'Autologin local iniciado no desktop.'),
     loginState: payload.loginState ? String(payload.loginState) : undefined,
+  };
+}
+
+async function triggerLocalFinancasAtProfileBridge(params: {
+  username: string;
+  password: string;
+  loginUrl?: string;
+  targetUrl?: string;
+  timeoutMs?: number;
+  closeAfterCollect?: boolean;
+  activateFinancasNifTab?: boolean;
+  browserExecutablePath?: string;
+}): Promise<{ success: boolean; message: string; sourceUrl?: string; fields: FinancasAtProfileFields }> {
+  const response = await fetch(LOCAL_FINANCAS_AT_PROFILE_BRIDGE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: String(params.username || '').trim(),
+      password: String(params.password || '').trim(),
+      loginUrl: String(params.loginUrl || '').trim() || undefined,
+      targetUrl: String(params.targetUrl || '').trim() || undefined,
+      timeoutMs:
+        typeof params.timeoutMs === 'number' && Number.isFinite(params.timeoutMs)
+          ? Math.max(20000, Math.min(180000, Math.trunc(params.timeoutMs)))
+          : undefined,
+      closeAfterCollect: params.closeAfterCollect !== false,
+      credentialLabel: 'AT',
+      activateFinancasNifTab:
+        typeof params.activateFinancasNifTab === 'boolean' ? params.activateFinancasNifTab : undefined,
+      browserExecutablePath: String(params.browserExecutablePath || '').trim() || undefined,
+    }),
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as LocalFinancasAtProfileResponse;
+  if (!response.ok || !payload.success) {
+    const rawError =
+      typeof payload.error === 'string'
+        ? payload.error
+        : payload.error
+          ? JSON.stringify(payload.error)
+          : `Falha ao recolher dados da AT (${response.status}).`;
+    const errorText =
+      response.status === 404 || rawError.toLowerCase().includes('endpoint local não encontrado')
+        ? 'A app desktop ainda não tem a recolha AT instalada. Cria/publica uma nova versão desktop e atualiza este PC.'
+        : rawError;
+    throw new Error(errorText);
+  }
+
+  return {
+    success: true,
+    message: String(payload.message || 'Dados da AT recolhidos.'),
+    sourceUrl: payload.sourceUrl ? String(payload.sourceUrl) : undefined,
+    fields: payload.fields && typeof payload.fields === 'object' ? payload.fields : {},
   };
 }
 
@@ -627,6 +764,7 @@ const Customers: React.FC = () => {
   const [customerActivityError, setCustomerActivityError] = useState('');
   const customerActivityRequestRef = useRef(0);
   const [autologinBusyCustomerId, setAutologinBusyCustomerId] = useState<string | null>(null);
+  const [atProfileBusy, setAtProfileBusy] = useState(false);
   const [segSocialAutologinBusyCustomerId, setSegSocialAutologinBusyCustomerId] = useState<string | null>(null);
   const [segSocialSubUserBusyCustomerId, setSegSocialSubUserBusyCustomerId] = useState<string | null>(null);
   const [segSocialActivationBusyCustomerId, setSegSocialActivationBusyCustomerId] = useState<string | null>(null);
@@ -1446,6 +1584,14 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
         throw new Error('Este cliente não tem utilizador/senha AT completos na ficha.');
       }
 
+      const chromeExtensionHandled = await triggerChromeExtensionAutologin({
+        username,
+        password,
+        loginUrl,
+        credentialLabel: 'AT',
+      });
+      if (chromeExtensionHandled) return;
+
       const localDesktopAutologin = hasDesktopAutologinApi ? window.waDesktop?.financasAutologin : undefined;
       if (localDesktopAutologin) {
         const desktopResult = await localDesktopAutologin({
@@ -1533,6 +1679,80 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     }
   };
 
+  const handleUpdateCustomerFromAt = async () => {
+    if (atProfileBusy) return;
+
+    const syntheticCustomer = {
+      ...(editingCustomer || {}),
+      name: formData.name,
+      company: formData.company,
+      nif: formData.nif,
+      niss: formData.niss,
+      senhaFinancas: formData.senhaFinancas,
+      accessCredentials: formData.accessCredentials,
+    } as Customer;
+    const { username, password } = resolveAtAccessFromCustomer(syntheticCustomer);
+    const loginUrl = 'https://www.acesso.gov.pt/v2/loginForm?partID=PFAP';
+    const hasDesktopAtProfileApi = typeof window.waDesktop?.financasAtProfile === 'function';
+
+    if (!username || !password) {
+      window.alert('Este cliente não tem utilizador/senha AT completos na ficha.');
+      return;
+    }
+
+    setAtProfileBusy(true);
+    setFormSavedNotice('A consultar dados na AT...');
+    try {
+      const payload = {
+        username,
+        password,
+        loginUrl,
+        timeoutMs: 120000,
+        closeAfterCollect: true,
+        activateFinancasNifTab: true,
+      };
+
+      const result = hasDesktopAtProfileApi
+        ? await window.waDesktop!.financasAtProfile!(payload)
+        : await triggerLocalFinancasAtProfileBridge(payload);
+
+      if (!result?.success) {
+        throw new Error(String(result?.error || 'Não consegui recolher os dados da AT.'));
+      }
+
+      const fields = (result.fields || {}) as FinancasAtProfileFields;
+      const updates: FinancasAtProfileFields = {};
+      const assignIfFilled = <K extends keyof FinancasAtProfileFields>(key: K) => {
+        const value = String(fields[key] || '').trim();
+        if (value) updates[key] = value as never;
+      };
+      assignIfFilled('morada');
+      assignIfFilled('inicioAtividade');
+      assignIfFilled('tipoIva');
+      assignIfFilled('caePrincipal');
+      assignIfFilled('codigoReparticaoFinancas');
+
+      const updatedKeys = Object.keys(updates);
+      if (!updatedKeys.length) {
+        setFormSavedNotice('Login AT feito, mas não encontrei dados fiscais para preencher.');
+        window.alert('Entrei na AT, mas não encontrei automaticamente morada/atividade/IVA/CAE/repartição. Vou precisar de ajustar a página de recolha depois do primeiro teste real.');
+        return;
+      }
+
+      setFormData((previous) => ({
+        ...previous,
+        ...updates,
+      }));
+      setFormSavedNotice(`Dados AT atualizados na ficha (${updatedKeys.length} campo(s)). Clica em Gravar para guardar.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || 'Falha ao atualizar dados pela AT.');
+      setFormSavedNotice('');
+      window.alert(message);
+    } finally {
+      setAtProfileBusy(false);
+    }
+  };
+
   const triggerSegSocialAutologin = async (customer: Customer) => {
     const customerId = String(customer?.id || '').trim();
     if (!customerId) return;
@@ -1588,6 +1808,18 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
         throw new Error('Este cliente não tem utilizador/senha SS Direta completos na ficha.');
       }
 
+
+      const chromeExtensionHandled = await triggerChromeExtensionAutologin({
+        username,
+        password,
+        loginUrl,
+        credentialLabel: 'SS',
+        usernameSelectors: SEG_SOCIAL_USERNAME_SELECTORS,
+        passwordSelectors: SEG_SOCIAL_PASSWORD_SELECTORS,
+        submitSelectors: SEG_SOCIAL_SUBMIT_SELECTORS,
+        successSelectors: SEG_SOCIAL_SUCCESS_SELECTORS,
+      });
+      if (chromeExtensionHandled) return;
       const localDesktopAutologin = hasDesktopAutologinApi ? window.waDesktop?.financasAutologin : undefined;
       if (localDesktopAutologin) {
         const desktopResult = await localDesktopAutologin({
@@ -1790,6 +2022,18 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
         await saveSubUserPassword(resolvedPassword);
       }
 
+
+      const chromeExtensionHandled = await triggerChromeExtensionAutologin({
+        username,
+        password: resolvedPassword,
+        loginUrl,
+        credentialLabel: 'SS',
+        usernameSelectors: SEG_SOCIAL_USERNAME_SELECTORS,
+        passwordSelectors: SEG_SOCIAL_PASSWORD_SELECTORS,
+        submitSelectors: SEG_SOCIAL_SUBMIT_SELECTORS,
+        successSelectors: SEG_SOCIAL_SUCCESS_SELECTORS,
+      });
+      if (chromeExtensionHandled) return;
       const localDesktopAutologin = hasDesktopAutologinApi ? window.waDesktop?.financasAutologin : undefined;
       if (localDesktopAutologin) {
         const desktopResult = await localDesktopAutologin({
@@ -1797,6 +2041,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
           password: resolvedPassword,
           loginUrl,
           closeAfterSubmit: false,
+          returnAfterSubmit: true,
           credentialLabel: 'SS',
           apiBaseUrl: window.location.origin,
           usernameSelectors: SEG_SOCIAL_USERNAME_SELECTORS,
@@ -1833,6 +2078,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
           password: resolvedPassword,
           loginUrl,
           closeAfterSubmit: false,
+          returnAfterSubmit: true,
           credentialLabel: 'SS',
           usernameSelectors: SEG_SOCIAL_USERNAME_SELECTORS,
           passwordSelectors: SEG_SOCIAL_PASSWORD_SELECTORS,
@@ -2637,10 +2883,10 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
   };
 
   const addAccessCredential = () => {
-    setFormData({
-      ...formData,
-      accessCredentials: [...formData.accessCredentials, { service: '', username: '', password: '', credentialType: '', emailAssociado: '', validFrom: '', validUntil: '', status: 'active', observacoes: '' }],
-    });
+    setFormData((current) => ({
+      ...current,
+      accessCredentials: [...current.accessCredentials, { service: '', username: '', password: '', credentialType: '', emailAssociado: '', validFrom: '', validUntil: '', status: 'active', observacoes: '' }],
+    }));
   };
 
   const addSegSocialCredential = (credentialType: 'principal' | 'subutilizador') => {
@@ -2690,14 +2936,19 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
   };
 
   const updateAccessCredential = (index: number, field: keyof CustomerAccessCredential, value: string) => {
-    const nextCredentials = [...formData.accessCredentials];
-    nextCredentials[index] = { ...nextCredentials[index], [field]: value };
-    setFormData({ ...formData, accessCredentials: nextCredentials });
+    setFormData((current) => {
+      const nextCredentials = [...current.accessCredentials];
+      if (!nextCredentials[index]) return current;
+      nextCredentials[index] = { ...nextCredentials[index], [field]: value };
+      return { ...current, accessCredentials: nextCredentials };
+    });
   };
 
   const removeAccessCredential = (index: number) => {
-    const nextCredentials = formData.accessCredentials.filter((_, i) => i !== index);
-    setFormData({ ...formData, accessCredentials: nextCredentials });
+    setFormData((current) => ({
+      ...current,
+      accessCredentials: current.accessCredentials.filter((_, i) => i !== index),
+    }));
   };
 
   const credentialPresets: readonly CustomerCredentialPreset[] = [
@@ -3331,6 +3582,9 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                 const owner = users.find((u) => u.id === customer.ownerId);
                 const status = getCustomerStatus(customer);
                 const subUserState = getSegSocialSubUserState(customer);
+                const ssSubUserAccess = resolveSsSubUserAccessFromCustomer(customer);
+                const hasSsSubUserLogin = Boolean(String(ssSubUserAccess.username || '').trim());
+                const isThisSsSubUserBusy = segSocialAutologinBusyCustomerId === customer.id;
                 return (
                   <tr key={customer.id} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => openModal(customer)}>
                     <td className="px-3 py-3 text-xs font-mono text-slate-700">{customer.nif || '--'}</td>
@@ -3367,14 +3621,28 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         </button>
                         <button
                           onClick={() => {
-                            void openSegSocialManualFallback(customer);
+                            void triggerSegSocialSubUserLogin(customer);
                           }}
-                          disabled={Boolean(autologinBusyCustomerId || segSocialAutologinBusyCustomerId || segSocialSubUserBusyCustomerId)}
+                          disabled={Boolean(
+                            autologinBusyCustomerId ||
+                            segSocialAutologinBusyCustomerId ||
+                            segSocialSubUserBusyCustomerId ||
+                            segSocialActivationBusyCustomerId ||
+                            !hasSsSubUserLogin
+                          )}
                           className={actionButtonSsAutologinClass}
-                          title="Abrir Segurança Social Direta (manual)"
-                          aria-label="Abrir Segurança Social Direta manualmente"
+                          title={
+                            hasSsSubUserLogin
+                              ? 'Entrar na Segurança Social com o subutilizador guardado'
+                              : 'Este cliente ainda não tem subutilizador SS com utilizador guardado'
+                          }
+                          aria-label="Entrar na Segurança Social com subutilizador"
                         >
-                          <span className="text-[11px] font-semibold leading-none">SS</span>
+                          {isThisSsSubUserBusy ? (
+                            <RefreshCw size={14} className="animate-spin" />
+                          ) : (
+                            <span className="text-[11px] font-semibold leading-none">SS</span>
+                          )}
                         </button>
                         <button
                           onClick={() => openModal(customer)}
@@ -3545,13 +3813,29 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                     <p className="mt-1 text-xs font-semibold text-emerald-700">{formSavedNotice}</p>
                   )}
                 </div>
-                <button
-                  type="submit"
-                  form="customer-detail-form"
-                  className="rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
-                >
-                  Gravar
-                </button>
+                <div className="flex shrink-0 items-center gap-2">
+                  {editingCustomer && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleUpdateCustomerFromAt();
+                      }}
+                      disabled={atProfileBusy}
+                      className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
+                      title="Entrar na AT e preencher morada, início de atividade, regime IVA, CAE e repartição"
+                    >
+                      <RefreshCw size={15} className={atProfileBusy ? 'animate-spin' : ''} />
+                      {atProfileBusy ? 'A consultar AT...' : 'Atualizar pela AT'}
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    form="customer-detail-form"
+                    className="rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
+                  >
+                    Gravar
+                  </button>
+                </div>
               </div>
             </div>
 

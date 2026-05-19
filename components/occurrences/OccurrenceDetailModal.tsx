@@ -13,6 +13,7 @@ import {
 import {
   createEmptyProjectSupportDetail,
   isProjectSupportTypeName,
+  isSupportMeasureTypeName,
   ProjectSectionKey,
   ProjectSupportDetail,
   ProjectSupportEmployeeItem,
@@ -72,15 +73,18 @@ type Props = {
   ) => void;
 };
 
-type TabKey = 'details' | 'candidatura' | 'acompanhamento' | 'encerramento' | 'dossie';
+type TabKey = 'summary' | 'details' | 'candidatura' | 'beneficiario' | 'acompanhamento' | 'financeiro' | 'encerramento' | 'dossie';
 type CandidaturaListKey = 'investimento' | 'objetivosAviso' | 'objetivosProjeto';
 
 type AcompanhamentoTrackedListKey = 'investimento' | 'objetivosAviso' | 'objetivosProjeto';
 
 const TAB_TO_SECTION: Record<TabKey, ProjectSectionKey> = {
+  summary: 'geral',
   details: 'geral',
   candidatura: 'candidatura',
+  beneficiario: 'candidatura',
   acompanhamento: 'acompanhamento',
+  financeiro: 'acompanhamento',
   encerramento: 'encerramento',
   dossie: 'dossie_eletronico',
 };
@@ -122,6 +126,46 @@ const IAPMEI_DOSSIE_ITEMS = [
   { key: '7_1_contratacao_publica', principal: '7.Contratação Pública', nivel2: '7.1 Procedimentos de Contratação Pública', designacao: 'Procedimentos de Contratação Pública' },
 ];
 
+
+function parseAmountText(value: string): number {
+  const raw = String(value || '').trim();
+  if (!raw) return 0;
+  const cleaned = raw.replace(/[^\d,.-]/g, '');
+  if (!cleaned) return 0;
+  const lastComma = cleaned.lastIndexOf(',');
+  const lastDot = cleaned.lastIndexOf('.');
+  const decimalIndex = Math.max(lastComma, lastDot);
+  let intPart = cleaned;
+  let fracPart = '';
+  if (decimalIndex >= 0) {
+    intPart = cleaned.slice(0, decimalIndex);
+    fracPart = cleaned.slice(decimalIndex + 1);
+  }
+  const normalized = `${intPart.replace(/[^\d-]/g, '')}${fracPart ? `.${fracPart.replace(/[^\d]/g, '')}` : ''}`;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatEuroCompact(value: number): string {
+  return new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(value || 0);
+}
+
+function formatDateShort(value: string): string {
+  if (!value) return '--';
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('pt-PT');
+}
+
+function daysUntilDate(value: string): number | null {
+  if (!value) return null;
+  const target = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(target.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((target.getTime() - today.getTime()) / 86400000);
+}
+
 const IEFP_DOSSIE_ITEMS = [
   { key: 'iefp_candidatura_eletronica', principal: '1.Candidatura', nivel2: 'Candidatura Eletrónica', designacao: 'Formulário de candidatura submetido no IEFP Online' },
   { key: 'iefp_identificacao_empresa', principal: '1.Candidatura', nivel2: 'Identificação da Empresa', designacao: 'Certidão permanente e registo de beneficiário (Segurança Social)' },
@@ -153,7 +197,7 @@ const OccurrenceDetailModal: React.FC<Props> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dossieFileInputRef = useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabKey>('details');
+  const [activeTab, setActiveTab] = useState<TabKey>('summary');
   const [pendingDossieItemKey, setPendingDossieItemKey] = useState('');
   const [dossieItemsRemote, setDossieItemsRemote] = useState<DossieItemTemplate[]>([]);
   const [dossieItemsLoading, setDossieItemsLoading] = useState(false);
@@ -183,6 +227,7 @@ const OccurrenceDetailModal: React.FC<Props> = ({
   const isProjectSupport = isProjectSupportTypeName(selectedTypeName);
   const projectSupport = form.projectSupport || createEmptyProjectSupportDetail();
   const selectedDossieModel = String(projectSupport.dossieEletronico?.modelo || 'IAPMEI').toUpperCase();
+  const isSupportMeasure = isSupportMeasureTypeName(selectedTypeName) || selectedDossieModel === 'IEFP';
   const fallbackDossieCatalog =
     selectedDossieModel === 'IAPMEI'
       ? IAPMEI_DOSSIE_ITEMS
@@ -295,7 +340,7 @@ const OccurrenceDetailModal: React.FC<Props> = ({
   const currentSectionKey = TAB_TO_SECTION[activeTab];
 
   const attachmentsForView = useMemo(() => {
-    if (!isProjectSupport || activeTab === 'details') return form.attachments;
+    if (!isProjectSupport || activeTab === 'details' || activeTab === 'summary') return form.attachments;
     return form.attachments.filter((item) => {
       const section = String(item.sectionKey || 'geral').trim() || 'geral';
       return section === currentSectionKey;
@@ -332,6 +377,89 @@ const OccurrenceDetailModal: React.FC<Props> = ({
     }
     return counts;
   }, [form.attachments]);
+
+  const projectDashboard = useMemo(() => {
+    const requiredDocs = dossieItemCatalog.length;
+    let docsDone = 0;
+    for (const item of dossieItemCatalog) {
+      const key = String(item.key || '').trim();
+      const naoAplicavel = Boolean(projectSupport.dossieEletronico.naoAplicavelPorItem?.[key]);
+      const hasFile = (dossieAttachmentsByItem.get(key) || []).length > 0;
+      if (naoAplicavel || hasFile) docsDone += 1;
+    }
+    const docsPending = Math.max(0, requiredDocs - docsDone);
+    const compliance = requiredDocs > 0 ? Math.round((docsDone / requiredDocs) * 100) : 0;
+    const daysLeft = daysUntilDate(form.dueDate);
+    const measure = projectSupport.medidaApoio || createEmptyProjectSupportDetail().medidaApoio;
+    const investimentoPrevisto = isSupportMeasure ? parseAmountText(measure.valorPrevisto) : projectSupport.candidatura.investimento.reduce((sum, item) => sum + parseAmountText(item.valor), 0);
+    const investimentoAprovado = isSupportMeasure ? parseAmountText(measure.valorAprovado) : parseAmountText(projectSupport.acompanhamento.investimentoAprovado);
+    const investimentoExecutado = projectSupport.acompanhamento.investimento.reduce((sum, item) => sum + parseAmountText(item.realizado), 0);
+    const reembolsos = projectSupport.acompanhamento.pedidosReembolso.reduce((sum, item) => sum + parseAmountText(item.montante), 0);
+    const dataSubmissao = String((isSupportMeasure ? measure.dataSubmissao : projectSupport.acompanhamento.dataSubmissao) || '').trim();
+    const dataInicio = String(projectSupport.acompanhamento.dataInicio || '').trim();
+    const dataEncerramento = String(projectSupport.acompanhamento.dataEncerramento || '').trim();
+    const faseCandidatura = String(projectSupport.candidatura.fase || '').trim();
+
+    let stateLabel = isClosed ? 'Encerrada' : faseCandidatura || 'Aberta';
+    if (!isClosed && dataEncerramento) stateLabel = 'Encerramento';
+    else if (!isClosed && dataInicio) stateLabel = 'Em execução';
+    else if (!isClosed && dataSubmissao) stateLabel = 'Submetida / em análise';
+
+    let nextAction = 'Definir próxima ação';
+    if (!form.customerId || !form.title) nextAction = 'Completar dados essenciais';
+    else if (isSupportMeasure && !measure.candidatoNome) nextAction = 'Identificar candidato/beneficiário';
+    else if (isSupportMeasure && docsPending > 0) nextAction = 'Pedir documentos ao candidato';
+    else if (!dataSubmissao) nextAction = isSupportMeasure ? 'Submeter pedido IEFP' : 'Submeter candidatura';
+    else if (!investimentoAprovado && !dataInicio) nextAction = 'Registar decisão/aprovação';
+    else if (dataInicio && docsPending > 0) nextAction = 'Recolher documentos pendentes';
+    else if (dataInicio && investimentoExecutado < investimentoAprovado) nextAction = 'Atualizar execução financeira';
+    else if (!dataEncerramento && docsPending === 0) nextAction = 'Preparar encerramento';
+    if (isClosed) nextAction = 'Processo encerrado';
+
+    const alerts: string[] = [];
+    if (daysLeft !== null && daysLeft < 0) alerts.push(`Prazo ultrapassado há ${Math.abs(daysLeft)} dia(s).`);
+    else if (daysLeft !== null && daysLeft <= 7) alerts.push(`Prazo crítico: faltam ${daysLeft} dia(s).`);
+    else if (daysLeft !== null && daysLeft <= 30) alerts.push(`Prazo próximo: faltam ${daysLeft} dia(s).`);
+    if (docsPending > 0) alerts.push(`${docsPending} documento(s) do dossiê ainda pendente(s).`);
+    if (investimentoAprovado > 0 && investimentoExecutado > investimentoAprovado) alerts.push('Execução superior ao investimento aprovado.');
+    if (!selectedUsers.length) alerts.push('Sem responsável definido.');
+
+    const movements = [
+      dataSubmissao ? `Candidatura submetida em ${formatDateShort(dataSubmissao)}` : '',
+      dataInicio ? `Execução iniciada em ${formatDateShort(dataInicio)}` : '',
+      dataEncerramento ? `Encerramento registado em ${formatDateShort(dataEncerramento)}` : '',
+      form.attachments.length ? `${form.attachments.length} anexo(s) no processo` : '',
+    ].filter(Boolean);
+
+    return {
+      stateLabel,
+      nextAction,
+      responsible: selectedUsers.map((user) => user.name).join(', ') || '--',
+      deadline: formatDateShort(form.dueDate),
+      daysLeft,
+      docsPending,
+      docsDone,
+      requiredDocs,
+      compliance,
+      investimentoPrevisto,
+      investimentoAprovado,
+      investimentoExecutado,
+      reembolsos,
+      alerts,
+      movements,
+    };
+  }, [
+    dossieAttachmentsByItem,
+    dossieItemCatalog,
+    form.attachments.length,
+    form.customerId,
+    form.dueDate,
+    form.title,
+    isClosed,
+    projectSupport,
+    selectedUsers,
+    isSupportMeasure,
+  ]);
 
   const patchProjectSupport = (next: ProjectSupportDetail) => {
     onChange({ projectSupport: next });
@@ -565,6 +693,15 @@ const OccurrenceDetailModal: React.FC<Props> = ({
     });
   };
 
+
+  const updateMedidaApoioField = (field: keyof ProjectSupportDetail['medidaApoio'], value: string) => {
+    patchProjectSupport({
+      ...projectSupport,
+      medidaApoio: { ...projectSupport.medidaApoio, [field]: value },
+      dossieEletronico: { ...projectSupport.dossieEletronico, modelo: 'IEFP' },
+    });
+  };
+
   const toggleDossieItemNotApplicable = (itemKey: string, checked: boolean) => {
     const current = projectSupport.dossieEletronico.naoAplicavelPorItem || {};
     const next = { ...current, [itemKey]: !!checked };
@@ -753,8 +890,8 @@ const OccurrenceDetailModal: React.FC<Props> = ({
                 <section className="rounded-2xl border border-slate-200 bg-white p-4">
                   <div className="mb-4 flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
                     <div>
-                      <h3 className="text-xl font-semibold text-slate-900">Detalhes</h3>
-                      <p className="text-sm text-slate-500">Campos essenciais primeiro. O resto é opcional.</p>
+                      <h3 className="text-xl font-semibold text-slate-900">{isProjectSupport ? 'Painel da Ocorrência' : 'Detalhes'}</h3>
+                      <p className="text-sm text-slate-500">{isProjectSupport ? 'Consulta rápida primeiro. O detalhe fica nas fases.' : 'Campos essenciais primeiro. O resto é opcional.'}</p>
                     </div>
                     <div className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5">
                       <button
@@ -770,27 +907,116 @@ const OccurrenceDetailModal: React.FC<Props> = ({
                     </div>
                   </div>
 
+                  {isProjectSupport && (
+                    <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-6">
+                      <SummaryCard label="Estado" value={projectDashboard.stateLabel} tone="blue" />
+                      <SummaryCard label="Próxima ação" value={projectDashboard.nextAction} tone="amber" />
+                      <SummaryCard label="Responsável" value={projectDashboard.responsible} />
+                      <SummaryCard label="Prazo" value={projectDashboard.deadline} hint={projectDashboard.daysLeft === null ? '' : `${projectDashboard.daysLeft} dia(s)`} tone={projectDashboard.daysLeft !== null && projectDashboard.daysLeft <= 7 ? 'red' : 'slate'} />
+                      <SummaryCard label="Investimento" value={`${formatEuroCompact(projectDashboard.investimentoExecutado)} / ${formatEuroCompact(projectDashboard.investimentoAprovado || projectDashboard.investimentoPrevisto)}`} />
+                      <SummaryCard label="Docs pendentes" value={String(projectDashboard.docsPending)} hint={`${projectDashboard.compliance}% completo`} tone={projectDashboard.docsPending > 0 ? 'red' : 'green'} />
+                    </div>
+                  )}
+
                   <div className="mb-4 flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                    {isProjectSupport && (
+                      <TabButton active={activeTab === 'summary'} onClick={() => setActiveTab('summary')}>
+                        Resumo
+                      </TabButton>
+                    )}
                     <TabButton active={activeTab === 'details'} onClick={() => setActiveTab('details')}>
                       Detalhes
                     </TabButton>
                     {isProjectSupport && (
                       <>
+                        {isSupportMeasure && (
+                          <TabButton active={activeTab === 'beneficiario'} onClick={() => setActiveTab('beneficiario')}>
+                            Candidato
+                          </TabButton>
+                        )}
                         <TabButton active={activeTab === 'candidatura'} onClick={() => setActiveTab('candidatura')}>
-                          Candidatura
+                          {isSupportMeasure ? 'Medida' : 'Candidatura'}
                         </TabButton>
                         <TabButton active={activeTab === 'acompanhamento'} onClick={() => setActiveTab('acompanhamento')}>
-                          Acompanhamento
+                          {isSupportMeasure ? 'Acompanhamento' : 'Execução'}
                         </TabButton>
-                        <TabButton active={activeTab === 'encerramento'} onClick={() => setActiveTab('encerramento')}>
-                          Encerramento
-                        </TabButton>
+                        {!isSupportMeasure && (
+                          <>
+                            <TabButton active={activeTab === 'financeiro'} onClick={() => setActiveTab('financeiro')}>
+                              Financeiro
+                            </TabButton>
+                            <TabButton active={activeTab === 'encerramento'} onClick={() => setActiveTab('encerramento')}>
+                              Encerramento
+                            </TabButton>
+                          </>
+                        )}
                         <TabButton active={activeTab === 'dossie'} onClick={() => setActiveTab('dossie')}>
-                          Dossie Eletronico
+                          {isSupportMeasure ? 'Checklist' : 'Dossier'}
                         </TabButton>
                       </>
                     )}
                   </div>
+
+                  {activeTab === 'summary' && isProjectSupport && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                        <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
+                          <h4 className="text-sm font-semibold text-blue-950">Próximo passo</h4>
+                          <p className="mt-2 text-lg font-bold text-blue-900">{projectDashboard.nextAction}</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button type="button" onClick={() => setActiveTab('candidatura')} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500">Abrir candidatura</button>
+                            <button type="button" onClick={() => setActiveTab('dossie')} className="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100">Ver dossier</button>
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                          <h4 className="text-sm font-semibold text-slate-900">Dossier</h4>
+                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                            <div className="h-full rounded-full bg-emerald-500" style={{ width: `${projectDashboard.compliance}%` }} />
+                          </div>
+                          <p className="mt-2 text-sm text-slate-600">
+                            {projectDashboard.docsDone}/{projectDashboard.requiredDocs || 0} documentos tratados · {projectDashboard.docsPending} pendente(s)
+                          </p>
+                          <button type="button" onClick={() => setActiveTab('dossie')} className="mt-3 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Preparado para auditoria</button>
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                          <h4 className="text-sm font-semibold text-slate-900">Financeiro</h4>
+                          <div className="mt-2 space-y-1 text-sm text-slate-700">
+                            <p>Previsto: <strong>{formatEuroCompact(projectDashboard.investimentoPrevisto)}</strong></p>
+                            <p>Aprovado: <strong>{formatEuroCompact(projectDashboard.investimentoAprovado)}</strong></p>
+                            <p>Executado: <strong>{formatEuroCompact(projectDashboard.investimentoExecutado)}</strong></p>
+                            <p>Reembolsos: <strong>{formatEuroCompact(projectDashboard.reembolsos)}</strong></p>
+                          </div>
+                          <button type="button" onClick={() => setActiveTab('financeiro')} className="mt-3 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Abrir financeiro</button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+                          <h4 className="text-sm font-semibold text-amber-950">Alertas</h4>
+                          {projectDashboard.alerts.length === 0 ? (
+                            <p className="mt-2 text-sm text-emerald-700">Sem alertas críticos neste momento.</p>
+                          ) : (
+                            <ul className="mt-2 space-y-1 text-sm text-amber-900">
+                              {projectDashboard.alerts.map((alert) => <li key={alert}>• {alert}</li>)}
+                            </ul>
+                          )}
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                          <h4 className="text-sm font-semibold text-slate-900">Últimos movimentos</h4>
+                          {projectDashboard.movements.length === 0 ? (
+                            <p className="mt-2 text-sm text-slate-500">Ainda sem movimentos automáticos.</p>
+                          ) : (
+                            <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                              {projectDashboard.movements.map((item) => <li key={item}>• {item}</li>)}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {activeTab === 'details' && (
                     <>
@@ -925,8 +1151,45 @@ const OccurrenceDetailModal: React.FC<Props> = ({
                     </>
                   )}
 
+                  {activeTab === 'beneficiario' && isProjectSupport && isSupportMeasure && (
+                    <div className="space-y-4">
+                      <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
+                        <h4 className="text-sm font-semibold text-emerald-950">Candidato / Beneficiário</h4>
+                        <p className="text-xs text-emerald-800">Só os dados essenciais para acompanhar a medida IEFP.</p>
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                        <Field label="Nome"><input type="text" value={projectSupport.medidaApoio.candidatoNome} onChange={(e) => updateMedidaApoioField('candidatoNome', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
+                        <Field label="NIF"><input type="text" value={projectSupport.medidaApoio.candidatoNif} onChange={(e) => updateMedidaApoioField('candidatoNif', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
+                        <Field label="NISS"><input type="text" value={projectSupport.medidaApoio.candidatoNiss} onChange={(e) => updateMedidaApoioField('candidatoNiss', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
+                        <Field label="Contacto"><input type="text" value={projectSupport.medidaApoio.candidatoContacto} onChange={(e) => updateMedidaApoioField('candidatoContacto', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
+                        <Field label="Situação atual">
+                          <select value={projectSupport.medidaApoio.situacaoAtual} onChange={(e) => updateMedidaApoioField('situacaoAtual', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm">
+                            <option value="">--</option><option>Desempregado</option><option>Empregado</option><option>Inscrito IEFP</option><option>Outra</option>
+                          </select>
+                        </Field>
+                        <Field label="Centro de emprego"><input type="text" value={projectSupport.medidaApoio.centroEmprego} onChange={(e) => updateMedidaApoioField('centroEmprego', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
+                      </div>
+                    </div>
+                  )}
+
                   {activeTab === 'candidatura' && isProjectSupport && (
                     <div className="space-y-4">
+                      {isSupportMeasure ? (
+                        <>
+                          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                            <Field label="Tipo de medida"><input type="text" value={projectSupport.medidaApoio.medidaIefp} onChange={(e) => updateMedidaApoioField('medidaIefp', e.target.value)} placeholder="Ex: Criação de oferta de emprego" className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
+                            <Field label="Nº processo/oferta"><input type="text" value={projectSupport.medidaApoio.processoOferta} onChange={(e) => updateMedidaApoioField('processoOferta', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
+                            <Field label="Entidade gestora"><input type="text" value={projectSupport.medidaApoio.entidadeGestora} onChange={(e) => updateMedidaApoioField('entidadeGestora', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
+                            <Field label="Contacto IEFP"><input type="text" value={projectSupport.medidaApoio.contactoIefp} onChange={(e) => updateMedidaApoioField('contactoIefp', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
+                            <Field label="Data do pedido"><input type="date" value={projectSupport.medidaApoio.dataPedido} onChange={(e) => updateMedidaApoioField('dataPedido', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
+                            <Field label="Data de submissão"><input type="date" value={projectSupport.medidaApoio.dataSubmissao} onChange={(e) => updateMedidaApoioField('dataSubmissao', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
+                            <Field label="Data de decisão"><input type="date" value={projectSupport.medidaApoio.dataDecisao} onChange={(e) => updateMedidaApoioField('dataDecisao', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
+                            <Field label="Valor previsto"><input type="text" value={projectSupport.medidaApoio.valorPrevisto} onChange={(e) => updateMedidaApoioField('valorPrevisto', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-right" /></Field>
+                            <Field label="Valor aprovado"><input type="text" value={projectSupport.medidaApoio.valorAprovado} onChange={(e) => updateMedidaApoioField('valorAprovado', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-right" /></Field>
+                          </div>
+                        </>
+                      ) : (
+                        <>
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                         <Field label="Fase">
                           <select
@@ -1017,11 +1280,27 @@ const OccurrenceDetailModal: React.FC<Props> = ({
                           className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm"
                         />
                       </Field>
+                        </>
+                      )}
                     </div>
                   )}
 
                   {activeTab === 'acompanhamento' && isProjectSupport && (
                     <div className="space-y-4">
+                      {isSupportMeasure ? (
+                        <>
+                          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                            <h4 className="text-sm font-semibold text-slate-900">Timeline simples</h4>
+                            <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-4">
+                              {['Pedido recebido','Documentos pedidos','Documentos recebidos','Submetido','Aprovado','Indeferido','Concluído'].map((step) => (
+                                <span key={step} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">{step}</span>
+                              ))}
+                            </div>
+                          </div>
+                          <Field label="Notas / Próxima ação"><textarea rows={5} value={projectSupport.medidaApoio.notas} onChange={(e) => updateMedidaApoioField('notas', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
+                        </>
+                      ) : (
+                      <>
                       <div className="flex items-center justify-end">
                         <button
                           type="button"
@@ -1126,14 +1405,9 @@ const OccurrenceDetailModal: React.FC<Props> = ({
                         onRemove={removeApoiado}
                       />
 
-                      <RefundsListEditor
-                        rows={projectSupport.acompanhamento.pedidosReembolso}
-                        onAdd={addPedidoReembolso}
-                        onChange={updatePedidoReembolso}
-                        onMontanteChange={updatePedidoReembolsoMontanteInput}
-                        onMontanteBlur={commitPedidoReembolsoMontante}
-                        onRemove={removePedidoReembolso}
-                      />
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                        Pedidos de reembolso e execução financeira estão na aba <button type="button" onClick={() => setActiveTab('financeiro')} className="font-semibold text-blue-700 underline">Financeiro</button>.
+                      </div>
 
                       <Field label="Observações">
                         <textarea
@@ -1143,6 +1417,35 @@ const OccurrenceDetailModal: React.FC<Props> = ({
                           className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm"
                         />
                       </Field>
+                      </>
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === 'financeiro' && isProjectSupport && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                        <SummaryCard label="Previsto" value={formatEuroCompact(projectDashboard.investimentoPrevisto)} />
+                        <SummaryCard label="Aprovado" value={formatEuroCompact(projectDashboard.investimentoAprovado)} tone="blue" />
+                        <SummaryCard label="Executado" value={formatEuroCompact(projectDashboard.investimentoExecutado)} tone="green" />
+                        <SummaryCard label="Reembolsado/Pedido" value={formatEuroCompact(projectDashboard.reembolsos)} tone="amber" />
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-white p-3">
+                        <h4 className="mb-2 text-sm font-semibold text-slate-800">Pedidos de reembolso</h4>
+                        <RefundsListEditor
+                          rows={projectSupport.acompanhamento.pedidosReembolso}
+                          onAdd={addPedidoReembolso}
+                          onChange={updatePedidoReembolso}
+                          onMontanteChange={updatePedidoReembolsoMontanteInput}
+                          onMontanteBlur={commitPedidoReembolsoMontante}
+                          onRemove={removePedidoReembolso}
+                        />
+                      </div>
+                      <TrackedListView
+                        title="Investimento executado"
+                        rows={projectSupport.acompanhamento.investimento}
+                        onChangeRealizado={(index, value) => updateTrackedRealizado('investimento', index, value)}
+                      />
                     </div>
                   )}
 
@@ -1186,7 +1489,7 @@ const OccurrenceDetailModal: React.FC<Props> = ({
                   {activeTab === 'dossie' && isProjectSupport && (
                     <div className="space-y-4">
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                        <Field label="Modelo de Dossiê">
+                        <Field label={isSupportMeasure ? 'Checklist IEFP' : 'Modelo de Dossiê'}>
                           <select
                             value={selectedDossieModel}
                             onChange={(e) => updateDossieModel(e.target.value)}
@@ -1209,6 +1512,7 @@ const OccurrenceDetailModal: React.FC<Props> = ({
                         </Field>
                       </div>
 
+                      {!isSupportMeasure && (
                       <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
                         <div className="mb-2 flex items-center justify-between gap-2">
                           <h4 className="text-sm font-semibold text-emerald-900">Adicionar separador global</h4>
@@ -1246,9 +1550,10 @@ const OccurrenceDetailModal: React.FC<Props> = ({
                           </button>
                         </div>
                       </div>
+                      )}
 
                       <div className="rounded-xl border border-slate-200 bg-white p-3">
-                        <h4 className="text-sm font-semibold text-slate-900">Documentos associados ({associatedDossieAttachments.length})</h4>
+                        <h4 className="text-sm font-semibold text-slate-900">{isSupportMeasure ? `Checklist simplificada (${associatedDossieAttachments.length})` : `Documentos associados (${associatedDossieAttachments.length})`}</h4>
                         <p className="mb-2 text-xs text-slate-500">Estes já estão ligados a um separador do dossiê.</p>
                         {associatedDossieAttachments.length === 0 ? (
                           <p className="text-xs text-slate-500">Sem documentos associados neste modelo.</p>
@@ -1591,6 +1896,28 @@ const OccurrenceDetailModal: React.FC<Props> = ({
           )}
         </div>
       </div>
+    </div>
+  );
+};
+
+const SummaryCard: React.FC<{ label: string; value: string; hint?: string; tone?: 'slate' | 'blue' | 'green' | 'amber' | 'red' }> = ({
+  label,
+  value,
+  hint,
+  tone = 'slate',
+}) => {
+  const tones: Record<string, string> = {
+    slate: 'border-slate-200 bg-white text-slate-900',
+    blue: 'border-blue-200 bg-blue-50 text-blue-900',
+    green: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+    amber: 'border-amber-200 bg-amber-50 text-amber-950',
+    red: 'border-red-200 bg-red-50 text-red-900',
+  };
+  return (
+    <div className={`rounded-2xl border p-3 ${tones[tone] || tones.slate}`}>
+      <p className="text-[11px] font-semibold uppercase tracking-wide opacity-70">{label}</p>
+      <p className="mt-1 truncate text-sm font-bold" title={value}>{value || '--'}</p>
+      {hint ? <p className="mt-0.5 truncate text-xs opacity-70" title={hint}>{hint}</p> : null}
     </div>
   );
 };

@@ -10,6 +10,31 @@ declare global {
       setUnreadOverlay?: (count: number, dataUrl: string) => void;
       notifyInboundMessage?: (payload: { from: string; body: string; conversationId?: string }) => void;
       readClipboardText?: () => Promise<string>;
+      financasAtProfile?: (payload: {
+        username: string;
+        password: string;
+        loginUrl?: string;
+        targetUrl?: string;
+        profileUrl?: string;
+        profileUrls?: string[];
+        timeoutMs?: number;
+        closeAfterCollect?: boolean;
+        credentialLabel?: string;
+        activateFinancasNifTab?: boolean;
+        browserExecutablePath?: string;
+      }) => Promise<{
+        success?: boolean;
+        message?: string;
+        error?: string;
+        sourceUrl?: string;
+        fields?: {
+          morada?: string;
+          inicioAtividade?: string;
+          tipoIva?: string;
+          caePrincipal?: string;
+          codigoReparticaoFinancas?: string;
+        };
+      }>;
       financasAutologin?: (payload: {
         username: string;
         password: string;

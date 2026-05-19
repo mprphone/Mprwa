@@ -1,10 +1,21 @@
 const fs = require('fs');
+const path = require('path');
 
-function isAllowedBuildName(name) {
+function isSafeReleaseFileName(name) {
     if (!name) return false;
     if (name.includes('/') || name.includes('\\')) return false;
     if (name.includes('..')) return false;
+    return path.basename(name) === name;
+}
+
+function isAllowedBuildName(name) {
+    if (!isSafeReleaseFileName(name)) return false;
     return /\.(zip|exe|7z)$/i.test(name);
+}
+
+function isAllowedUpdateName(name) {
+    if (!isSafeReleaseFileName(name)) return false;
+    return name === 'latest.yml' || /\.(exe|blockmap|yml)$/i.test(name);
 }
 
 function parseSemver(rawVersion) {
@@ -37,7 +48,6 @@ function extractVersionFromBuildName(name) {
 function registerDesktopRoutes(context) {
     const {
         app,
-        path,
         baseDir,
     } = context;
 
@@ -103,6 +113,35 @@ function registerDesktopRoutes(context) {
             return res.status(500).json({
                 success: false,
                 error: error?.message || 'Falha ao listar builds desktop.',
+            });
+        }
+    });
+
+    app.get('/api/desktop/updates/:name', async (req, res) => {
+        try {
+            res.setHeader('Cache-Control', 'no-store');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+            const rawName = String(req.params.name || '').trim();
+            const fileName = path.basename(rawName);
+
+            if (!isAllowedUpdateName(fileName) || fileName !== rawName) {
+                return res.status(400).json({ success: false, error: 'Nome de ficheiro inválido.' });
+            }
+
+            const fullPath = path.join(releaseDir, fileName);
+            if (!fs.existsSync(fullPath)) {
+                return res.status(404).json({ success: false, error: 'Ficheiro de atualização não encontrado.' });
+            }
+
+            if (/\.yml$/i.test(fileName)) {
+                res.setHeader('Content-Type', 'text/yaml; charset=utf-8');
+            }
+            return res.sendFile(fullPath);
+        } catch (error) {
+            return res.status(500).json({
+                success: false,
+                error: error?.message || 'Falha ao descarregar atualização desktop.',
             });
         }
     });

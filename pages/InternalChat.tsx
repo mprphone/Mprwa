@@ -1839,31 +1839,30 @@ const InternalChat: React.FC = () => {
         <aside className="hidden 2xl:flex border-l border-gray-200 bg-white min-h-0 flex-col p-3 gap-3 overflow-hidden">
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
             <div className="text-xs uppercase tracking-wide text-slate-500">Atalhos</div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <a
-                href="https://controle.mpr.pt/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-gradient-to-r from-emerald-500 to-green-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:from-emerald-600 hover:to-green-700 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-300"
-              >
-                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/20">
-                  <ExternalLink size={12} />
-                </span>
-                MPR Control
-              </a>
-              <a
-                href="https://cmrmpr.vercel.app/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-gradient-to-r from-emerald-500 to-green-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:from-emerald-600 hover:to-green-700 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-300"
-              >
-                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/20">
-                  <ExternalLink size={12} />
-                </span>
-                MPR CMR
-              </a>
+            <div className="mt-2 flex gap-2">
+              {([
+                { url: 'https://controle.mpr.pt/', icon: '/icone_mprcontrol.png', label: 'MPR Control' },
+                { url: 'https://cmrmpr.vercel.app/', icon: '/icone_CMRMPR.png', label: 'MPR CMR' },
+                { url: 'https://aef.mpr.pt/', icon: '/icone_mpraef.png', label: 'MPR AEF' },
+              ] as const).map(({ url, icon, label }) => (
+                <a
+                  key={url}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => {
+                    if ((window as any).waDesktop?.openAsApp) {
+                      e.preventDefault();
+                      (window as any).waDesktop.openAsApp(url);
+                    }
+                  }}
+                  title={label}
+                  className="rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                >
+                  <img src={icon} alt={label} className="h-20 w-20 rounded-lg object-contain" />
+                </a>
+              ))}
             </div>
-            <p className="mt-2 text-[11px] text-slate-500">Abre o MPR Control e o MPR CMR no browser (ou na app instalada, quando suportado).</p>
             {pedidoFeedback && <div className="mt-2 rounded-lg border border-green-200 bg-green-50 px-2 py-1.5 text-xs text-green-700">{pedidoFeedback}</div>}
           </div>
 

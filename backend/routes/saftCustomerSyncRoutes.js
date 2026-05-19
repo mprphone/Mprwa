@@ -384,6 +384,7 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
         const customerId = String(body.id || '').trim();
         const sourceId = String(body.sourceId || '').trim() || parseCustomerSourceId(customerId, '');
         const syncToSupabase = body.syncToSupabase !== false;
+        const forceLocalToSupabase = body.forceLocalToSupabase === true || body.forceLocalToSupabase === 'true';
     
         try {
             let conflictResolvedBySupabase = false;
@@ -414,6 +415,7 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                     const remoteUpdatedAt = normalizeSupabaseTimestamp(supabaseRow[columnsMeta.updatedAtColumn]);
                     const localKnownSupabaseAt = normalizeSupabaseTimestamp(existingLocalRow?.supabase_updated_at);
                     if (
+                        !forceLocalToSupabase &&
                         remoteUpdatedAt &&
                         localKnownSupabaseAt &&
                         new Date(remoteUpdatedAt).getTime() > new Date(localKnownSupabaseAt).getTime()
@@ -528,6 +530,7 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                     ownerId: canonicalCustomer?.ownerId || normalized.ownerId,
                     mirroredRelationsUpdated: mirrorSyncSummary.changed,
                     conflictResolvedBySupabase,
+                    forceLocalToSupabase,
                     warnings,
                 },
             });
