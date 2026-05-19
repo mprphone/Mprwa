@@ -66,6 +66,26 @@ async function activateFinancasNifTab(page) {
   return false;
 }
 
+
+async function continueFinancasLoginIfPrompted(page) {
+  const text = await page.locator('body').innerText({ timeout: 2500 }).catch(() => '');
+  if (!/Continuar Login|Segundo Fator|2FA|Aderir/i.test(text || '')) return false;
+
+  const clicked = await clickFirstText(page, [
+    'Continuar Login',
+    'Continuar login',
+    'Continuar',
+    'Nao aderir',
+    'Não aderir',
+    'Mais tarde',
+  ], 3500).catch(() => false);
+  if (!clicked) return false;
+
+  await page.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => null);
+  await page.waitForTimeout(1200).catch(() => null);
+  return true;
+}
+
 async function submitFinancasLogin(page, credentials, options = {}) {
   const usernameSelectors = splitSelectorList(
     options.usernameSelectors || process.env.PORTAL_FINANCAS_USERNAME_SELECTOR,
@@ -101,6 +121,7 @@ async function submitFinancasLogin(page, credentials, options = {}) {
     ]);
   }
   await page.waitForTimeout(1000).catch(() => null);
+  await continueFinancasLoginIfPrompted(page).catch(() => false);
 }
 
 async function clickFirstText(page, labels, timeoutMs = 2500) {
@@ -190,6 +211,10 @@ async function openFiscalIntegratedArea(page, credentials, options = {}) {
   if (isFiscalPage(body)) return true;
 
   await debugSnapshot(page, 'after-login-before-sfi');
+
+  await continueFinancasLoginIfPrompted(page).catch(() => false);
+  body = await readBody();
+  if (isFiscalPage(body)) return true;
 
   await clickFirstText(page, ['Situação fiscal integrada', 'Situacao fiscal integrada'], 3500).catch(() => false);
   body = await readBody();
