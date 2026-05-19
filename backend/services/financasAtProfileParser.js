@@ -338,6 +338,38 @@ async function clickIntegratedMenuItem(page, label) {
   return false;
 }
 
+function buildIdentificationUrlFromCurrent(urlText) {
+  const raw = String(urlText || '').trim();
+  if (!raw || !/sitfiscal\.portaldasfinancas\.gov\.pt\/integrada\/presentation/i.test(raw)) return '';
+  try {
+    const url = new URL(raw);
+    const queryString = url.searchParams.get('queryStringS') || '';
+    if (!queryString) return '';
+    const decoded = decodeURIComponent(queryString);
+    if (!/targetScreen=/i.test(decoded)) return '';
+    const nextDecoded = decoded.replace(/targetScreen=[^&]+/i, 'targetScreen=ecraIdentificacao');
+    url.searchParams.set('queryStringS', nextDecoded);
+    return url.toString();
+  } catch (_) {
+    return raw.replace(/targetScreen%3D[^%&]+/i, 'targetScreen%3DecraIdentificacao');
+  }
+}
+
+async function navigateToIdentificationPage(page) {
+  const directUrl = buildIdentificationUrlFromCurrent(page.url());
+  if (directUrl && directUrl !== page.url()) {
+    await page.goto(directUrl, { waitUntil: 'domcontentloaded', timeout: 15_000 }).catch(() => null);
+    await page.waitForTimeout(900).catch(() => null);
+    const text = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '');
+    if (/Dados Gerais de Identifica|Identifica[cç][aã]o do Contribuinte|Moradas|Servi[cç]o de Finan[cç]as Competente/i.test(text)) return true;
+  }
+
+  if (await clickIntegratedMenuItem(page, 'Resumo')) return true;
+  if (await clickIntegratedMenuItem(page, 'Identificação')) return true;
+  if (await clickIntegratedMenuItem(page, 'Identificacao')) return true;
+  return false;
+}
+
 async function navigateToActivityPage(page) {
   const directUrl = buildActivityUrlFromCurrent(page.url());
   if (directUrl && directUrl !== page.url()) {
@@ -422,8 +454,17 @@ async function collectFinancasAtProfile(page, options = {}) {
     if (moved) await readAndMerge('activity');
   };
 
+  const tryIdentificationIfUseful = async () => {
+    const needsIdentification = !mergedFields.morada || !mergedFields.codigoPostal || !mergedFields.codigoReparticaoFinancas || !mergedFields.dataNascimento;
+    if (!needsIdentification) return;
+    const moved = await navigateToIdentificationPage(page).catch(() => false);
+    if (moved) await readAndMerge('identification');
+  };
+
   await readAndMerge('current');
+  await tryIdentificationIfUseful();
   await tryActivityIfUseful();
+  await tryIdentificationIfUseful();
 
   // If the browser landed elsewhere after login, try the explicit candidates.
   if (countCollectedFields(mergedFields) === 0) {
@@ -432,8 +473,10 @@ async function collectFinancasAtProfile(page, options = {}) {
       try {
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: Number(options.navigationTimeoutMs || 30_000) || 30_000 });
         await readAndMerge(`candidate:${url}`);
+        await tryIdentificationIfUseful();
         await tryActivityIfUseful();
-        if (countCollectedFields(mergedFields) > 0) break;
+        await tryIdentificationIfUseful();
+        if (countCollectedFields(mergedFields) > 0 && mergedFields.morada && mergedFields.codigoReparticaoFinancas) break;
       } catch (error) {
         attempts.push({ url, error: String(error?.message || error) });
       }
@@ -447,12 +490,15 @@ async function collectFinancasAtProfile(page, options = {}) {
   while (countCollectedFields(mergedFields) === 0 && Date.now() < deadline) {
     await sleep(1500);
     await readAndMerge('watch-current');
+    await tryIdentificationIfUseful();
     await tryActivityIfUseful();
   }
 
-  // If we only got identification data, do one last activity attempt; for particulares this may legitimately add nothing.
+  // If we only got one side of the fiscal profile, do one last pass through both screens.
   if (countCollectedFields(mergedFields) > 0) {
+    await tryIdentificationIfUseful();
     await tryActivityIfUseful();
+    await tryIdentificationIfUseful();
   }
 
   return {
