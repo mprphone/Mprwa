@@ -531,6 +531,17 @@ async function submitDesktopAutologinCredentials(page, targets, config) {
 }
 
 
+async function findFirstActuallyVisibleLocator(page, selector, timeoutMs = 1500) {
+  const all = page.locator(selector);
+  const count = Math.min(await all.count().catch(() => 0), 20);
+  for (let index = 0; index < count; index += 1) {
+    const locator = all.nth(index);
+    const visible = await locator.isVisible({ timeout: index === 0 ? timeoutMs : 250 }).catch(() => false);
+    if (visible) return locator;
+  }
+  return null;
+}
+
 async function clickFirstFinancasTextLink(page, labels, timeoutMs = 2500) {
   const list = Array.isArray(labels) ? labels : [labels];
   for (const label of list) {
@@ -540,9 +551,8 @@ async function clickFirstFinancasTextLink(page, labels, timeoutMs = 2500) {
       `text=${label}`,
     ];
     for (const selector of selectors) {
-      const locator = page.locator(selector).first();
-      const visible = await locator.isVisible({ timeout: Math.min(timeoutMs, 1500) }).catch(() => false);
-      if (!visible) continue;
+      const locator = await findFirstActuallyVisibleLocator(page, selector, Math.min(timeoutMs, 1500));
+      if (!locator) continue;
       await Promise.allSettled([
         page.waitForLoadState('domcontentloaded', { timeout: 10_000 }).catch(() => null),
         locator.click({ timeout: timeoutMs }),

@@ -29,8 +29,18 @@ async function clickCookieConsentIfPresent(page, timeoutMs = 1500) {
 
 async function findFirstVisible(page, selectors, timeoutMs = 2500) {
   for (const selector of selectors) {
-    const locator = page.locator(selector).first();
-    const visible = await locator.isVisible({ timeout: timeoutMs }).catch(() => false);
+    const locator = await findFirstActuallyVisible(page, selector, timeoutMs);
+    if (locator) return locator;
+  }
+  return null;
+}
+
+async function findFirstActuallyVisible(page, selector, timeoutMs = 1500) {
+  const all = page.locator(selector);
+  const count = Math.min(await all.count().catch(() => 0), 20);
+  for (let index = 0; index < count; index += 1) {
+    const locator = all.nth(index);
+    const visible = await locator.isVisible({ timeout: index === 0 ? timeoutMs : 250 }).catch(() => false);
     if (visible) return locator;
   }
   return null;
@@ -45,11 +55,10 @@ async function activateFinancasNifTab(page) {
     'text=NIF',
   ];
   for (const selector of selectors) {
-    const locator = page.locator(selector).first();
-    const visible = await locator.isVisible({ timeout: 1000 }).catch(() => false);
-    if (!visible) continue;
+    const locator = await findFirstActuallyVisible(page, selector, 1000);
+    if (!locator) continue;
     await locator.click({ timeout: 1500 }).catch(() => null);
-    await page.waitForTimeout(400).catch(() => null);
+    await page.waitForTimeout(600).catch(() => null);
     return true;
   }
   return false;
@@ -101,9 +110,8 @@ async function clickFirstText(page, labels, timeoutMs = 2500) {
       `text=${label}`,
     ];
     for (const selector of selectors) {
-      const locator = page.locator(selector).first();
-      const visible = await locator.isVisible({ timeout: Math.min(timeoutMs, 1200) }).catch(() => false);
-      if (!visible) continue;
+      const locator = await findFirstActuallyVisible(page, selector, Math.min(timeoutMs, 1200));
+      if (!locator) continue;
       await Promise.allSettled([
         page.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => null),
         locator.click({ timeout: timeoutMs }),
