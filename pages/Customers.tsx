@@ -1681,49 +1681,20 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
 
   const handleUpdateCustomerFromAt = async () => {
     if (atProfileBusy) return;
-
-    const syntheticCustomer = {
-      ...(editingCustomer || {}),
-      name: formData.name,
-      company: formData.company,
-      nif: formData.nif,
-      niss: formData.niss,
-      senhaFinancas: formData.senhaFinancas,
-      accessCredentials: formData.accessCredentials,
-    } as Customer;
-    const { username, password } = resolveAtAccessFromCustomer(syntheticCustomer);
-    const loginUrl = 'https://www.acesso.gov.pt/v2/loginForm?partID=PFAP';
-    const hasDesktopAtProfileApi = typeof window.waDesktop?.financasAtProfile === 'function';
-
-    if (!username || !password) {
-      window.alert('Este cliente não tem utilizador/senha AT completos na ficha.');
+    if (!editingCustomer?.id) {
+      window.alert('Guarda primeiro o cliente antes de atualizar pela AT.');
       return;
     }
 
     setAtProfileBusy(true);
-    setFormSavedNotice('A consultar dados na AT...');
+    setFormSavedNotice('A consultar dados na AT pelo Oracle...');
     try {
-      const payload = {
-        username,
-        password,
-        loginUrl,
-        timeoutMs: 120000,
-        closeAfterCollect: true,
-        activateFinancasNifTab: true,
-      };
-
-      const result = hasDesktopAtProfileApi
-        ? await window.waDesktop!.financasAtProfile!(payload)
-        : await triggerLocalFinancasAtProfileBridge(payload);
-
-      if (!result?.success) {
-        throw new Error(String(result?.error || 'Não consegui recolher os dados da AT.'));
-      }
-
+      const result = await mockService.updateCustomerFromAt(editingCustomer.id);
+      const updatedCustomer = result.customer;
       const fields = (result.fields || {}) as FinancasAtProfileFields;
       const updates: FinancasAtProfileFields = {};
       const assignIfFilled = <K extends keyof FinancasAtProfileFields>(key: K) => {
-        const value = String(fields[key] || '').trim();
+        const value = String(fields[key] || (updatedCustomer as Customer | undefined)?.[key] || '').trim();
         if (value) updates[key] = value as never;
       };
       assignIfFilled('morada');
@@ -1732,18 +1703,21 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       assignIfFilled('caePrincipal');
       assignIfFilled('codigoReparticaoFinancas');
 
-      const updatedKeys = Object.keys(updates);
-      if (!updatedKeys.length) {
-        setFormSavedNotice('Login AT feito, mas não encontrei dados fiscais para preencher.');
-        window.alert('Entrei na AT, mas não encontrei automaticamente morada/atividade/IVA/CAE/repartição. Vou precisar de ajustar a página de recolha depois do primeiro teste real.');
-        return;
+      if (updatedCustomer) {
+        setEditingCustomer(updatedCustomer);
+        setFormData(formStateFromCustomer(updatedCustomer));
+        setSavedFormSnapshot(JSON.stringify(formStateFromCustomer(updatedCustomer)));
+      } else if (Object.keys(updates).length) {
+        setFormData((previous) => ({ ...previous, ...updates }));
       }
 
-      setFormData((previous) => ({
-        ...previous,
-        ...updates,
-      }));
-      setFormSavedNotice(`Dados AT atualizados na ficha (${updatedKeys.length} campo(s)). Clica em Gravar para guardar.`);
+      const updatedKeys = Object.keys(updates);
+      setFormSavedNotice(
+        result.message ||
+        (updatedKeys.length
+          ? `Dados AT atualizados (${updatedKeys.length} campo(s)).`
+          : 'Consulta AT concluída.')
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error || 'Falha ao atualizar dados pela AT.');
       setFormSavedNotice('');

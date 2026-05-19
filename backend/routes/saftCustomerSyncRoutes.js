@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const { collectFinancasAtProfileInOracle } = require('../services/financasAtProfileOracleService');
 
 function cleanText(value) {
     return String(value || '').replace(/\s+/g, ' ').trim();
@@ -62,6 +63,23 @@ function isUsableStatus(entry) {
     const status = foldText(entry?.status || 'active');
     const validUntil = cleanText(entry?.validUntil || entry?.valid_until || '');
     return status !== 'expired' && status !== 'inactive' && status !== 'error' && (!validUntil || validUntil >= todayIsoDate());
+}
+
+function isAtCredential(entry) {
+    const service = foldText(entry?.service || '');
+    return service === 'at' || service.includes('autoridade') || service.includes('financ');
+}
+
+function resolveAtCredentialFromCustomer(customer) {
+    const credentials = Array.isArray(customer?.accessCredentials) ? customer.accessCredentials : [];
+    const atCredential = credentials.find((entry) => isAtCredential(entry) && isUsableStatus(entry)) || null;
+    const nif = onlyDigits(customer?.nif || '').slice(-9);
+    return {
+        username: cleanText(atCredential?.username || nif),
+        password: cleanText(atCredential?.password || customer?.senhaFinancas || ''),
+        nif,
+        source: atCredential ? 'access_credentials' : 'senha_financas',
+    };
 }
 
 function hasCompleteSegSocialSubUser(customer) {
@@ -815,6 +833,95 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                 success: false,
                 error: details,
             });
+        }
+    });
+
+    app.post('/api/customers/:id/update-from-at', async (req, res) => {
+        const customerId = String(req.params.id || '').trim();
+        const body = req.body || {};
+        const actorUserId = String(body.actorUserId || '').trim() || null;
+        if (!customerId) {
+            return res.status(400).json({ success: false, error: 'Cliente inválido.' });
+        }
+        if (isFinancasAutologinRunning_get()) {
+            return res.status(409).json({
+                success: false,
+                error: 'Já existe uma recolha AT em execução. Aguarde alguns segundos e tente novamente.',
+            });
+        }
+
+        isFinancasAutologinRunning_set(true);
+        try {
+            const customer = await getLocalCustomerById(customerId);
+            if (!customer) {
+                return res.status(404).json({ success: false, error: 'Cliente não encontrado.' });
+            }
+            const credentials = resolveAtCredentialFromCustomer(customer);
+            if (!credentials.username || !credentials.password) {
+                return res.status(400).json({ success: false, error: 'Este cliente não tem utilizador/senha AT completos na ficha.' });
+            }
+
+            const collected = await collectFinancasAtProfileInOracle(credentials, {
+                timeoutMs: Number(body.timeoutMs || process.env.PORTAL_FINANCAS_TIMEOUT_MS || 120000) || 120000,
+                profileCollectTimeoutMs: Number(body.profileCollectTimeoutMs || 45000) || 45000,
+                headless: body.headless !== false,
+            });
+            const fields = collected?.fields && typeof collected.fields === 'object' ? collected.fields : {};
+            const updates = {};
+            ['morada', 'inicioAtividade', 'tipoIva', 'caePrincipal', 'codigoReparticaoFinancas'].forEach((key) => {
+                const value = cleanText(fields[key]);
+                if (value) updates[key] = value;
+            });
+
+            if (Object.keys(updates).length === 0) {
+                return res.status(422).json({
+                    success: false,
+                    error: collected?.message || 'Login AT feito no Oracle, mas não encontrei dados fiscais para atualizar.',
+                    sourceUrl: collected?.sourceUrl || '',
+                    attempts: collected?.attempts || [],
+                });
+            }
+
+            const saved = await upsertLocalCustomer({
+                ...customer,
+                ...updates,
+                id: customer.id,
+                sourceId: customer.sourceId,
+            });
+            let supabase = null;
+            if (hasSupabaseCustomersSync()) {
+                try {
+                    const tableColumns = await fetchSupabaseTableColumns(SUPABASE_CLIENTS_SOURCE).catch(() => []);
+                    supabase = await pushLocalCustomerToSupabase(saved, tableColumns);
+                } catch (syncError) {
+                    supabase = { success: false, warning: String(syncError?.message || syncError) };
+                }
+            }
+
+            if (actorUserId) {
+                await writeAuditLog({
+                    actorUserId,
+                    entityType: 'customer',
+                    entityId: customer.id,
+                    action: 'update_from_at',
+                    details: { fields: updates, sourceUrl: collected?.sourceUrl || '' },
+                }).catch(() => null);
+            }
+
+            return res.json({
+                success: true,
+                fields: updates,
+                customer: saved,
+                sourceUrl: collected?.sourceUrl || '',
+                message: `Dados AT atualizados (${Object.keys(updates).length} campo(s)).`,
+                supabase,
+            });
+        } catch (error) {
+            const details = String(error?.message || error || 'Falha ao recolher dados da AT no Oracle.');
+            console.error('[AT Profile] Erro na recolha Oracle:', details);
+            return res.status(500).json({ success: false, error: details });
+        } finally {
+            isFinancasAutologinRunning_set(false);
         }
     });
 

@@ -1501,6 +1501,42 @@ class MockService {
     return savedCustomer;
   }
 
+
+  async updateCustomerFromAt(customerId: string): Promise<{ customer?: Customer; fields?: Partial<Customer>; message?: string }> {
+    if (!customerId) throw new Error('Cliente inválido.');
+    if (this.isBrowser()) {
+      const response = await fetch(`/api/customers/${encodeURIComponent(customerId)}/update-from-at`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const payload = await response.json().catch(() => ({})) as {
+        success?: boolean;
+        customer?: Customer;
+        fields?: Partial<Customer>;
+        message?: string;
+        error?: unknown;
+      };
+      if (!response.ok || !payload.success) {
+        const errorText =
+          typeof payload.error === 'string'
+            ? payload.error
+            : payload.error
+              ? JSON.stringify(payload.error)
+              : `Falha ao atualizar dados pela AT (${response.status}).`;
+        throw new Error(errorText);
+      }
+      if (payload.customer && this.isValidCustomer(payload.customer)) {
+        const idx = this.customers.findIndex((customer) => customer.id === customerId || customer.id === payload.customer!.id);
+        if (idx >= 0) this.customers[idx] = payload.customer;
+        else this.customers.push(payload.customer);
+        this.persistLocalEntities();
+      }
+      return { customer: payload.customer, fields: payload.fields || {}, message: payload.message || 'Dados AT atualizados.' };
+    }
+    throw new Error('Atualização pela AT só está disponível no servidor.');
+  }
+
   async updateCustomer(id: string, updates: Partial<Customer>, options?: { syncToSupabase?: boolean }): Promise<void> {
       const idx = this.customers.findIndex(c => c.id === id);
       if(idx !== -1) {
