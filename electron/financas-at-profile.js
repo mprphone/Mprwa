@@ -274,6 +274,15 @@ async function navigateToActivityPage(page) {
   return false;
 }
 
+
+function countCollectedFields(fields) {
+  return Object.values(fields || {}).filter((value) => String(value || '').trim()).length;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function collectFinancasAtProfile(page, options = {}) {
   const urls = resolveCandidateUrls(options);
   const attempts = [];
@@ -290,27 +299,44 @@ async function collectFinancasAtProfile(page, options = {}) {
     return result;
   };
 
-  await readAndMerge('current');
+  const tryActivityIfUseful = async () => {
+    const needsActivity = !mergedFields.inicioAtividade || !mergedFields.caePrincipal || !mergedFields.tipoIva;
+    if (!needsActivity) return;
+    const moved = await navigateToActivityPage(page).catch(() => false);
+    if (moved) await readAndMerge('activity');
+  };
 
-  // AT split: identification has address/tax office; activity has start date/CAE/IVA.
-  const needsActivity = !mergedFields.inicioAtividade || !mergedFields.caePrincipal || !mergedFields.tipoIva;
-  if (needsActivity) {
-    await navigateToActivityPage(page).catch(() => false);
-    await readAndMerge('activity');
-  }
+  await readAndMerge('current');
+  await tryActivityIfUseful();
 
   // If the browser landed elsewhere after login, try the explicit candidates.
-  if (!mergedFields.morada && !mergedFields.codigoReparticaoFinancas && !mergedFields.inicioAtividade) {
+  if (countCollectedFields(mergedFields) === 0) {
     for (const url of urls) {
       if (page.url().replace(/#.*$/, '') === url.replace(/#.*$/, '')) continue;
       try {
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: Number(options.navigationTimeoutMs || 30_000) || 30_000 });
         await readAndMerge(`candidate:${url}`);
-        if (mergedFields.morada || mergedFields.codigoReparticaoFinancas || mergedFields.inicioAtividade) break;
+        await tryActivityIfUseful();
+        if (countCollectedFields(mergedFields) > 0) break;
       } catch (error) {
         attempts.push({ url, error: String(error?.message || error) });
       }
     }
+  }
+
+  // Last safety net: AT pages can load slowly or the user may click the menu manually.
+  // Keep watching briefly instead of failing while the correct page is already open.
+  const collectTimeoutMs = Math.max(10_000, Math.min(90_000, Number(options.profileCollectTimeoutMs || 45_000) || 45_000));
+  const deadline = Date.now() + collectTimeoutMs;
+  while (countCollectedFields(mergedFields) === 0 && Date.now() < deadline) {
+    await sleep(1500);
+    await readAndMerge('watch-current');
+    await tryActivityIfUseful();
+  }
+
+  // If we only got identification data, do one last activity attempt; for particulares this may legitimately add nothing.
+  if (countCollectedFields(mergedFields) > 0) {
+    await tryActivityIfUseful();
   }
 
   return {
