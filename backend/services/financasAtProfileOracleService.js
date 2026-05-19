@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const { collectFinancasAtProfile } = require('./financasAtProfileParser');
 
 const DEFAULT_LOGIN_URL = 'https://www.acesso.gov.pt/v2/loginForm?partID=PFAP';
@@ -127,6 +129,58 @@ async function hasPasswordForm(page) {
   return page.locator('input[type="password"], input[name="password"]').first().isVisible({ timeout: 800 }).catch(() => false);
 }
 
+async function debugSnapshot(page, stage) {
+  try {
+    const dir = path.join(process.cwd(), 'logs', 'at-profile');
+    fs.mkdirSync(dir, { recursive: true });
+    const safeStage = String(stage || 'stage').replace(/[^a-z0-9_-]+/gi, '_').slice(0, 40);
+    const stamp = new Date().toISOString().replace(/[^0-9TZ]+/g, '');
+    const base = path.join(dir, `${stamp}-${safeStage}`);
+    const text = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '');
+    fs.writeFileSync(`${base}.txt`, `URL: ${page.url()}\n\n${text}`, 'utf8');
+    await page.screenshot({ path: `${base}.png`, fullPage: true }).catch(() => null);
+    console.log(`[AT Profile] snapshot ${stage}: ${page.url()} -> ${base}`);
+  } catch (error) {
+    console.warn('[AT Profile] snapshot falhou:', error?.message || error);
+  }
+}
+
+async function submitSearch(page, query) {
+  const inputSelectors = [
+    'input[placeholder*="pretende efetuar" i]',
+    'input[placeholder*="pretende" i]',
+    'input[type="search"]',
+    'input[name="q"]',
+    'input[type="text"]',
+  ];
+  const input = await findFirstVisible(page, inputSelectors, 1500);
+  if (!input) return false;
+  await input.fill(query);
+  const button = await findFirstVisible(page, [
+    'button:has-text("Pesquisar")',
+    'button[aria-label*="Pesquisar" i]',
+    'button[type="submit"]',
+    'input[type="submit"]',
+  ], 1000);
+  await Promise.allSettled([
+    page.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => null),
+    button ? button.click({ timeout: 2000 }) : input.press('Enter'),
+  ]);
+  await page.waitForTimeout(1200).catch(() => null);
+  return true;
+}
+
+async function searchFiscalIntegratedArea(page) {
+  const queries = ['situação fiscal integrada', 'situacao fiscal integrada'];
+  for (const query of queries) {
+    const searched = await submitSearch(page, query).catch(() => false);
+    if (!searched) continue;
+    if (await clickFirstText(page, ['Situação fiscal integrada', 'Situacao fiscal integrada'], 3500).catch(() => false)) return true;
+    if (await clickFirstText(page, ['Aceder', 'Consultar', 'Entrar'], 2500).catch(() => false)) return true;
+  }
+  return false;
+}
+
 async function openFiscalIntegratedArea(page, credentials, options = {}) {
   const readBody = async () => String(await page.locator('body').innerText({ timeout: 3000 }).catch(() => '') || '');
   const isFiscalPage = (text) => /Dados Gerais de Identifica|Atividade Exercida|Actividade Exercida|Situa[cç][aã]o Fiscal Integrada/i.test(text || '')
@@ -135,14 +189,21 @@ async function openFiscalIntegratedArea(page, credentials, options = {}) {
   let body = await readBody();
   if (isFiscalPage(body)) return true;
 
-  await clickFirstText(page, ['Situação fiscal integrada', 'Situacao fiscal integrada']).catch(() => false);
+  await debugSnapshot(page, 'after-login-before-sfi');
+
+  await clickFirstText(page, ['Situação fiscal integrada', 'Situacao fiscal integrada'], 3500).catch(() => false);
+  body = await readBody();
+  if (isFiscalPage(body)) return true;
+
+  // If the public portal/search page appears, use AT's own search box instead of guessing signed URLs.
+  await searchFiscalIntegratedArea(page).catch(() => false);
   body = await readBody();
   if (isFiscalPage(body)) return true;
 
   if (await hasPasswordForm(page)) {
     await submitFinancasLogin(page, credentials, options);
   } else {
-    const clickedLogin = await clickFirstText(page, ['Iniciar Sessão', 'Iniciar Sessao']).catch(() => false);
+    const clickedLogin = await clickFirstText(page, ['Iniciar Sessão', 'Iniciar Sessao'], 2500).catch(() => false);
     if (clickedLogin && await hasPasswordForm(page)) {
       await submitFinancasLogin(page, credentials, options);
     }
@@ -150,9 +211,16 @@ async function openFiscalIntegratedArea(page, credentials, options = {}) {
 
   body = await readBody();
   if (isFiscalPage(body)) return true;
-  await clickFirstText(page, ['Situação fiscal integrada', 'Situacao fiscal integrada']).catch(() => false);
+  await clickFirstText(page, ['Situação fiscal integrada', 'Situacao fiscal integrada'], 3500).catch(() => false);
   body = await readBody();
-  return isFiscalPage(body);
+  if (isFiscalPage(body)) return true;
+
+  await searchFiscalIntegratedArea(page).catch(() => false);
+  body = await readBody();
+  if (isFiscalPage(body)) return true;
+
+  await debugSnapshot(page, 'sfi-not-found');
+  return false;
 }
 
 async function launchOracleBrowser(playwright, options = {}) {
@@ -220,6 +288,9 @@ async function collectFinancasAtProfileInOracle(credentials, options = {}) {
       ...options,
       profileCollectTimeoutMs: options.profileCollectTimeoutMs || 45000,
     });
+    if (!Object.keys(collected.fields || {}).length) {
+      await debugSnapshot(page, 'no-fields-after-collect');
+    }
     return {
       success: true,
       fields: collected.fields || {},
