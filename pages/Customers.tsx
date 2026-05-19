@@ -88,7 +88,7 @@ type LocalFinancasAutologinResponse = {
 };
 
 type FinancasAtProfileFields = Partial<Pick<CustomerFormState,
-  'morada' | 'inicioAtividade' | 'tipoIva' | 'caePrincipal' | 'codigoReparticaoFinancas'
+  'morada' | 'codigoPostal' | 'inicioAtividade' | 'tipoIva' | 'caePrincipal' | 'codigoReparticaoFinancas'
 >>;
 
 type LocalFinancasAtProfileResponse = {
@@ -634,6 +634,7 @@ type CustomerFormState = {
   senhaSegurancaSocial: string;
   tipoIva: string;
   morada: string;
+  codigoPostal: string;
   notes: string;
   certidaoPermanenteNumero: string;
   certidaoPermanenteValidade: string;
@@ -672,6 +673,7 @@ const emptyFormState = (): CustomerFormState => ({
   senhaSegurancaSocial: '',
   tipoIva: '',
   morada: '',
+  codigoPostal: '',
   notes: '',
   certidaoPermanenteNumero: '',
   certidaoPermanenteValidade: '',
@@ -935,6 +937,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     senhaSegurancaSocial: customer.senhaSegurancaSocial || '',
     tipoIva: customer.tipoIva || '',
     morada: customer.morada || '',
+    codigoPostal: customer.codigoPostal || '',
     notes: customer.notes || '',
     certidaoPermanenteNumero: customer.certidaoPermanenteNumero || '',
     certidaoPermanenteValidade: customer.certidaoPermanenteValidade || '',
@@ -1698,6 +1701,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
         if (value) updates[key] = value as never;
       };
       assignIfFilled('morada');
+      assignIfFilled('codigoPostal');
       assignIfFilled('inicioAtividade');
       assignIfFilled('tipoIva');
       assignIfFilled('caePrincipal');
@@ -2760,6 +2764,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       inicioAtividade: String(formData.inicioAtividade || '').trim(),
       caePrincipal: String(formData.caePrincipal || '').trim(),
       codigoReparticaoFinancas: String(formData.codigoReparticaoFinancas || '').trim(),
+      codigoPostal: String(formData.codigoPostal || '').trim(),
       tipoContabilidade: String(formData.tipoContabilidade || '').trim(),
       estadoCliente: String(formData.estadoCliente || '').trim(),
       contabilistaCertificado: String(formData.contabilistaCertificado || '').trim(),
@@ -3964,6 +3969,16 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                           className="mt-1 w-full border rounded-md p-2"
                           value={formData.morada}
                           onChange={(e) => setFormData({ ...formData, morada: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Código Postal</label>
+                        <input
+                          type="text"
+                          className="mt-1 w-full border rounded-md p-2"
+                          placeholder="0000-000 Localidade"
+                          value={formData.codigoPostal}
+                          onChange={(e) => setFormData({ ...formData, codigoPostal: e.target.value })}
                         />
                       </div>
                       <div>

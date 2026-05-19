@@ -1827,6 +1827,7 @@ Regras:
             normalizeLocalTipoIvaToSupabase(localCustomer?.tipoIva)
         );
         setIfColumnExists(['morada', 'address', 'endereco'], localCustomer?.morada || null);
+        setIfColumnExists(['codigo_postal', 'cod_postal', 'cp', 'postal_code'], localCustomer?.codigoPostal || null);
         setIfColumnExists(['notes', 'notas', 'observacoes', 'obs'], localCustomer?.notes || null);
         setIfColumnExists(['certidao_permanente_numero', 'certidao_permanente_n', 'certidao_permanente'], localCustomer?.certidaoPermanenteNumero || null);
         setIfColumnExists(
@@ -1994,6 +1995,7 @@ Regras:
             senhaSegurancaSocial: candidate.senhaSegurancaSocial || undefined,
             tipoIva: candidate.tipoIva || undefined,
             morada: candidate.morada || undefined,
+            codigoPostal: candidate.codigoPostal || undefined,
             certidaoPermanenteNumero: candidate.certidaoPermanenteNumero || undefined,
             certidaoPermanenteValidade: candidate.certidaoPermanenteValidade || undefined,
             rcbeNumero: candidate.rcbeNumero || undefined,

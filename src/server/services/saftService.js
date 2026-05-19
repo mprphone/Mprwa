@@ -661,6 +661,9 @@ function createSaftService(deps) {
         const morada = String(
             pickFirstValue(rawRow, ['morada', 'address', 'endereco']) || ''
         ).trim();
+        const codigoPostal = String(
+            pickFirstValue(rawRow, ['codigo_postal', 'cod_postal', 'cp', 'postal_code']) || ''
+        ).trim();
         const notes = String(
             pickFirstValue(rawRow, ['notes', 'notas', 'observacoes', 'obs']) || ''
         ).trim();
@@ -709,6 +712,7 @@ function createSaftService(deps) {
             documentsFolder,
             tipoIva,
             morada,
+            codigoPostal,
             notes,
             certidaoPermanenteNumero,
             certidaoPermanenteValidade,

@@ -153,6 +153,7 @@ function createCustomerRepository(deps) {
             senhaSegurancaSocial: decryptCustomerSecret(String(row.senha_seg_social || '').trim()) || undefined,
             tipoIva: String(row.tipo_iva || '').trim() || undefined,
             morada: String(row.morada || '').trim() || undefined,
+            codigoPostal: profile.codigoPostal || undefined,
             certidaoPermanenteNumero: profile.certidaoPermanenteNumero || undefined,
             certidaoPermanenteValidade: profile.certidaoPermanenteValidade || undefined,
             rcbeNumero: profile.rcbeNumero || undefined,

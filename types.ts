@@ -100,6 +100,7 @@ export interface Customer {
   senhaSegurancaSocial?: string;
   tipoIva?: string;
   morada?: string;
+  codigoPostal?: string;
   notes?: string;
   certidaoPermanenteNumero?: string;
   certidaoPermanenteValidade?: string;

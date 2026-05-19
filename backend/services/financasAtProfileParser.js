@@ -39,6 +39,29 @@ function normalizeDateToIso(value) {
   return `${match[3]}-${month}-${day}`;
 }
 
+
+function normalizeAddressValue(value) {
+  const cleaned = cleanExtractedValue(value);
+  const folded = normalizeSearchText(cleaned);
+  if (!cleaned) return '';
+  if (folded === 'av rua' || folded === 'av rua rua' || folded === 'avenida rua') return '';
+  if (folded === 'morada' || folded === 'localidade' || folded === 'codigo postal') return '';
+  if (/^av\.?\s*\/\s*rua$/i.test(cleaned)) return '';
+  if (cleaned.length < 5) return '';
+  return cleaned;
+}
+
+function normalizePostalCodeValue(value) {
+  const cleaned = cleanExtractedValue(value);
+  if (!cleaned) return '';
+  const match = cleaned.match(/\b(\d{4})\s*[- ]\s*(\d{3})(?:\s+(.+))?/);
+  if (match) {
+    const locality = compactSpaces(match[3] || '');
+    return locality ? `${match[1]}-${match[2]} ${locality}` : `${match[1]}-${match[2]}`;
+  }
+  return /^[-–—]+$/.test(cleaned) ? '' : cleaned;
+}
+
 function normalizeTipoIva(value) {
   const raw = cleanExtractedValue(value);
   const normalized = normalizeSearchText(raw);
@@ -73,15 +96,14 @@ function parseFieldsFromText(text) {
   ]);
   if (codigoReparticaoFinancas) fields.codigoReparticaoFinancas = codigoReparticaoFinancas;
 
-  const morada = firstRegexValue(raw, [
+  const morada = normalizeAddressValue(firstRegexValue(raw, [
     /(?:Resid[eê]ncia\s*\([^)]*\)|Sede\s+ou\s+Estabelecimento\s+Est[aá]vel\s*\([^)]*\))\s+Morada\s+(.+?)\s+Localidade\s+/i,
     /Morada\s+(.+?)\s+Localidade\s+/i,
-  ]);
-  if (morada) {
-    const localidade = firstRegexValue(raw, [/Localidade\s+(.+?)\s+C[oó]digo Postal\s+/i]);
-    const codigoPostal = firstRegexValue(raw, [/C[oó]digo Postal\s+(.+?)\s+Distrito\s+/i]);
-    fields.morada = [morada, localidade, codigoPostal].filter(Boolean).join(', ');
-  }
+  ]));
+  const localidade = cleanExtractedValue(firstRegexValue(raw, [/Localidade\s+(.+?)\s+C[oó]digo Postal\s+/i]));
+  const codigoPostal = normalizePostalCodeValue(firstRegexValue(raw, [/C[oó]digo Postal\s+(.+?)\s+Distrito\s+/i]));
+  if (morada) fields.morada = [morada, localidade].filter(Boolean).join(', ');
+  if (codigoPostal) fields.codigoPostal = codigoPostal;
 
   const inicioAtividade = firstRegexValue(raw, [
     /Dados Gerais de Atividade\s+Data de In[ií]cio\s+(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
@@ -168,8 +190,11 @@ function mapPairsToFields(pairs) {
     return '';
   };
 
-  const morada = findByLabels(['domicilio fiscal', 'morada fiscal', 'morada']);
+  const morada = normalizeAddressValue(findByLabels(['domicilio fiscal', 'morada fiscal', 'morada']));
   if (morada) fields.morada = morada;
+
+  const codigoPostal = normalizePostalCodeValue(findByLabels(['codigo postal', 'cod postal', 'cp']));
+  if (codigoPostal) fields.codigoPostal = codigoPostal;
 
   const inicioAtividade = findByLabels(['inicio de atividade', 'inicio de actividade', 'data de inicio']);
   if (inicioAtividade) fields.inicioAtividade = normalizeDateToIso(inicioAtividade);
@@ -275,6 +300,44 @@ async function navigateToActivityPage(page) {
 }
 
 
+
+function fieldQuality(key, value) {
+  const text = cleanExtractedValue(value);
+  if (!text) return 0;
+  if (key === 'morada') {
+    const address = normalizeAddressValue(text);
+    if (!address) return 0;
+    let score = address.length;
+    if (/\d/.test(address)) score += 20;
+    if (/\b(rua|r\.?|avenida|av\.?|travessa|largo|praca|praça|estrada|edificio|n[ºo])\b/i.test(address)) score += 15;
+    return score;
+  }
+  if (key === 'codigoPostal') {
+    return /\b\d{4}\s*[- ]\s*\d{3}\b/.test(text) ? 100 + text.length : 0;
+  }
+  return text.length;
+}
+
+function mergeCollectedFields(target, incoming) {
+  Object.entries(incoming || {}).forEach(([key, rawValue]) => {
+    const value = cleanExtractedValue(rawValue);
+    if (!value) return;
+    if (key === 'morada') {
+      const address = normalizeAddressValue(value);
+      if (!address) return;
+      if (fieldQuality(key, address) > fieldQuality(key, target[key])) target[key] = address;
+      return;
+    }
+    if (key === 'codigoPostal') {
+      const postal = normalizePostalCodeValue(value);
+      if (!postal) return;
+      if (fieldQuality(key, postal) >= fieldQuality(key, target[key])) target[key] = postal;
+      return;
+    }
+    if (!target[key]) target[key] = value;
+  });
+}
+
 function countCollectedFields(fields) {
   return Object.values(fields || {}).filter((value) => String(value || '').trim()).length;
 }
@@ -293,7 +356,7 @@ async function collectFinancasAtProfile(page, options = {}) {
   const readAndMerge = async (stage) => {
     const result = await tryReadCurrentPage(page);
     attempts.push({ stage, url: page.url(), ...result });
-    Object.assign(mergedFields, result.fields || {});
+    mergeCollectedFields(mergedFields, result.fields || {});
     rawMatches = [...rawMatches, ...(result.rawMatches || [])];
     sourceUrl = page.url();
     return result;
