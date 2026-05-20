@@ -41,7 +41,13 @@ function normalizeDateToIso(value) {
 
 
 function normalizeAddressValue(value) {
-  const cleaned = cleanExtractedValue(value);
+  let cleaned = cleanExtractedValue(value);
+  cleaned = cleaned
+    .replace(/^Av\.?\s*\/?\s*Rua\s+/i, '')
+    .replace(/^Avenida\s*\/?\s*Rua\s+/i, '')
+    .replace(/^R\s+RUA\s+/i, 'R ')
+    .replace(/^RUA\s+RUA\s+/i, 'RUA ')
+    .trim();
   const folded = normalizeSearchText(cleaned);
   if (!cleaned) return '';
   if (folded === 'av rua' || folded === 'av rua rua' || folded === 'avenida rua') return '';
@@ -117,7 +123,7 @@ function normalizeTipoContabilidade(value) {
   if (!normalized) return '';
   if (normalized.includes('nao organizada') || normalized.includes('não organizada')) return 'NAO_ORGANIZADA';
   if (normalized.includes('organizada')) return 'ORGANIZADA';
-  if (normalized.includes('regime simplificado') || normalized.includes('simplificada')) return 'REGIME_SIMPLIFICADO';
+  if (normalized.includes('regime simplificado') || normalized.includes('simplificada') || normalized.includes('simplificado')) return 'SIMPLIFICADO';
   return raw;
 }
 
@@ -316,31 +322,35 @@ function parseFieldsFromText(text) {
     fields.tipoEntidadeAt = 'EMPRESA';
   }
 
-  const inicioAtividade = firstRegexValue(raw, [
+  const activitySource = /Dados Gerais de Atividade|C[oó]digos de Atividade|Atividade em IVA|Actividade em IVA/i.test(raw)
+    ? extractBlock(raw, /Atividade Exercida|Actividade Exercida|Dados Gerais de Atividade/i, [/Rela[cç][oõ]es Intersujeitos/i, /IBANs\b/i, /Dados Gerais de Identifica[cç][aã]o/i]) || raw
+    : '';
+
+  const inicioAtividade = activitySource ? firstRegexValue(activitySource, [
     /Dados Gerais de Atividade\s+Data de In[ií]cio\s+Tipo de Sujeito Passivo\s+(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
     /Dados Gerais de Atividade\s+Data de In[ií]cio\s+(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
     /Data de In[ií]cio\s+Tipo de Sujeito Passivo\s+(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
-    /Data de In[ií]cio\s+(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i,
-  ]);
+  ]) : '';
   if (inicioAtividade) fields.inicioAtividade = normalizeDateToIso(inicioAtividade);
 
-  const caePrincipal = firstRegexValue(raw, [
+  const caePrincipal = activitySource ? firstRegexValue(activitySource, [
     /CAE\s+Principal\s+(\d{5})\b/i,
-  ]);
+    /Principal\s+(\d{5})\s+[A-ZÀ-Ý]/i,
+  ]) : '';
   if (caePrincipal) fields.caePrincipal = caePrincipal;
 
-  const tipoIva = firstRegexValue(raw, [
+  const tipoIva = activitySource ? firstRegexValue(activitySource, [
     /Atividade\s+em\s+IVA\s+Enquadramento\s+Data\s+de\s+Enquadramento\s+Situa[cç][aã]o\s+(.+?)\s+\d{4}-\d{1,2}-\d{1,2}/i,
     /Enquadramento\s+Data\s+de\s+Enquadramento\s+Situa[cç][aã]o\s+(.+?)\s+\d{4}-\d{1,2}-\d{1,2}/i,
     /Atividade\s+em\s+IVA\s+Enquadramento\s+(.+?)\s+Data\s+de\s+Enquadramento/i,
     /Enquadramento\s+(.+?)\s+Data\s+de\s+Enquadramento/i,
-  ]);
+  ]) : '';
   if (tipoIva) fields.tipoIva = normalizeTipoIva(tipoIva);
 
-  const tipoContabilidade = firstRegexValue(raw, [
+  const tipoContabilidade = activitySource ? firstRegexValue(activitySource, [
     /Contabilidade\s+Tipo de Contabilidade\s+Local de Centraliza[cç][aã]o\s+(.+?)\s+(?:Sede|N[aã]o possui|Morada|Contabilista Certificado|Operador Econ[oó]mico)/i,
     /Tipo de Contabilidade\s+(.+?)\s+Local de Centraliza[cç][aã]o/i,
-  ]);
+  ]) : '';
   if (tipoContabilidade) fields.tipoContabilidade = normalizeTipoContabilidade(tipoContabilidade);
 
   const managers = parseManagersFromText(text);
@@ -432,7 +442,7 @@ function mapPairsToFields(pairs) {
     fields.tipoEntidadeAt = 'EMPRESA';
   }
 
-  const inicioAtividade = findByLabels(['inicio de atividade', 'inicio de actividade', 'data de inicio']);
+  const inicioAtividade = findByLabels(['inicio de atividade', 'inicio de actividade']);
   if (inicioAtividade) fields.inicioAtividade = normalizeDateToIso(inicioAtividade);
 
   const tipoIva = findByLabels(['regime de iva', 'periodicidade iva', 'periodicidade do iva', 'tipo de iva']);
@@ -567,16 +577,33 @@ async function navigateToIdentificationPage(page) {
 }
 
 async function navigateToActivityPage(page) {
+  const looksLikeActivityPage = async () => {
+    const text = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '');
+    return /Dados Gerais de Atividade|Atividade Exercida|Actividade Exercida|CAE Principal|Atividade em IVA/i.test(text);
+  };
+
   const directUrl = buildActivityUrlFromCurrent(page.url());
-  if (directUrl && directUrl !== page.url()) {
+  if (directUrl && directUrl !== page.url() && !/hmac%3D|hmac=/i.test(directUrl)) {
     await page.goto(directUrl, { waitUntil: 'domcontentloaded', timeout: 15_000 }).catch(() => null);
     await page.waitForTimeout(900).catch(() => null);
-    const text = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '');
-    if (/Atividade Exercida|Actividade Exercida|CAE Principal|Atividade em IVA/i.test(text)) return true;
+    if (await looksLikeActivityPage()) return true;
   }
 
-  if (await clickIntegratedMenuItem(page, 'Atividade Exercida')) return true;
-  if (await clickIntegratedMenuItem(page, 'Actividade Exercida')) return true;
+  if (await clickIntegratedMenuItem(page, 'Atividade Exercida')) {
+    if (await looksLikeActivityPage()) return true;
+  }
+  if (await clickIntegratedMenuItem(page, 'Actividade Exercida')) {
+    if (await looksLikeActivityPage()) return true;
+  }
+
+  await page.goto('https://sitfiscal.portaldasfinancas.gov.pt/integrada/presentation', { waitUntil: 'domcontentloaded', timeout: 15_000 }).catch(() => null);
+  await page.waitForTimeout(700).catch(() => null);
+  if (await clickIntegratedMenuItem(page, 'Atividade Exercida')) {
+    if (await looksLikeActivityPage()) return true;
+  }
+  if (await clickIntegratedMenuItem(page, 'Actividade Exercida')) {
+    if (await looksLikeActivityPage()) return true;
+  }
   return false;
 }
 
@@ -692,7 +719,10 @@ async function collectFinancasAtProfile(page, options = {}) {
   };
 
   const tryIdentificationIfUseful = async () => {
-    const needsIdentification = !mergedFields.morada || !mergedFields.codigoPostal || !mergedFields.codigoReparticaoFinancas || !mergedFields.dataNascimento;
+    const isCollective = String(options.expectedEntityKind || '').toUpperCase() === 'EMPRESA' || ['5', '6', '9'].includes(String(options.nif || '')[0] || '');
+    const needsBirthDate = !isCollective && !mergedFields.dataNascimento;
+    const needsConstitutionDate = isCollective && !mergedFields.dataConstituicao;
+    const needsIdentification = !mergedFields.morada || !mergedFields.codigoPostal || !mergedFields.codigoReparticaoFinancas || needsBirthDate || needsConstitutionDate;
     if (!needsIdentification) return;
     const moved = await navigateToIdentificationPage(page).catch(() => false);
     if (moved) await readAndMerge('identification');

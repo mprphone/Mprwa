@@ -4192,7 +4192,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         >
                           <option value="">-- Selecionar --</option>
                           <option value="ORGANIZADA">ORGANIZADA</option>
-                          <option value="SIMPLIFICADA">SIMPLIFICADA</option>
+                          <option value="SIMPLIFICADO">SIMPLIFICADA</option>
                           <option value="NAO_ORGANIZADA">NÃO ORGANIZADA</option>
                         </select>
                       </div>

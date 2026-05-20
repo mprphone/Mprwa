@@ -429,6 +429,9 @@ function createMappers(deps) {
         Object.keys(base).forEach((key) => {
             base[key] = String(parsed[key] || '').trim();
         });
+        if (base.tipoContabilidade === 'SIMPLIFICADA' || base.tipoContabilidade === 'REGIME_SIMPLIFICADO') {
+            base.tipoContabilidade = 'SIMPLIFICADO';
+        }
 
         return base;
     }
