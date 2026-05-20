@@ -1263,8 +1263,7 @@ function createSaftService(deps) {
         const basePeriodTable = SUPABASE_OBRIGACOES_PERIODOS_PREFIX.endsWith('_')
             ? SUPABASE_OBRIGACOES_PERIODOS_PREFIX.slice(0, -1)
             : SUPABASE_OBRIGACOES_PERIODOS_PREFIX;
-        return resolveSupabaseTableName('clientes_obrigacoes_periodos_old', [
-            basePeriodTable,
+        return resolveSupabaseTableName(basePeriodTable, [
             yearSuffixTable,
             'clientes_obrigacoes_periodos',
             'clientes_obrigacoes_periodos_old',
