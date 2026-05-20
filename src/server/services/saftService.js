@@ -987,6 +987,37 @@ function createSaftService(deps) {
         return null;
     }
 
+    function getSupabaseErrorPayload(error) {
+        return error?.response?.data && typeof error.response.data === 'object'
+            ? error.response.data
+            : {};
+    }
+
+    function isMissingPeriodPartitionError(error) {
+        const payload = getSupabaseErrorPayload(error);
+        const text = [
+            payload?.message,
+            payload?.details,
+            payload?.hint,
+            error?.message,
+        ].map((item) => String(item || '')).join(' ');
+        return /no partition of relation "clientes_obrigacoes_periodos"/i.test(text);
+    }
+
+    function isDuplicateSupabaseRowError(error) {
+        const payload = getSupabaseErrorPayload(error);
+        return String(payload?.code || '').trim() === '23505' ||
+            /duplicate key value violates unique constraint/i.test(String(payload?.message || error?.message || ''));
+    }
+
+    async function findRecolhaEstadoRows(tableName, filters) {
+        try {
+            return await fetchSupabaseTableWithFilters(tableName, filters, { limit: 1 });
+        } catch (error) {
+            return [];
+        }
+    }
+
     async function syncRecolhaEstadoSupabase({
         customerSourceId,
         obrigacaoId,
@@ -1079,27 +1110,70 @@ function createSaftService(deps) {
             [obrigacaoCol]: obrigacaoId,
             [anoCol]: periodo.ano,
         };
+        const uniqueFilters = { ...filters };
         if (periodo.tipo === 'mensal') {
             filters[mesCol] = periodo.mes;
+            uniqueFilters[mesCol] = periodo.mes;
+            uniqueFilters[trimestreCol] = 0;
         } else if (periodo.tipo === 'trimestral') {
             filters[trimestreCol] = periodo.trimestre;
+            uniqueFilters[mesCol] = 0;
+            uniqueFilters[trimestreCol] = periodo.trimestre;
         } else if (periodo.tipo === 'anual') {
             filters[mesCol] = 0;
             filters[trimestreCol] = 0;
+            uniqueFilters[mesCol] = 0;
+            uniqueFilters[trimestreCol] = 0;
         }
 
-        const conflictColumns = Object.keys(filters || {}).filter(Boolean);
+        const conflictColumns = Object.keys(uniqueFilters || {}).filter(Boolean);
         try {
             const upserted = await upsertSupabaseRow(tableName, payload, conflictColumns);
             return { action: 'upserted', row: upserted?.[0] || null };
         } catch (error) {
-            const updated = await patchSupabaseTableWithFilters(tableName, payload, filters);
-            if (Array.isArray(updated) && updated.length > 0) {
-                return { action: 'updated', row: updated[0] };
+            if (isMissingPeriodPartitionError(error)) {
+                const existing = await findRecolhaEstadoRows(tableName, uniqueFilters);
+                return {
+                    action: existing.length > 0 ? 'already_exists_period_partition_missing' : 'skipped_period_partition_missing',
+                    row: existing?.[0] || null,
+                    warning: 'Supabase sem particao 2026 em clientes_obrigacoes_periodos; estado principal vai ser atualizado na tabela compatível.',
+                };
             }
 
-            const inserted = await insertSupabaseRow(tableName, payload);
-            return { action: 'inserted', row: inserted?.[0] || null };
+            try {
+                const updated = await patchSupabaseTableWithFilters(tableName, payload, uniqueFilters);
+                if (Array.isArray(updated) && updated.length > 0) {
+                    return { action: 'updated', row: updated[0] };
+                }
+            } catch (patchError) {
+                if (isMissingPeriodPartitionError(patchError)) {
+                    const existing = await findRecolhaEstadoRows(tableName, uniqueFilters);
+                    return {
+                        action: existing.length > 0 ? 'already_exists_period_partition_missing' : 'skipped_period_partition_missing',
+                        row: existing?.[0] || null,
+                        warning: 'Supabase sem particao 2026 em clientes_obrigacoes_periodos; estado principal vai ser atualizado na tabela compatível.',
+                    };
+                }
+                throw patchError;
+            }
+
+            try {
+                const inserted = await insertSupabaseRow(tableName, payload);
+                return { action: 'inserted', row: inserted?.[0] || null };
+            } catch (insertError) {
+                if (isDuplicateSupabaseRowError(insertError)) {
+                    const existing = await findRecolhaEstadoRows(tableName, uniqueFilters);
+                    return { action: 'already_exists', row: existing?.[0] || null };
+                }
+                if (isMissingPeriodPartitionError(insertError)) {
+                    return {
+                        action: 'skipped_period_partition_missing',
+                        row: null,
+                        warning: 'Supabase sem particao 2026 em clientes_obrigacoes_periodos; estado principal vai ser atualizado na tabela compatível.',
+                    };
+                }
+                throw insertError;
+            }
         }
     }
 
@@ -1110,67 +1184,78 @@ function createSaftService(deps) {
         estadoFinal,
     }) {
         const periodTableName = await resolveObrigacoesPeriodTableName(periodo);
-        const tableColumns = await fetchSupabaseTableColumns(periodTableName);
+        async function updateInPeriodTable(targetTableName) {
+            const tableColumns = await fetchSupabaseTableColumns(targetTableName);
 
-        const customerCol = pickColumnByCandidates(tableColumns, ['cliente_id', 'customer_id', 'id_cliente'], 'cliente_id');
-        const obrigacaoCol = pickColumnByCandidates(
-            tableColumns,
-            ['obrigacao_modelo_id', 'obrigacao_id', 'id_obrigacao', 'codigo_obrigacao', 'obrigacao_codigo', 'modelo_id'],
-            'obrigacao_id'
-        );
-        const estadoCol = pickColumnByCandidates(
-            tableColumns,
-            ['estado', 'estado_id', 'status', 'situacao', 'estado_codigo'],
-            'estado'
-        );
-        const anoCol = pickColumnByCandidates(tableColumns, ['ano', 'year'], 'ano');
-        const mesCol = pickColumnByCandidates(tableColumns, ['mes', 'month'], 'mes');
-        const trimestreCol = pickColumnByCandidates(tableColumns, ['trimestre', 'quarter'], 'trimestre');
+            const customerCol = pickColumnByCandidates(tableColumns, ['cliente_id', 'customer_id', 'id_cliente'], 'cliente_id');
+            const obrigacaoCol = pickColumnByCandidates(
+                tableColumns,
+                ['obrigacao_modelo_id', 'obrigacao_id', 'id_obrigacao', 'codigo_obrigacao', 'obrigacao_codigo', 'modelo_id'],
+                'obrigacao_id'
+            );
+            const estadoCol = pickColumnByCandidates(
+                tableColumns,
+                ['estado', 'estado_id', 'status', 'situacao', 'estado_codigo'],
+                'estado'
+            );
+            const anoCol = pickColumnByCandidates(tableColumns, ['ano', 'year'], 'ano');
+            const mesCol = pickColumnByCandidates(tableColumns, ['mes', 'month'], 'mes');
+            const trimestreCol = pickColumnByCandidates(tableColumns, ['trimestre', 'quarter'], 'trimestre');
 
-        const payload = buildPayloadWithExistingColumns(tableColumns, {
-            [estadoCol]: Number(estadoFinal),
-            atualizado_em: nowIso(),
-            updated_at: nowIso(),
-        });
+            const payload = buildPayloadWithExistingColumns(tableColumns, {
+                [estadoCol]: Number(estadoFinal),
+                atualizado_em: nowIso(),
+                updated_at: nowIso(),
+            });
 
-        const filters = {
-            [customerCol]: customerSourceId,
-            [obrigacaoCol]: obrigacaoId,
-            [anoCol]: periodo.ano,
-        };
-        if (periodo.tipo === 'mensal') {
-            filters[mesCol] = periodo.mes;
-        } else if (periodo.tipo === 'trimestral') {
-            filters[trimestreCol] = periodo.trimestre;
-        }
+            const filters = {
+                [customerCol]: customerSourceId,
+                [obrigacaoCol]: obrigacaoId,
+                [anoCol]: periodo.ano,
+            };
+            if (periodo.tipo === 'mensal') {
+                filters[mesCol] = periodo.mes;
+            } else if (periodo.tipo === 'trimestral') {
+                filters[trimestreCol] = periodo.trimestre;
+            }
 
-        const updated = await patchSupabaseTableWithFilters(periodTableName, payload, filters);
-        const updatedRows = Array.isArray(updated) ? updated.length : 0;
-        if (updatedRows > 0) {
+            const updated = await patchSupabaseTableWithFilters(targetTableName, payload, filters);
+            const updatedRows = Array.isArray(updated) ? updated.length : 0;
+            if (updatedRows > 0) {
+                return {
+                    table: targetTableName,
+                    updatedRows,
+                    action: 'updated',
+                };
+            }
+
+            const insertPayload = buildPayloadWithExistingColumns(tableColumns, {
+                [customerCol]: customerSourceId,
+                [obrigacaoCol]: obrigacaoId,
+                [anoCol]: periodo.ano,
+                [mesCol]: periodo.tipo === 'mensal' ? Number(periodo.mes || 0) : null,
+                [trimestreCol]: periodo.tipo === 'trimestral' ? Number(periodo.trimestre || 0) : null,
+                [estadoCol]: Number(estadoFinal),
+                atualizado_em: nowIso(),
+                updated_at: nowIso(),
+            });
+
+            const inserted = await insertSupabaseRow(targetTableName, insertPayload);
             return {
-                table: periodTableName,
-                updatedRows,
-                action: 'updated',
+                table: targetTableName,
+                updatedRows: Array.isArray(inserted) ? inserted.length : 0,
+                action: 'inserted',
             };
         }
 
-        const insertPayload = buildPayloadWithExistingColumns(tableColumns, {
-            [customerCol]: customerSourceId,
-            [obrigacaoCol]: obrigacaoId,
-            [anoCol]: periodo.ano,
-            [mesCol]: periodo.tipo === 'mensal' ? Number(periodo.mes || 0) : null,
-            [trimestreCol]: periodo.tipo === 'trimestral' ? Number(periodo.trimestre || 0) : null,
-            [estadoCol]: Number(estadoFinal),
-            atualizado_em: nowIso(),
-            updated_at: nowIso(),
-        });
-
-        const inserted = await insertSupabaseRow(periodTableName, insertPayload);
-        return {
-            table: periodTableName,
-            updatedRows: Array.isArray(inserted) ? inserted.length : 0,
-            action: 'inserted',
-        };
+        try {
+            return await updateInPeriodTable(periodTableName);
+        } catch (error) {
+            if (!isMissingPeriodPartitionError(error)) {
+                throw error;
+            }
+            return updateInPeriodTable('clientes_obrigacoes_periodos_old');
+        }
     }
 
     async function resolveObrigacoesPeriodTableName(periodo) {
@@ -1178,8 +1263,9 @@ function createSaftService(deps) {
         const basePeriodTable = SUPABASE_OBRIGACOES_PERIODOS_PREFIX.endsWith('_')
             ? SUPABASE_OBRIGACOES_PERIODOS_PREFIX.slice(0, -1)
             : SUPABASE_OBRIGACOES_PERIODOS_PREFIX;
-        return resolveSupabaseTableName(yearSuffixTable, [
+        return resolveSupabaseTableName('clientes_obrigacoes_periodos_old', [
             basePeriodTable,
+            yearSuffixTable,
             'clientes_obrigacoes_periodos',
             'clientes_obrigacoes_periodos_old',
         ]);
