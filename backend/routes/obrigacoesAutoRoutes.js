@@ -8,10 +8,11 @@ function registerObrigacoesAutoRoutes(context) {
     } = context;
 
     app.get('/api/import/obrigacoes/auto/status', async (req, res) => {
+        const state = await Promise.resolve(getState());
         return res.json({
             success: true,
             scheduler: getSchedulerConfig(),
-            state: getState(),
+            state,
         });
     });
 

@@ -2078,7 +2078,35 @@ registerObrigacoesAutoRoutes({
         minute: OBRIGACOES_AUTO_MINUTE,
         timezone: OBRIGACOES_AUTO_TIMEZONE || null,
     }),
-    getState: () => obrigacoesAutoState,
+    getState: async () => {
+        const state = { ...obrigacoesAutoState };
+        if (state.lastRunAt || state.lastFinishedAt || state.lastSummary) {
+            return state;
+        }
+
+        try {
+            const rows = await dbAllAsync(
+                `SELECT details_json
+                 FROM audit_logs
+                 WHERE entity_type = 'obrigacoes_auto_scheduler'
+                 ORDER BY datetime(created_at) DESC, id DESC
+                 LIMIT 1`
+            );
+            const details = rows?.[0]?.details_json ? JSON.parse(String(rows[0].details_json || '{}')) : null;
+            if (details) {
+                state.lastRunAt = String(details.startedAt || '').trim() || null;
+                state.lastFinishedAt = String(details.finishedAt || '').trim() || null;
+                state.lastSummary = details;
+                if (Number(details.failed || 0) > 0) {
+                    state.lastError = 'Última recolha concluída com falhas.';
+                }
+            }
+        } catch (error) {
+            // Se o histórico não estiver disponível, mantém apenas o estado em memória.
+        }
+
+        return state;
+    },
     isRunning: () => obrigacoesAutoState.running,
     runNow: async () => {
         const localPort = Number(process.env.PORT || PORT || 3000);
