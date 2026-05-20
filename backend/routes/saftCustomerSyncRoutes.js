@@ -872,10 +872,12 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                 expectedEntityKind: isCollectiveNif ? 'EMPRESA' : 'PARTICULAR',
             });
             const fields = collected?.fields && typeof collected.fields === 'object' ? { ...collected.fields } : {};
+            const atProfileWarnings = [];
+            const hadExistingManagers = Array.isArray(customer.managers) && customer.managers.length > 0;
 
             let certidaoFallback = null;
             const certidaoCode = normalizeCertidaoCode(customer.certidaoPermanenteNumero || fields.certidaoPermanenteNumero || '');
-            const needsCertidaoManagers = isCollectiveNif && certidaoCode && !(Array.isArray(fields.managers) && fields.managers.length > 0);
+            const needsCertidaoManagers = isCollectiveNif && !hadExistingManagers && certidaoCode && !(Array.isArray(fields.managers) && fields.managers.length > 0);
             if (needsCertidaoManagers) {
                 try {
                     certidaoFallback = await collectCertidaoPermanenteProfile(certidaoCode, {
@@ -893,6 +895,15 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                 } catch (certidaoError) {
                     certidaoFallback = { success: false, warning: String(certidaoError?.message || certidaoError) };
                 }
+            }
+            if (isCollectiveNif && !hadExistingManagers && !(Array.isArray(fields.managers) && fields.managers.length > 0)) {
+                if (certidaoCode) {
+                    atProfileWarnings.push('Gerência não encontrada na AT; confirme se a Certidão Permanente registada está válida.');
+                } else {
+                    atProfileWarnings.push('Gerência não encontrada na AT e sem Certidão Permanente registada para segunda fonte.');
+                }
+            } else if (needsCertidaoManagers && Array.isArray(fields.managers) && fields.managers.length > 0) {
+                atProfileWarnings.push('Gerência obtida pela Certidão Permanente.');
             }
 
             const updates = {};
@@ -974,13 +985,15 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                 }).catch(() => null);
             }
 
+            const messageSuffix = atProfileWarnings.length ? ` ${atProfileWarnings.join(' ')}` : '';
             return res.json({
                 success: true,
                 fields: updates,
                 customer: saved,
                 sourceUrl: collected?.sourceUrl || '',
                 certidaoSourceUrl: certidaoFallback?.sourceUrl || '',
-                message: `Dados AT atualizados (${Object.keys(updates).length} campo(s)).`,
+                warnings: atProfileWarnings,
+                message: `Dados AT atualizados (${Object.keys(updates).length} campo(s)).${messageSuffix}`,
                 supabase,
             });
         } catch (error) {
