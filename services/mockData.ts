@@ -899,6 +899,24 @@ class MockService {
 
       if (existingIndex !== undefined && existingIndex !== -1) {
         const existingCustomer = this.customers[existingIndex];
+        const existingIsLocalOnly = String(existingCustomer.id || '').startsWith('local_');
+
+        if (!existingIsLocalOnly) {
+          // Para clientes já sincronizados, o servidor é a fonte de verdade.
+          // A versão antiga mantinha valores "preenchidos" da memória local e podia esconder
+          // senhas/dados acabados de gravar noutro PC até reiniciar a aplicação.
+          const mergedCustomer = {
+            ...existingCustomer,
+            ...customer,
+            id: customer.id || existingCustomer.id,
+          };
+          this.customers[existingIndex] = mergedCustomer;
+          if (mergedCustomer.id) {
+            existingById.set(mergedCustomer.id, existingIndex);
+          }
+          return;
+        }
+
         const mergedCustomer = { ...customer, ...existingCustomer, id: existingCustomer.id || customer.id };
 
         Object.keys(existingCustomer).forEach((key) => {
@@ -1274,6 +1292,13 @@ class MockService {
 
   // --- Customers ---
   async getCustomers(): Promise<Customer[]> {
+    await this.ensureSupabaseImport();
+    return [...this.customers];
+  }
+
+  async refreshCustomersFromServer(): Promise<Customer[]> {
+    this.supabaseImportDone = false;
+    this.supabaseImportPromise = null;
     await this.ensureSupabaseImport();
     return [...this.customers];
   }

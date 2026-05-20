@@ -2590,9 +2590,57 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
 
     if (customer) {
       const nextFormState = formStateFromCustomer(customer);
+      const initialSnapshot = serializeCustomerFormState(nextFormState);
       setEditingCustomer(customer);
       setFormData(nextFormState);
-      setSavedFormSnapshot(serializeCustomerFormState(nextFormState));
+      setSavedFormSnapshot(initialSnapshot);
+
+      // Ao abrir uma ficha, força uma leitura fresca do servidor.
+      // Assim, se outro PC acabou de gravar uma senha/dado, este ecrã não fica preso ao snapshot antigo.
+      void (async () => {
+        try {
+          const refreshedList = await mockService.refreshCustomersFromServer();
+          const deduped = dedupeCustomersForListing(refreshedList);
+          setCustomers(deduped);
+
+          const targetId = String(customer.id || '').trim();
+          const targetSourceId = String((customer as Customer & { sourceId?: string }).sourceId || '').trim();
+          const targetNif = String(customer.nif || '').replace(/\D/g, '').slice(-9);
+          const refreshed = deduped.find((item) => {
+            if (targetId && String(item.id || '').trim() === targetId) return true;
+            if (targetSourceId && String((item as Customer & { sourceId?: string }).sourceId || '').trim() === targetSourceId) return true;
+            if (targetNif && String(item.nif || '').replace(/\D/g, '').slice(-9) === targetNif) return true;
+            return false;
+          });
+          if (!refreshed) return;
+
+          const refreshedFormState = formStateFromCustomer(refreshed);
+          const refreshedSnapshot = serializeCustomerFormState(refreshedFormState);
+
+          setEditingCustomer((current) => {
+            if (!current) return current;
+            const currentId = String(current.id || '').trim();
+            const currentSourceId = String((current as Customer & { sourceId?: string }).sourceId || '').trim();
+            const currentNif = String(current.nif || '').replace(/\D/g, '').slice(-9);
+            if (
+              (targetId && currentId === targetId) ||
+              (targetSourceId && currentSourceId === targetSourceId) ||
+              (targetNif && currentNif === targetNif)
+            ) {
+              return refreshed;
+            }
+            return current;
+          });
+          setFormData((current) => (
+            serializeCustomerFormState(current) === initialSnapshot ? refreshedFormState : current
+          ));
+          setSavedFormSnapshot((current) => (
+            current === initialSnapshot ? refreshedSnapshot : current
+          ));
+        } catch (error) {
+          console.warn('[Customers] Falha ao refrescar ficha ao abrir:', error);
+        }
+      })();
     } else {
       const nextFormState = emptyFormState();
       setEditingCustomer(null);
