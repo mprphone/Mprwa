@@ -1111,6 +1111,37 @@ Regras:
         return scalarCandidates.some((key) => String(rawRow?.[key] || '').trim().length > 0);
     }
 
+
+    function hasExplicitSupabaseManagers(rawRow) {
+        if (!rawRow || typeof rawRow !== 'object') return false;
+
+        const hasNonEmptyPayload = (value) => {
+            if (value === undefined || value === null) return false;
+            if (Array.isArray(value)) return value.length > 0;
+            if (typeof value === 'object') return Object.keys(value).length > 0;
+            const text = String(value || '').trim();
+            if (!text) return false;
+            if (text === '[]' || text === '{}') return false;
+            return true;
+        };
+
+        const jsonCandidates = [
+            'managers_json',
+            'gerentes_json',
+            'gerencia_administracao_json',
+            'gerencia_admin_json',
+            'administracao_json',
+        ];
+        if (jsonCandidates.some((key) => hasNonEmptyPayload(rawRow?.[key]))) return true;
+
+        const scalarCandidates = [
+            'gerente', 'manager', 'administrador', 'nome_gerente',
+            'nif_gerente', 'gerente_nif', 'manager_nif', 'administrador_nif',
+            'email_gerente', 'manager_email', 'telefone_gerente', 'manager_phone',
+        ];
+        return scalarCandidates.some((key) => String(rawRow?.[key] || '').trim().length > 0);
+    }
+
     function mapLocalTypeToSupabaseTipoEntidade(value) {
         const raw = String(value || '')
             .trim()
@@ -1981,6 +2012,7 @@ Regras:
         if (!rawRow || typeof rawRow !== 'object') return null;
         const candidate = normalizeSupabaseCustomerCandidate(rawRow, 0);
         const shouldApplyType = hasExplicitSupabaseCustomerType(rawRow);
+        const shouldApplyManagers = hasExplicitSupabaseManagers(rawRow);
         const shouldApplyAccessCredentials = hasExplicitSupabaseAccessCredentials(rawRow);
         const saved = await upsertLocalCustomer({
             id: String(preferredLocalId || '').trim() || candidate.localId || undefined,
@@ -2009,7 +2041,9 @@ Regras:
             tipoContabilidade: candidate.tipoContabilidade || undefined,
             estadoCliente: candidate.estadoCliente || undefined,
             contabilistaCertificado: candidate.contabilistaCertificado || undefined,
-            managers: Array.isArray(candidate.managers) ? candidate.managers : [],
+            managers: shouldApplyManagers
+                ? (Array.isArray(candidate.managers) ? candidate.managers : [])
+                : undefined,
             accessCredentials: shouldApplyAccessCredentials
                 ? (Array.isArray(candidate.accessCredentials) ? candidate.accessCredentials : [])
                 : undefined,
