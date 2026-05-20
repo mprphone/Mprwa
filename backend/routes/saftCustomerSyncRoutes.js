@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { collectFinancasAtProfileInOracle } = require('../services/financasAtProfileOracleService');
+const { collectCertidaoPermanenteProfile, normalizeCertidaoCode } = require('../services/certidaoPermanenteService');
 
 function cleanText(value) {
     return String(value || '').replace(/\s+/g, ' ').trim();
@@ -870,9 +871,32 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                 nif: customerNif,
                 expectedEntityKind: isCollectiveNif ? 'EMPRESA' : 'PARTICULAR',
             });
-            const fields = collected?.fields && typeof collected.fields === 'object' ? collected.fields : {};
+            const fields = collected?.fields && typeof collected.fields === 'object' ? { ...collected.fields } : {};
+
+            let certidaoFallback = null;
+            const certidaoCode = normalizeCertidaoCode(customer.certidaoPermanenteNumero || fields.certidaoPermanenteNumero || '');
+            const needsCertidaoManagers = isCollectiveNif && certidaoCode && !(Array.isArray(fields.managers) && fields.managers.length > 0);
+            if (needsCertidaoManagers) {
+                try {
+                    certidaoFallback = await collectCertidaoPermanenteProfile(certidaoCode, {
+                        headless: true,
+                        loadTimeoutMs: Number(body.certidaoTimeoutMs || 15000) || 15000,
+                    });
+                    const certidaoFields = certidaoFallback?.fields && typeof certidaoFallback.fields === 'object' ? certidaoFallback.fields : {};
+                    Object.entries(certidaoFields).forEach(([key, value]) => {
+                        if (key === 'managers') {
+                            if (Array.isArray(value) && value.length > 0) fields.managers = value;
+                            return;
+                        }
+                        if (!cleanText(fields[key]) && cleanText(value)) fields[key] = value;
+                    });
+                } catch (certidaoError) {
+                    certidaoFallback = { success: false, warning: String(certidaoError?.message || certidaoError) };
+                }
+            }
+
             const updates = {};
-            ['morada', 'codigoPostal', 'dataNascimento', 'dataConstituicao', 'inicioAtividade', 'tipoIva', 'caePrincipal', 'codigoReparticaoFinancas', 'tipoContabilidade'].forEach((key) => {
+            ['morada', 'codigoPostal', 'dataNascimento', 'dataConstituicao', 'inicioAtividade', 'tipoIva', 'caePrincipal', 'codigoReparticaoFinancas', 'tipoContabilidade', 'certidaoPermanenteValidade'].forEach((key) => {
                 const value = cleanText(fields[key]);
                 if (value) updates[key] = value;
             });
@@ -946,7 +970,7 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                     entityType: 'customer',
                     entityId: customer.id,
                     action: 'update_from_at',
-                    details: { fields: updates, sourceUrl: collected?.sourceUrl || '' },
+                    details: { fields: updates, sourceUrl: collected?.sourceUrl || '', certidaoSourceUrl: certidaoFallback?.sourceUrl || '' },
                 }).catch(() => null);
             }
 
@@ -955,6 +979,7 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                 fields: updates,
                 customer: saved,
                 sourceUrl: collected?.sourceUrl || '',
+                certidaoSourceUrl: certidaoFallback?.sourceUrl || '',
                 message: `Dados AT atualizados (${Object.keys(updates).length} campo(s)).`,
                 supabase,
             });
