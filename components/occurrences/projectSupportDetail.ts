@@ -24,6 +24,16 @@ export type ProjectSupportRefundItem = {
   estado: string;
 };
 
+export type ProjectSupportReceivedValueItem = {
+  dataPedido: string;
+  tranche: string;
+  valorPedido: string;
+  estado: string;
+  dataRecebimento: string;
+  valorRecebido: string;
+  observacoes: string;
+};
+
 export type ProjectSupportDetail = {
   candidatura: {
     fase: string;
@@ -72,12 +82,14 @@ export type ProjectSupportDetail = {
     medidaIefp: string;
     processoOferta: string;
     entidadeGestora: string;
+    nomeGestorIefp: string;
     contactoIefp: string;
     dataPedido: string;
     dataSubmissao: string;
     dataDecisao: string;
     valorPrevisto: string;
     valorAprovado: string;
+    valoresRecebidos: ProjectSupportReceivedValueItem[];
     notas: string;
   };
   dossieEletronico: {
@@ -150,6 +162,24 @@ function normalizeRefundList(value: unknown): ProjectSupportRefundItem[] {
       };
     })
     .filter((item) => item.data || item.designacao || item.montante || item.estado);
+}
+
+function normalizeReceivedValuesList(value: unknown): ProjectSupportReceivedValueItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+      return {
+        dataPedido: toText(row.dataPedido) || toText(row.data),
+        tranche: toText(row.tranche) || toText(row.origem),
+        valorPedido: toText(row.valorPedido),
+        estado: toText(row.estado) || (toText(row.valorRecebido) || toText(row.valor) ? 'Recebido' : 'Pedido'),
+        dataRecebimento: toText(row.dataRecebimento),
+        valorRecebido: toText(row.valorRecebido) || toText(row.valor),
+        observacoes: toText(row.observacoes),
+      };
+    })
+    .filter((item) => item.dataPedido || item.tranche || item.valorPedido || item.dataRecebimento || item.valorRecebido || item.observacoes);
 }
 
 function makeTrackedKey(item: { designacao?: string; valor?: string; data?: string }): string {
@@ -231,12 +261,14 @@ export function createEmptyProjectSupportDetail(): ProjectSupportDetail {
       medidaIefp: '',
       processoOferta: '',
       entidadeGestora: '',
+      nomeGestorIefp: '',
       contactoIefp: '',
       dataPedido: '',
       dataSubmissao: '',
       dataDecisao: '',
       valorPrevisto: '',
       valorAprovado: '',
+      valoresRecebidos: [],
       notas: '',
     },
     dossieEletronico: {
@@ -344,12 +376,14 @@ export function normalizeProjectSupportDetail(input: unknown): ProjectSupportDet
       medidaIefp: toText(medidaApoioRaw.medidaIefp),
       processoOferta: toText(medidaApoioRaw.processoOferta),
       entidadeGestora: toText(medidaApoioRaw.entidadeGestora),
+      nomeGestorIefp: toText(medidaApoioRaw.nomeGestorIefp) || toText(medidaApoioRaw.nomeGestor) || toText(medidaApoioRaw.nomeContactoIefp),
       contactoIefp: toText(medidaApoioRaw.contactoIefp),
       dataPedido: toText(medidaApoioRaw.dataPedido),
       dataSubmissao: toText(medidaApoioRaw.dataSubmissao),
       dataDecisao: toText(medidaApoioRaw.dataDecisao),
       valorPrevisto: toText(medidaApoioRaw.valorPrevisto),
       valorAprovado: toText(medidaApoioRaw.valorAprovado),
+      valoresRecebidos: normalizeReceivedValuesList(medidaApoioRaw.valoresRecebidos),
       notas: toText(medidaApoioRaw.notas),
     },
     dossieEletronico: {

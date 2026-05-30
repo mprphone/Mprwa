@@ -723,6 +723,7 @@ function registerLocalSyncSaftRoutes(context) {
             ).trim(),
             morada: String(payload.morada || payload.endereco || payload.address || '').trim(),
             caePrincipal: String(payload.cae_principal || payload.cae || '').trim(),
+            caeDescricao: String(payload.cae_descricao || payload.caeDescricao || '').trim(),
             inicioAtividade: String(
                 payload.inicio_atividade || payload.data_inicio_atividade || payload.inicioAtividade || payload.data_inicio || ''
             ).trim(),
@@ -1339,6 +1340,12 @@ Regras:
         return false;
     }
 
+    const {
+        fillSegSocialCredential, clickSegSocialCredentialSubmit,
+        clickSegSocialActivate2faIfRequired, completeSegSocialEmailCodeIfPresent,
+        handleSegSocialEmailTwoFactor,
+    } = require('../services/fiscal/shared/ssLoginHelpers');
+
     async function clickCookieConsentIfPresent(page, timeoutMs = 4000) {
         const safeTimeout = Math.max(500, Number(timeoutMs) || 4000);
         const deadline = Date.now() + safeTimeout;
@@ -1871,6 +1878,7 @@ Regras:
         setIfColumnExists(['data_nascimento', 'nascimento', 'birth_date', 'date_of_birth'], toSupabaseDateValue(localCustomer?.dataNascimento));
         setIfColumnExists(['inicio_atividade', 'data_inicio_atividade'], toSupabaseDateValue(localCustomer?.inicioAtividade));
         setIfColumnExists(['cae_principal', 'cae'], localCustomer?.caePrincipal || null);
+        setIfColumnExists(['cae_descricao'], localCustomer?.caeDescricao || null);
         setIfColumnExists(['codigo_reparticao_financas', 'reparticao_financas'], localCustomer?.codigoReparticaoFinancas || null);
         setIfColumnExists(
             ['tipo_contabilidade'],
@@ -1882,12 +1890,12 @@ Regras:
         );
         setIfColumnExists(['contabilista_certificado_nome', 'contabilista_certificado'], localCustomer?.contabilistaCertificado || null);
 
-        const managersJson = Array.isArray(localCustomer?.managers) && localCustomer.managers.length > 0
-            ? JSON.stringify(localCustomer.managers)
-            : null;
-        const accessCredentialsJson = Array.isArray(localCustomer?.accessCredentials) && localCustomer.accessCredentials.length > 0
-            ? JSON.stringify(localCustomer.accessCredentials)
-            : null;
+        const managersJson = JSON.stringify(
+            Array.isArray(localCustomer?.managers) ? localCustomer.managers : []
+        );
+        const accessCredentialsJson = JSON.stringify(
+            Array.isArray(localCustomer?.accessCredentials) ? localCustomer.accessCredentials : []
+        );
         const agregadoFamiliarJson = JSON.stringify(
             Array.isArray(localCustomer?.agregadoFamiliar) ? localCustomer.agregadoFamiliar : []
         );
@@ -2686,6 +2694,8 @@ Regras:
     const { registerSaftDocumentRoutes } = require('./saftDocumentRoutes');
     const { registerSaftOperationsRoutes } = require('./saftOperationsRoutes');
     const { registerSegSocialInteroperabilityRoutes } = require('./segSocialInteroperabilityRoutes');
+    const { registerAutologinRoutes } = require('./autologinRoutes');
+    const { registerFiscalPortalRoutes } = require('./fiscalPortalRoutes');
 
     const helpers = {
         // customer sync helpers
@@ -2699,6 +2709,9 @@ Regras:
         splitSelectorList, resolveAtCredentialForAutologin,
         launchFinancasBrowserWithFallback, activateFinancasNifTab,
         findFirstVisibleSelector, clickContinueLoginIf2faPrompt,
+        fillSegSocialCredential, clickSegSocialCredentialSubmit,
+        clickSegSocialActivate2faIfRequired, completeSegSocialEmailCodeIfPresent,
+        handleSegSocialEmailTwoFactor,
         resolveSsCredentialForAutologin, clickCookieConsentIfPresent,
         openSegSocialLoginEntryIfNeeded, ensureSegSocialCredentialsFormVisible,
         clickContinueWithoutActivatingIfPrompt,
@@ -2730,6 +2743,8 @@ Regras:
     registerSaftDocumentRoutes(context, helpers);
     registerSaftOperationsRoutes(context, helpers);
     registerSegSocialInteroperabilityRoutes(context);
+    registerAutologinRoutes(context, helpers);
+    registerFiscalPortalRoutes(context, helpers);
 }
 
 module.exports = {

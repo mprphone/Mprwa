@@ -81,18 +81,60 @@ function createImapEmailService(config = {}) {
             });
     }
 
-    function messageToPlainText(rawMessage) {
+    function decodeTransferText(value, encoding = '') {
+        const raw = String(value || '').trim();
+        const normalizedEncoding = String(encoding || '').trim().toLowerCase();
+        if (normalizedEncoding === 'base64') {
+            try {
+                return Buffer.from(raw.replace(/\s+/g, ''), 'base64').toString('utf8');
+            } catch (_) {
+                return raw;
+            }
+        }
+        return raw
+            .replace(/=\r?\n/g, '')
+            .replace(/=([0-9A-F]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    }
+
+    function extractMimeTextParts(rawMessage) {
+        const raw = String(rawMessage || '');
+        const parts = [];
+        const pattern = /Content-Type:\s*text\/(plain|html)[^\n]*[\s\S]*?Content-Transfer-Encoding:\s*(base64|quoted-printable|7bit|8bit)[^\n]*\r?\n\r?\n([\s\S]*?)(?=\r?\n--[^\r\n]+|\r?\n[A-Z]\d{4}\s|$)/gi;
+        let match;
+        while ((match = pattern.exec(raw))) {
+            const kind = String(match[1] || '').toLowerCase();
+            const encoding = String(match[2] || '').toLowerCase();
+            const body = decodeTransferText(match[3] || '', encoding);
+            if (body.trim()) parts.push({ kind, body });
+        }
+        return parts;
+    }
+
+    function htmlToText(value) {
+        return String(value || '')
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/(?:p|div|li|tr|h[1-6])>/gi, '\n')
+            .replace(/<[^>]+>/g, ' ');
+    }
+
+    function cleanupPlainText(value) {
         return decodeHtmlEntities(
-            String(rawMessage || '')
+            String(value || '')
                 .replace(/=\r?\n/g, '')
                 .replace(/=([0-9A-F]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-                .replace(/<br\s*\/?>/gi, '\n')
-                .replace(/<\/(?:p|div|li|tr|h[1-6])>/gi, '\n')
-                .replace(/<[^>]+>/g, ' ')
                 .replace(/\r/g, '\n')
                 .replace(/[ \t]+/g, ' ')
                 .replace(/\n{3,}/g, '\n\n')
         ).trim();
+    }
+
+    function messageToPlainText(rawMessage) {
+        const parts = extractMimeTextParts(rawMessage);
+        const plainPart = parts.find((part) => part.kind === 'plain');
+        if (plainPart) return cleanupPlainText(plainPart.body);
+        const htmlPart = parts.find((part) => part.kind === 'html');
+        if (htmlPart) return cleanupPlainText(htmlToText(htmlPart.body));
+        return cleanupPlainText(htmlToText(String(rawMessage || '')));
     }
 
     function isLikelyPasswordCandidate(value) {
@@ -371,10 +413,40 @@ function createImapEmailService(config = {}) {
         });
     }
 
+    async function listRecentMessages({ sinceDays = 14, maxMessages = 50 } = {}) {
+        const since = new Date();
+        since.setDate(since.getDate() - Math.max(1, Number(sinceDays) || 14));
+        const imapDate = since.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
+
+        return withImapSession(async ({ command }) => {
+            const searchOutput = await command(`UID SEARCH SINCE ${imapDate}`);
+            const uidLine = searchOutput.split(/\r?\n/).find((line) => /^\* SEARCH /i.test(line)) || '';
+            const uids = uidLine.replace(/^\* SEARCH\s*/i, '').trim().split(/\s+/).filter(Boolean);
+            const recentUids = uids.slice(-Math.max(1, Number(maxMessages) || 50)).reverse();
+            const messages = [];
+
+            for (const uid of recentUids) {
+                const output = await command(`UID FETCH ${uid} (BODY.PEEK[])`);
+                const headers = extractHeaders(output);
+                messages.push({
+                    uid,
+                    from: headers.from,
+                    subject: headers.subject,
+                    date: headers.date,
+                    plainText: messageToPlainText(output),
+                    raw: output,
+                });
+            }
+
+            return messages;
+        });
+    }
+
     return {
         hasImapConfig,
         findLatestSegSocialCode,
         findLatestSegSocialSubUserPassword,
+        listRecentMessages,
     };
 }
 

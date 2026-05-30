@@ -113,13 +113,13 @@ function parseCertidaoPermanenteText(rawText) {
 
 async function collectCertidaoPermanenteProfile(code, options = {}) {
     const normalizedCode = normalizeCertidaoCode(code);
-    if (!normalizedCode) return { fields: {}, sourceUrl: '', textPreview: '', message: 'Código da certidão permanente em falta.' };
+    if (!normalizedCode) return { fields: {}, sourceUrl: '', textPreview: '', ficheiroPdf: '', message: 'Código da certidão permanente em falta.' };
 
     let playwright;
     try {
         playwright = require('playwright');
     } catch (error) {
-        return { fields: {}, sourceUrl: '', textPreview: '', message: 'Playwright não está disponível para consultar a certidão permanente.' };
+        return { fields: {}, sourceUrl: '', textPreview: '', ficheiroPdf: '', message: 'Playwright não está disponível para consultar a certidão permanente.' };
     }
 
     const browser = await playwright.chromium.launch({ headless: options.headless !== false });
@@ -147,11 +147,30 @@ async function collectCertidaoPermanenteProfile(code, options = {}) {
             }
         }
 
+        // Guardar PDF se a certidão foi lida com sucesso e temos o customer
+        let ficheiroPdf = '';
+        const hasContent = /Certid[aã]o de Registo|Matr[ií]cula/i.test(text);
+        if (hasContent && options.customer) {
+            try {
+                const { buildFiscalDownloadPath, uniquePath } = require('./fiscal/documents/documentNamingService');
+                const fs = require('fs/promises');
+                const path = require('path');
+                const year = String(new Date().getFullYear());
+                const dest = uniquePath(buildFiscalDownloadPath(options.customer, year, 'certidao_permanente', 'certidao_permanente.pdf'));
+                await fs.mkdir(path.dirname(dest), { recursive: true }).catch(() => null);
+                await page.pdf({ path: dest, format: 'A4', printBackground: true });
+                ficheiroPdf = dest;
+            } catch (pdfErr) {
+                console.error('[CertidaoPermanente] Erro ao guardar PDF:', pdfErr?.message);
+            }
+        }
+
         const parsed = parseCertidaoPermanenteText(text);
         return {
             fields: parsed.fields,
             sourceUrl: page.url(),
             textPreview: compactSpaces(text).slice(0, 600),
+            ficheiroPdf,
             message: Object.keys(parsed.fields || {}).length ? '' : 'Não encontrei dados úteis na certidão permanente.',
         };
     } finally {

@@ -162,6 +162,7 @@ function createCustomerRepository(deps) {
             dataNascimento: profile.dataNascimento || undefined,
             inicioAtividade: profile.inicioAtividade || undefined,
             caePrincipal: profile.caePrincipal || undefined,
+            caeDescricao: profile.caeDescricao || undefined,
             codigoReparticaoFinancas: profile.codigoReparticaoFinancas || undefined,
             tipoContabilidade: profile.tipoContabilidade || undefined,
             estadoCliente: profile.estadoCliente || undefined,

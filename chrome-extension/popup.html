@@ -6,7 +6,7 @@
     :root { color-scheme: light; }
     * { box-sizing: border-box; }
     body {
-      width: 410px;
+      width: 460px;
       margin: 0;
       font-family: system-ui, -apple-system, Segoe UI, sans-serif;
       color: #0f172a;
@@ -15,54 +15,59 @@
     .hero {
       background: linear-gradient(135deg, #050816 0%, #0f172a 54%, #13213f 100%);
       color: white;
-      padding: 18px 18px 16px;
+      padding: 12px 16px 10px;
       border-bottom: 3px solid #22c55e;
     }
-    .brand { display: flex; align-items: center; gap: 14px; }
+    .brand { display: flex; align-items: center; gap: 10px; }
     .brand img {
-      width: 64px;
-      height: 64px;
-      border-radius: 18px;
+      width: 46px;
+      height: 46px;
+      border-radius: 13px;
       background: white;
-      padding: 5px;
+      padding: 4px;
       box-shadow: 0 10px 24px rgba(0,0,0,.28);
     }
-    h1 { font-size: 22px; margin: 0; line-height: 1.05; letter-spacing: -.03em; }
-    .muted { font-size: 12px; color: #cbd5e1; margin-top: 4px; }
-    main { padding: 14px 16px 16px; }
+    h1 { font-size: 17px; margin: 0; line-height: 1.05; letter-spacing: 0; }
+    .muted { font-size: 11px; color: #cbd5e1; margin-top: 3px; }
+    main { padding: 10px 12px 12px; }
     .search {
-      width: 100%; border: 1px solid #cbd5e1; border-radius: 14px; padding: 12px 14px;
-      font-size: 15px; outline: none; background: white;
+      width: 100%; border: 1px solid #cbd5e1; border-radius: 12px; padding: 9px 12px;
+      font-size: 14px; outline: none; background: white;
     }
     .search:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,.18); }
-    .results { margin-top: 10px; max-height: 150px; overflow: auto; border: 1px solid #e2e8f0; border-radius: 14px; background: white; }
-    .result { width: 100%; text-align: left; border: 0; border-bottom: 1px solid #f1f5f9; background: white; padding: 10px 12px; cursor: pointer; }
+    .results { margin-top: 8px; max-height: 136px; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 12px; background: white; }
+    .results[hidden] { display: none; }
+    .result { width: 100%; text-align: left; border: 0; border-bottom: 1px solid #f1f5f9; background: white; padding: 8px 10px; cursor: pointer; }
     .result:hover, .result.active { background: #eff6ff; }
     .result strong { display: block; font-size: 13px; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .result span { display: block; font-size: 11px; color: #64748b; margin-top: 2px; }
-    .card { margin-top: 12px; border: 1px solid #dbeafe; background: white; border-radius: 18px; padding: 14px; box-shadow: 0 8px 24px rgba(15,23,42,.06); }
-    .entity { font-size: 16px; font-weight: 900; margin-bottom: 3px; color: #0f172a; }
-    .meta { font-size: 12px; color: #475569; margin-bottom: 14px; }
-    .access-title { font-size: 13px; color: #334155; margin-bottom: 9px; }
-    .buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-    .access {
-      min-height: 82px; border: 1px solid #cbd5e1; border-radius: 18px; padding: 10px 8px;
-      background: white; font-weight: 900; cursor: pointer; color: #0f172a;
-      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
-      transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+    .card { margin-top: 10px; border: 1px solid #dbeafe; background: white; border-radius: 14px; padding: 11px; box-shadow: 0 8px 24px rgba(15,23,42,.06); }
+    .entity { font-size: 14px; font-weight: 900; margin-bottom: 2px; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .meta { font-size: 11px; color: #475569; margin-bottom: 9px; }
+    .meta-line { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 11px; color: #475569; margin-bottom: 9px; }
+    .meta-line > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-actions { display: inline-flex; gap: 4px; flex-shrink: 0; }
+    .mini-action { border: 1px solid #cbd5e1; background: #fff; color: #334155; border-radius: 7px; padding: 2px 5px; font-size: 9px; font-weight: 800; cursor: pointer; }
+    .mini-action:disabled { opacity: .4; cursor: not-allowed; }
+    .access-title { font-size: 12px; color: #334155; margin-bottom: 7px; }
+    .quick-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+    .quick-link {
+      min-height: 40px; border: 1px solid #e2e8f0; border-radius: 10px; padding: 5px 8px;
+      background: #ffffff; cursor: pointer; text-align: left; color: #0f172a;
+      display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; column-gap: 7px;
+      transition: background .14s ease, border-color .14s ease, transform .14s ease;
     }
-    .access:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(15,23,42,.12); }
-    .access:disabled { opacity: .38; cursor: not-allowed; }
-    .icon-img {
-      width: 70px; height: 70px; object-fit: contain; display: block;
-      filter: drop-shadow(0 5px 10px rgba(15,23,42,.16));
-    }
-    .access.at { border-color: #bae6fd; background: linear-gradient(180deg, #f0f9ff, #dff3ff); color: #075985; }
-    .access.ss { border-color: #bbf7d0; background: linear-gradient(180deg, #f0fdf4, #dcfce7); color: #166534; }
-    .access.sub { border-color: #99f6e4; background: linear-gradient(180deg, #ecfeff, #ccfbf1); color: #0f766e; }
-    .status { margin-top: 12px; border: 1px solid #e2e8f0; border-radius: 13px; padding: 10px 11px; background: white; font-size: 12px; color: #475569; }
+    .quick-link:hover:not(:disabled) { background: #f8fafc; border-color: #94a3b8; transform: translateY(-1px); }
+    .quick-link:disabled { opacity: .45; cursor: not-allowed; }
+    .quick-link.ready { border-color: #bbf7d0; }
+    .quick-link.manual { border-color: #fed7aa; }
+    .quick-link.missing { border-color: #fecaca; }
+    .quick-icon { width: 28px; height: 28px; object-fit: contain; display: block; }
+    .quick-label { display: block; font-size: 11px; font-weight: 850; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .quick-meta { display: block; margin-top: 2px; font-size: 9px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .status { margin-top: 9px; border: 1px solid #e2e8f0; border-radius: 11px; padding: 8px 9px; background: white; font-size: 11px; color: #475569; }
     .error { color: #b91c1c; }
-    .footer { display: flex; justify-content: space-between; align-items: center; margin-top: 11px; }
+    .footer { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
     .link { border: 0; background: transparent; color: #2563eb; font-size: 12px; cursor: pointer; padding: 0; font-weight: 700; }
   </style>
 </head>
@@ -78,7 +83,7 @@
   </header>
   <main>
     <input id="search" class="search" placeholder="Pesquisar nome, empresa, NIF ou NISS..." autocomplete="off" />
-    <div id="results" class="results"></div>
+    <div id="results" class="results" role="listbox" aria-label="Resultados de clientes"></div>
     <section id="selected" class="card" hidden></section>
     <div id="status" class="status">A ler acessos guardados...</div>
     <div class="footer">

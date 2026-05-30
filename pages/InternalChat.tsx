@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowDown,
+  CalendarDays,
   Check,
+  CheckSquare,
   Copy,
   FileText,
   Forward,
@@ -23,7 +25,7 @@ import {
   X,
 } from 'lucide-react';
 import { CURRENT_USER_ID, mockService } from '../services/mockData';
-import { User } from '../types';
+import { AgendaEventType, Conversation, ConversationStatus, Customer, TaskPriority, TaskStatus, User } from '../types';
 import {
   InternalConversationMember,
   InternalConversationRow,
@@ -71,6 +73,20 @@ const QUICK_CHAT_EMOJIS = ['😀', '😂', '🙂', '😉', '😍', '🙏', '👍
 const QUICK_REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '🙏', '🔥', '🎉', '✅', '👏', '👀'];
 const INTERNAL_CHAT_HIDDEN_CONVERSATIONS_KEY = 'wa_pro_internal_chat_hidden_conversations_v1';
 const INTERNAL_CHAT_SELECTED_CONV_KEY = 'wa_pro_internal_chat_selected_conv';
+
+function chatIsoDate(date: Date) {
+  return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+}
+
+function addDaysIso(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return chatIsoDate(date);
+}
+
+function chatLocalDateTimeIso(date: string, time: string) {
+  return new Date((date || chatIsoDate(new Date())) + 'T' + (time || '09:00') + ':00').toISOString();
+}
 
 function loadHiddenConversationIdsForUser(userId: string): string[] {
   if (typeof window === 'undefined' || !window.localStorage) return [];
@@ -168,6 +184,31 @@ const InternalChat: React.FC = () => {
     status: 'PENDENTE',
     dataInicio: '',
     dataFim: '',
+  });
+
+  const [actionCustomers, setActionCustomers] = useState<Customer[]>([]);
+  const [actionConversations, setActionConversations] = useState<Conversation[]>([]);
+  const [actionModal, setActionModal] = useState<'agenda' | 'task' | ''>('');
+  const [actionSaving, setActionSaving] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [agendaForm, setAgendaForm] = useState({
+    title: '',
+    type: 'meeting' as AgendaEventType,
+    assignedUserId: '',
+    customerId: '',
+    date: chatIsoDate(new Date()),
+    startTime: '09:00',
+    endTime: '10:00',
+    location: '',
+    notes: '',
+  });
+  const [taskForm, setTaskForm] = useState({
+    title: '',
+    assignedUserId: '',
+    customerId: '',
+    priority: TaskPriority.NORMAL,
+    dueDate: addDaysIso(1),
+    notes: '',
   });
 
   const endRef = useRef<HTMLDivElement>(null);
@@ -1158,6 +1199,130 @@ const InternalChat: React.FC = () => {
     }
   };
 
+  const customerLabel = (customer: Customer) => {
+    const name = String(customer.name || '').trim();
+    const company = String(customer.company || '').trim();
+    if (!company || company.toLowerCase() === name.toLowerCase()) return name;
+    return name + ' (' + company + ')';
+  };
+
+  const ensureActionData = async () => {
+    if (actionCustomers.length > 0 && actionConversations.length > 0) return;
+    const [customers, regularConversations] = await Promise.all([
+      mockService.getCustomers(),
+      mockService.getConversations(),
+    ]);
+    setActionCustomers(customers);
+    setActionConversations(regularConversations);
+  };
+
+  const openAgendaModal = async () => {
+    setActionError('');
+    await ensureActionData();
+    const today = chatIsoDate(new Date());
+    setAgendaForm({
+      title: '',
+      type: 'meeting',
+      assignedUserId: taskTargetUserId || currentUserId,
+      customerId: '',
+      date: today,
+      startTime: '09:00',
+      endTime: '10:00',
+      location: '',
+      notes: '',
+    });
+    setActionModal('agenda');
+  };
+
+  const openTaskModal = async () => {
+    setActionError('');
+    await ensureActionData();
+    setTaskForm({
+      title: '',
+      assignedUserId: taskTargetUserId || currentUserId,
+      customerId: '',
+      priority: TaskPriority.NORMAL,
+      dueDate: addDaysIso(1),
+      notes: '',
+    });
+    setActionModal('task');
+  };
+
+  const submitAgendaEvent = async () => {
+    const title = agendaForm.title.trim();
+    if (!title) {
+      setActionError('Preencha o assunto da reunião.');
+      return;
+    }
+    const startsAt = chatLocalDateTimeIso(agendaForm.date, agendaForm.startTime);
+    const endsAt = chatLocalDateTimeIso(agendaForm.date, agendaForm.endTime);
+    if (new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
+      setActionError('A hora de fim tem de ser posterior à hora de início.');
+      return;
+    }
+    setActionSaving(true);
+    setActionError('');
+    try {
+      await mockService.createAgendaEvent({
+        title,
+        type: agendaForm.type,
+        customerId: agendaForm.customerId || undefined,
+        assignedUserId: agendaForm.assignedUserId || currentUserId,
+        startsAt,
+        endsAt,
+        location: agendaForm.location.trim(),
+        notes: agendaForm.notes.trim(),
+      });
+      setActionModal('');
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Falha ao guardar reunião.');
+    } finally {
+      setActionSaving(false);
+    }
+  };
+
+  const submitTask = async () => {
+    const title = taskForm.title.trim();
+    if (!title) {
+      setActionError('Preencha o assunto da tarefa.');
+      return;
+    }
+    if (!taskForm.customerId) {
+      setActionError('Escolha o cliente associado à tarefa.');
+      return;
+    }
+    setActionSaving(true);
+    setActionError('');
+    try {
+      let targetConversation = actionConversations.find((conversation) => conversation.customerId === taskForm.customerId && conversation.status === ConversationStatus.OPEN)
+        || actionConversations.find((conversation) => conversation.customerId === taskForm.customerId);
+      if (!targetConversation) {
+        targetConversation = await mockService.createConversation(taskForm.customerId);
+        const nextConversations = await mockService.getConversations();
+        setActionConversations(nextConversations);
+      }
+      await mockService.createTask({
+        conversationId: targetConversation.id,
+        title,
+        assignedUserId: taskForm.assignedUserId || currentUserId,
+        priority: taskForm.priority,
+        dueDate: chatLocalDateTimeIso(taskForm.dueDate, '09:00'),
+        notes: taskForm.notes.trim(),
+        status: TaskStatus.OPEN,
+        attachments: [],
+      });
+      if (taskTargetUserId) {
+        const refreshed = await fetchInternalUserOpenTasks(taskTargetUserId, currentUserId);
+        setEmployeeTasks(refreshed);
+      }
+      setActionModal('');
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Falha ao guardar tarefa.');
+    } finally {
+      setActionSaving(false);
+    }
+  };
+
   const openPedidoModal = () => {
     setPedidoError('');
     setPedidoFeedback('');
@@ -1267,30 +1432,45 @@ const InternalChat: React.FC = () => {
               </p>
             )}
           </div>
-          <div className="grid w-full grid-cols-2 gap-2 sm:w-auto lg:flex lg:flex-wrap lg:items-center lg:justify-end">
+          <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap lg:items-center lg:justify-end">
             <button
-              onClick={() => void handleDeleteSelectedConversation()}
-              disabled={!selectedConversationId || isDeletingConversation}
-              className="inline-flex items-center justify-center gap-1 rounded-lg border border-red-300/60 bg-red-500/15 px-3 py-2 text-xs font-semibold text-red-100 hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Eliminar conversa selecionada"
+              onClick={() => void openAgendaModal()}
+              className="inline-flex items-center justify-center gap-1 rounded-lg border border-sky-200 bg-sky-500 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-sky-400"
+              title="Abrir agenda para criar reunião"
             >
-              <Trash2 size={14} />
-              {isDeletingConversation ? 'A eliminar...' : 'Eliminar conversa'}
+              <CalendarDays size={14} />
+              Nova Reunião
+            </button>
+            <button
+              onClick={() => void openTaskModal()}
+              className="inline-flex items-center justify-center gap-1 rounded-lg border border-amber-200 bg-amber-500 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-amber-400"
+              title="Abrir tarefas para criar nova tarefa"
+            >
+              <CheckSquare size={14} />
+              Nova Tarefa
             </button>
             <button
               onClick={openPedidoModal}
-              className="inline-flex items-center justify-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:brightness-95"
-              style={{ backgroundColor: '#22c55e', borderColor: '#86efac' }}
+              className="inline-flex items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-500 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-emerald-400"
             >
               <Plus size={14} />
               Criar Pedido
             </button>
             <button
               onClick={toggleGroupComposer}
-              className="col-span-2 inline-flex items-center justify-center gap-1 rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20 sm:col-span-1"
+              className="inline-flex items-center justify-center gap-1 rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20"
             >
               <Users size={14} />
               {isCreatingGroup ? 'Fechar Grupo' : 'Novo Grupo'}
+            </button>
+            <button
+              onClick={() => void handleDeleteSelectedConversation()}
+              disabled={!selectedConversationId || isDeletingConversation}
+              className="col-span-2 inline-flex items-center justify-center gap-1 rounded-lg border border-red-300/60 bg-red-500/15 px-3 py-2 text-xs font-semibold text-red-100 hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-1"
+              title="Eliminar conversa selecionada"
+            >
+              <Trash2 size={14} />
+              {isDeletingConversation ? 'A eliminar...' : 'Eliminar conversa'}
             </button>
           </div>
         </div>
@@ -2076,6 +2256,86 @@ const InternalChat: React.FC = () => {
                     <p className="text-xs text-gray-500">{conversation.type === 'group' ? 'Grupo' : 'Direto'}</p>
                   </button>
                 ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {actionModal === 'agenda' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-3xl rounded-xl border border-slate-200 bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900"><CalendarDays size={20} className="text-sky-600" />Nova Reunião</h3>
+              <button onClick={() => !actionSaving && setActionModal('')} className="rounded p-1 text-slate-500 hover:bg-slate-100" title="Fechar"><X size={20} /></button>
+            </div>
+            <div className="space-y-4 px-5 py-4">
+              <label className="block text-sm font-semibold text-slate-700">Assunto
+                <input value={agendaForm.title} onChange={(event) => setAgendaForm((prev) => ({ ...prev, title: event.target.value }))} placeholder="Ex: Reunião de planeamento fiscal" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-200" />
+              </label>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label className="block text-sm font-semibold text-slate-700">Tipo
+                  <select value={agendaForm.type} onChange={(event) => setAgendaForm((prev) => ({ ...prev, type: event.target.value as AgendaEventType }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                    <option value="meeting">Reunião</option><option value="visit">Visita</option><option value="call">Chamada</option><option value="other">Outro</option>
+                  </select>
+                </label>
+                <label className="block text-sm font-semibold text-slate-700">Responsável
+                  <select value={agendaForm.assignedUserId} onChange={(event) => setAgendaForm((prev) => ({ ...prev, assignedUserId: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                    {users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <label className="block text-sm font-semibold text-slate-700">Data<input type="date" value={agendaForm.date} onChange={(event) => setAgendaForm((prev) => ({ ...prev, date: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+                <label className="block text-sm font-semibold text-slate-700">Início<input type="time" value={agendaForm.startTime} onChange={(event) => setAgendaForm((prev) => ({ ...prev, startTime: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+                <label className="block text-sm font-semibold text-slate-700">Fim<input type="time" value={agendaForm.endTime} onChange={(event) => setAgendaForm((prev) => ({ ...prev, endTime: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label className="block text-sm font-semibold text-slate-700">Cliente
+                  <select value={agendaForm.customerId} onChange={(event) => setAgendaForm((prev) => ({ ...prev, customerId: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                    <option value="">Sem cliente associado</option>{actionCustomers.map((customer) => <option key={customer.id} value={customer.id}>{customerLabel(customer)}</option>)}
+                  </select>
+                </label>
+                <label className="block text-sm font-semibold text-slate-700">Local<input value={agendaForm.location} onChange={(event) => setAgendaForm((prev) => ({ ...prev, location: event.target.value }))} placeholder="Escritório, Teams, morada do cliente..." className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+              </div>
+              <label className="block text-sm font-semibold text-slate-700">Notas<textarea rows={4} value={agendaForm.notes} onChange={(event) => setAgendaForm((prev) => ({ ...prev, notes: event.target.value }))} placeholder="Contexto útil para a reunião ou visita..." className="mt-1 w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+              {actionError && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</div>}
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-4">
+              <button onClick={() => setActionModal('')} disabled={actionSaving} className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50">Cancelar</button>
+              <button onClick={() => void submitAgendaEvent()} disabled={actionSaving} className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60">{actionSaving ? 'A guardar...' : 'Guardar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {actionModal === 'task' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-2xl rounded-xl border border-slate-200 bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900"><CheckSquare size={20} className="text-emerald-600" />Nova Tarefa</h3>
+              <button onClick={() => !actionSaving && setActionModal('')} className="rounded p-1 text-slate-500 hover:bg-slate-100" title="Fechar"><X size={20} /></button>
+            </div>
+            <div className="space-y-4 px-5 py-4">
+              <label className="block text-sm font-semibold text-slate-700">Cliente associado
+                <select value={taskForm.customerId} onChange={(event) => setTaskForm((prev) => ({ ...prev, customerId: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                  <option value="">Escolher cliente...</option>{actionCustomers.map((customer) => <option key={customer.id} value={customer.id}>{customerLabel(customer)}</option>)}
+                </select>
+              </label>
+              <label className="block text-sm font-semibold text-slate-700">Assunto<input value={taskForm.title} onChange={(event) => setTaskForm((prev) => ({ ...prev, title: event.target.value }))} placeholder="Ex: Enviar orçamento retificado" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label className="block text-sm font-semibold text-slate-700">Responsável<select value={taskForm.assignedUserId} onChange={(event) => setTaskForm((prev) => ({ ...prev, assignedUserId: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">{users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
+                <label className="block text-sm font-semibold text-slate-700">Prioridade<select value={taskForm.priority} onChange={(event) => setTaskForm((prev) => ({ ...prev, priority: event.target.value as TaskPriority }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value={TaskPriority.NORMAL}>Normal</option><option value={TaskPriority.URGENT}>Urgente</option></select></label>
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label className="block text-sm font-semibold text-slate-700">Prazo<input type="date" value={taskForm.dueDate} onChange={(event) => setTaskForm((prev) => ({ ...prev, dueDate: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800"><div className="text-xs text-amber-700">Estado</div><div className="mt-1">Aberta</div></div>
+              </div>
+              <label className="block text-sm font-semibold text-slate-700">Notas<textarea rows={4} value={taskForm.notes} onChange={(event) => setTaskForm((prev) => ({ ...prev, notes: event.target.value }))} placeholder="Detalhes adicionais..." className="mt-1 w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+              {actionError && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</div>}
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-4">
+              <button onClick={() => setActionModal('')} disabled={actionSaving} className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50">Cancelar</button>
+              <button onClick={() => void submitTask()} disabled={actionSaving} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">{actionSaving ? 'A guardar...' : 'Guardar'}</button>
             </div>
           </div>
         </div>

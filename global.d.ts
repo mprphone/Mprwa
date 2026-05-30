@@ -32,6 +32,7 @@ declare global {
           inicioAtividade?: string;
           tipoIva?: string;
           caePrincipal?: string;
+          caeDescricao?: string;
           codigoReparticaoFinancas?: string;
         };
       }>;

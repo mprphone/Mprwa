@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "WA PRO Auto Login",
   "description": "Autologin assistido da WA PRO para Autoridade Tributária e Segurança Social.",
-  "version": "0.4.7",
+  "version": "0.5.11",
   "action": {
     "default_title": "WA PRO Auto Login",
     "default_popup": "popup.html",
@@ -28,38 +28,51 @@
   ],
   "host_permissions": [
     "https://wa.mpr.pt/*",
-    "http://localhost/*",
-    "http://127.0.0.1/*",
+    "http://localhost:3010/*",
+    "http://127.0.0.1:3010/*",
+    "http://localhost:5173/*",
+    "http://127.0.0.1:5173/*",
+    "http://127.0.0.1:30777/*",
     "https://www.acesso.gov.pt/*",
-    "https://*.portaldasfinancas.gov.pt/*",
-    "https://www.seg-social.pt/*"
+    "https://www.portaldasfinancas.gov.pt/*",
+    "https://sitfiscal.portaldasfinancas.gov.pt/*",
+    "https://www.seg-social.pt/*",
+    "https://app.seg-social.pt/*",
+    "https://extwww.seg-social.pt/*",
+    "https://www.bportugal.pt/*",
+    "https://clientebancario.bportugal.pt/*",
+    "https://sts.bportugal.pt/*",
+    "https://iefponline.iefp.pt/*",
+    "https://webapps.iapmei.pt/*",
+    "https://viactt.pt/*",
+    "https://www.viactt.pt/*",
+    "https://www.relatoriounico.pt/*"
   ],
   "background": {
     "service_worker": "background.js"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+W",
+        "mac": "Alt+Shift+W"
+      },
+      "description": "Abrir WA PRO Auto Login"
+    }
   },
   "content_scripts": [
     {
       "matches": [
         "https://wa.mpr.pt/*",
-        "http://localhost/*",
-        "http://127.0.0.1/*"
+        "http://localhost:3010/*",
+        "http://127.0.0.1:3010/*",
+        "http://localhost:5173/*",
+        "http://127.0.0.1:5173/*"
       ],
       "js": [
         "wa-bridge.js"
       ],
       "run_at": "document_start"
-    },
-    {
-      "matches": [
-        "https://www.acesso.gov.pt/*",
-        "https://*.portaldasfinancas.gov.pt/*",
-        "https://www.seg-social.pt/*"
-      ],
-      "js": [
-        "portal-autofill.js"
-      ],
-      "run_at": "document_idle",
-      "all_frames": true
     }
   ]
 }

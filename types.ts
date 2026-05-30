@@ -111,6 +111,7 @@ export interface Customer {
   dataNascimento?: string;
   inicioAtividade?: string;
   caePrincipal?: string;
+  caeDescricao?: string;
   codigoReparticaoFinancas?: string;
   tipoContabilidade?: string;
   estadoCliente?: string;
@@ -187,6 +188,22 @@ export interface Call {
   durationSeconds: number;
   notes?: string;
   source: 'manual' | 'import';
+}
+
+export type AgendaEventType = 'meeting' | 'visit' | 'call' | 'other';
+
+export interface AgendaEvent {
+  id: string;
+  title: string;
+  type: AgendaEventType;
+  customerId?: string;
+  assignedUserId: string;
+  startsAt: string;
+  endsAt: string;
+  location?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ReportMetrics {

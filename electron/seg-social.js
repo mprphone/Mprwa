@@ -371,12 +371,8 @@ async function fetchLatestSegSocialActivationCode(payload = {}) {
   const queryWithSince = buildQuery(true);
   if (sinceIso) queryWithSince.set('sinceIso', sinceIso);
   const queries = [queryWithSince];
-  if (sinceIso) {
+  if (sinceIso && payload?.verificationOnly !== true) {
     const queryWithoutSince = buildQuery(false);
-    if (payload?.verificationOnly === true) {
-      queryWithoutSince.set('verificationOnly', '1');
-      queryWithoutSince.set('activationOnly', '0');
-    }
     queries.push(queryWithoutSince);
   }
 
@@ -1160,6 +1156,11 @@ async function handleSegSocialEmailVerificationCodeChallenge(page, payload = {},
   if (!(await isSegSocialEmailVerificationCodeChallenge(page).catch(() => false))) {
     return { handled: false, manualRequired: false, reason: '' };
   }
+
+  // Aguardar que o email novo chegue ao inbox antes de fazer o primeiro poll
+  // (evita apanhar um código antigo de uma sessão anterior)
+  const arrivalWaitMs = Math.max(3000, Math.min(12000, Number(payload?.emailArrivalWaitMs || 8000) || 8000));
+  await page.waitForTimeout(arrivalWaitMs);
 
   const code = await fetchLatestSegSocialActivationCode({
     ...payload,
@@ -2426,12 +2427,9 @@ async function openSegSocialLoginEntryIfNeeded(page, timeoutMs = 10_000) {
     () => page.getByRole('link', { name: /iniciar\s*sess[aã]o/i }).first(),
     () => page.locator('button', { hasText: /iniciar\s*sess[aã]o/i }).first(),
     () => page.locator('a', { hasText: /iniciar\s*sess[aã]o/i }).first(),
-    () => page.getByRole('button', { name: /autenticar\s+com\s+utilizador/i }).first(),
-    () => page.getByRole('link', { name: /autenticar\s+com\s+utilizador/i }).first(),
-    () => page.locator('button', { hasText: /autenticar\s+com\s+utilizador/i }).first(),
-    () => page.locator('a', { hasText: /autenticar\s+com\s+utilizador/i }).first(),
-    () => page.getByText(/autenticar\s+com\s+utilizador/i).first(),
-    () => page.locator('button, a, [role="button"], div, span', { hasText: /autenticar\s+com\s+utilizador/i }).first(),
+    // Only match "abrir"/"autenticar" variants, never "fechar" (which would collapse an already-open form)
+    () => page.locator('button, a, [role="button"]').filter({ hasText: /autenticar\s+com\s+utilizador/i }).filter({ hasNotText: /fechar/i }).first(),
+    () => page.locator('div, span').filter({ hasText: /^autenticar\s+com\s+utilizador/i }).first(),
   ];
   const usernameCheckSelectors = [
     'input[name="username"]',
@@ -2440,6 +2438,8 @@ async function openSegSocialLoginEntryIfNeeded(page, timeoutMs = 10_000) {
     'input[name*="user" i]',
     'input[id*="utilizador" i]',
     'input[name*="utilizador" i]',
+    'input[id*="niss" i]',
+    'input[placeholder*="NISS" i]',
     'input[autocomplete="username"]',
   ];
 

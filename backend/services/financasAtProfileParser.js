@@ -337,7 +337,12 @@ function parseFieldsFromText(text) {
     /CAE\s+Principal\s+(\d{5})\b/i,
     /Principal\s+(\d{5})\s+[A-ZÀ-Ý]/i,
   ]) : '';
-  if (caePrincipal) fields.caePrincipal = caePrincipal;
+  if (caePrincipal) {
+    fields.caePrincipal = caePrincipal;
+    const caeDescricaoMatch = activitySource?.match(new RegExp(`CAE\\s+Principal\\s+${caePrincipal}\\s+([^\\n\\r]+)`, 'i'));
+    const caeDescricao = caeDescricaoMatch ? caeDescricaoMatch[1].trim() : '';
+    if (caeDescricao) fields.caeDescricao = caeDescricao;
+  }
 
   const tipoIva = activitySource ? firstRegexValue(activitySource, [
     /Atividade\s+em\s+IVA\s+Enquadramento\s+Data\s+de\s+Enquadramento\s+Situa[cç][aã]o\s+(.+?)\s+\d{4}-\d{1,2}-\d{1,2}/i,
@@ -451,9 +456,13 @@ function mapPairsToFields(pairs) {
   const tipoContabilidade = findByLabels(['tipo de contabilidade', 'contabilidade']);
   if (tipoContabilidade) fields.tipoContabilidade = normalizeTipoContabilidade(tipoContabilidade);
 
-  const caePrincipal = findByLabels(['cae principal', 'cae']);
-  const caeMatch = String(caePrincipal || '').match(/\b\d{5}\b/);
-  if (caeMatch) fields.caePrincipal = caeMatch[0];
+  const caePrincipalRaw = findByLabels(['cae principal', 'cae']);
+  const caeMatch = String(caePrincipalRaw || '').match(/^(\d{5}(?:-[A-Z]\d*)?)\s*(.*)?$/);
+  if (caeMatch) {
+    fields.caePrincipal = caeMatch[1];
+    const caeDescricao = (caeMatch[2] || '').trim();
+    if (caeDescricao) fields.caeDescricao = caeDescricao;
+  }
 
   const reparticao = findByLabels(['codigo reparticao financas', 'codigo do servico financas', 'servico de financas', 'reparticao de financas']);
   const repMatch = String(reparticao || '').match(/\b\d{3,5}\b/);

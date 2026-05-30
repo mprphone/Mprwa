@@ -1,4 +1,4 @@
-import { User, Role, Customer, Conversation, ConversationStatus, Message, Task, TaskStatus, Call, CustomerType, TaskPriority, AutoResponseTrigger } from '../types';
+import { User, Role, Customer, Conversation, ConversationStatus, Message, Task, TaskStatus, Call, CustomerType, TaskPriority, AutoResponseTrigger, AgendaEvent } from '../types';
 import {
   deleteChatConversation,
   deleteChatMessage,
@@ -102,6 +102,34 @@ const INITIAL_CALLS: Call[] = [
   { id: 'call1', customerId: 'c1', userId: 'u1', startedAt: new Date(Date.now() - 86400000).toISOString(), durationSeconds: 120, notes: 'Dúvida rápida', source: 'manual' },
 ];
 
+const INITIAL_AGENDA_EVENTS: AgendaEvent[] = [
+  {
+    id: 'ag1',
+    title: 'Reunião de fecho mensal',
+    type: 'meeting',
+    customerId: 'c1',
+    assignedUserId: 'u1',
+    startsAt: new Date(Date.now() + 2 * 86400000).toISOString(),
+    endsAt: new Date(Date.now() + 2 * 86400000 + 60 * 60000).toISOString(),
+    location: 'Escritório',
+    notes: 'Validar documentação em falta e próximos prazos.',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'ag2',
+    title: 'Visita ao cliente',
+    type: 'visit',
+    customerId: 'c2',
+    assignedUserId: 'u2',
+    startsAt: new Date(Date.now() + 4 * 86400000 + 2 * 3600000).toISOString(),
+    endsAt: new Date(Date.now() + 4 * 86400000 + 3 * 3600000).toISOString(),
+    location: 'Instalações do cliente',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+];
+
 // Updated Triggers based on user requirements
 const INITIAL_TRIGGERS: AutoResponseTrigger[] = [
   // 1. Confirmação de receção (Primeira msg do dia)
@@ -195,6 +223,7 @@ const INITIAL_TRIGGERS: AutoResponseTrigger[] = [
 
 const LOCAL_CUSTOMERS_KEY = 'wa_pro_local_customers_v1';
 const LOCAL_USERS_KEY = 'wa_pro_local_users_v1';
+const LOCAL_AGENDA_EVENTS_KEY = 'wa_pro_local_agenda_events_v1';
 const SESSION_USER_KEY = 'wa_pro_session_user_id';
 
 class MockService {
@@ -204,6 +233,7 @@ class MockService {
   private messages = [...INITIAL_MESSAGES];
   private tasks = [...INITIAL_TASKS];
   private calls = [...INITIAL_CALLS];
+  private agendaEvents = [...INITIAL_AGENDA_EVENTS];
   private triggers = [...INITIAL_TRIGGERS];
   private supabaseImportPromise: Promise<void> | null = null;
   private supabaseImportDone = false;
@@ -277,6 +307,18 @@ class MockService {
       console.warn('[Local customers] erro ao carregar:', error);
     }
 
+    try {
+      const agendaRaw = window.localStorage.getItem(LOCAL_AGENDA_EVENTS_KEY);
+      if (agendaRaw) {
+        const parsedAgenda = JSON.parse(agendaRaw) as unknown[];
+        if (Array.isArray(parsedAgenda)) {
+          this.agendaEvents = parsedAgenda.filter((event): event is AgendaEvent => this.isValidAgendaEvent(event));
+        }
+      }
+    } catch (error) {
+      console.warn('[Local agenda] erro ao carregar:', error);
+    }
+
   }
 
   private persistLocalEntities() {
@@ -296,6 +338,25 @@ class MockService {
       console.warn('[Local customers] erro ao guardar:', error);
     }
 
+    try {
+      window.localStorage.setItem(LOCAL_AGENDA_EVENTS_KEY, JSON.stringify(this.agendaEvents));
+    } catch (error) {
+      console.warn('[Local agenda] erro ao guardar:', error);
+    }
+
+  }
+
+  private isValidAgendaEvent(value: unknown): value is AgendaEvent {
+    const event = value as Partial<AgendaEvent>;
+    if (!event || typeof event !== 'object') return false;
+    const id = String(event.id || '').trim();
+    const title = String(event.title || '').trim();
+    const assignedUserId = String(event.assignedUserId || '').trim();
+    const startsAt = String(event.startsAt || '').trim();
+    const endsAt = String(event.endsAt || '').trim();
+    const startsTime = Date.parse(startsAt);
+    const endsTime = Date.parse(endsAt);
+    return !!id && !!title && !!assignedUserId && Number.isFinite(startsTime) && Number.isFinite(endsTime);
   }
 
   private pruneOrphanConversationData() {
@@ -1603,6 +1664,7 @@ class MockService {
                 dataNascimento: nextCustomer.dataNascimento || '',
                 inicioAtividade: nextCustomer.inicioAtividade || '',
                 caePrincipal: nextCustomer.caePrincipal || '',
+                caeDescricao: nextCustomer.caeDescricao || '',
                 codigoReparticaoFinancas: nextCustomer.codigoReparticaoFinancas || '',
                 tipoContabilidade: nextCustomer.tipoContabilidade || '',
                 estadoCliente: nextCustomer.estadoCliente || '',
@@ -3340,36 +3402,44 @@ class MockService {
 
   async updateTask(id: string, updates: Partial<Task>): Promise<void> {
     const idx = this.tasks.findIndex(t => t.id === id);
-    if (idx !== -1) {
-        const nextTask = { ...this.tasks[idx], ...updates };
-        if (this.isBrowser()) {
-          const response = await fetch('/api/tasks/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(nextTask),
-          });
-          const payload = await response.json().catch(() => ({})) as {
-            success?: boolean;
-            task?: Task;
-            error?: unknown;
-          };
+    const existingTask = idx !== -1 ? this.tasks[idx] : null;
+    const nextTask = { ...(existingTask || {}), ...updates, id } as Task;
 
-          if (!response.ok || !payload.success) {
-            const errorText =
-              typeof payload.error === 'string'
-                ? payload.error
-                : payload.error
-                  ? JSON.stringify(payload.error)
-                  : `Falha ao guardar tarefa (${response.status}).`;
-            throw new Error(errorText);
-          }
-
-          this.tasks[idx] = payload.task || nextTask;
-          return;
-        }
-
-        this.tasks[idx] = nextTask;
+    if (!nextTask.conversationId || !nextTask.title) {
+      throw new Error('Não consegui guardar a tarefa: faltam dados base da tarefa.');
     }
+
+    if (this.isBrowser()) {
+      const response = await fetch('/api/tasks/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nextTask),
+      });
+      const payload = await response.json().catch(() => ({})) as {
+        success?: boolean;
+        task?: Task;
+        error?: unknown;
+      };
+
+      if (!response.ok || !payload.success) {
+        const errorText =
+          typeof payload.error === 'string'
+            ? payload.error
+            : payload.error
+              ? JSON.stringify(payload.error)
+              : `Falha ao guardar tarefa (${response.status}).`;
+        throw new Error(errorText);
+      }
+
+      const savedTask = payload.task || nextTask;
+      const existingIndex = this.tasks.findIndex(t => t.id === savedTask.id);
+      if (existingIndex >= 0) this.tasks[existingIndex] = savedTask;
+      else this.tasks.push(savedTask);
+      return;
+    }
+
+    if (idx !== -1) this.tasks[idx] = nextTask;
+    else this.tasks.push(nextTask);
   }
 
   async deleteTask(id: string, options?: { actorUserId?: string }): Promise<void> {
@@ -3508,6 +3578,114 @@ class MockService {
        }
     }
     return { imported, failed };
+  }
+
+  // --- Agenda ---
+  async getAgendaEvents(): Promise<AgendaEvent[]> {
+    if (this.isBrowser()) {
+      const response = await fetch('/api/agenda/events', {
+        headers: { Accept: 'application/json' },
+      });
+      const payload = await response.json().catch(() => ({})) as {
+        success?: boolean;
+        data?: AgendaEvent[];
+      };
+      if (response.ok && payload.success && Array.isArray(payload.data)) {
+        this.agendaEvents = payload.data;
+      }
+    }
+    return [...this.agendaEvents].sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime());
+  }
+
+  async createAgendaEvent(event: Omit<AgendaEvent, 'id' | 'createdAt' | 'updatedAt'>): Promise<AgendaEvent> {
+    const now = new Date().toISOString();
+    const normalized: AgendaEvent = {
+      ...event,
+      id: `ag${Date.now()}`,
+      createdAt: now,
+      updatedAt: now,
+    };
+    if (this.isBrowser()) {
+      const response = await fetch('/api/agenda/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(normalized),
+      });
+      const payload = await response.json().catch(() => ({})) as {
+        success?: boolean;
+        data?: AgendaEvent;
+        error?: unknown;
+      };
+      if (!response.ok || !payload.success || !payload.data) {
+        const errorText = typeof payload.error === 'string' ? payload.error : `Falha ao guardar evento (${response.status}).`;
+        throw new Error(errorText);
+      }
+      const existingIndex = this.agendaEvents.findIndex((item) => item.id === payload.data!.id);
+      if (existingIndex >= 0) this.agendaEvents[existingIndex] = payload.data;
+      else this.agendaEvents.push(payload.data);
+      return payload.data;
+    }
+    this.agendaEvents.push(normalized);
+    this.persistLocalEntities();
+    return normalized;
+  }
+
+  async updateAgendaEvent(id: string, updates: Partial<AgendaEvent>): Promise<AgendaEvent> {
+    const targetId = String(id || '').trim();
+    const idx = this.agendaEvents.findIndex((event) => event.id === targetId);
+    if (idx < 0) {
+      throw new Error('Evento da agenda não encontrado.');
+    }
+    const nextEvent: AgendaEvent = {
+      ...this.agendaEvents[idx],
+      ...updates,
+      id: targetId,
+      updatedAt: new Date().toISOString(),
+    };
+    if (!this.isValidAgendaEvent(nextEvent)) {
+      throw new Error('Evento da agenda inválido.');
+    }
+    if (this.isBrowser()) {
+      const response = await fetch('/api/agenda/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nextEvent),
+      });
+      const payload = await response.json().catch(() => ({})) as {
+        success?: boolean;
+        data?: AgendaEvent;
+        error?: unknown;
+      };
+      if (!response.ok || !payload.success || !payload.data) {
+        const errorText = typeof payload.error === 'string' ? payload.error : `Falha ao guardar evento (${response.status}).`;
+        throw new Error(errorText);
+      }
+      this.agendaEvents[idx] = payload.data;
+      return payload.data;
+    }
+    this.agendaEvents[idx] = nextEvent;
+    this.persistLocalEntities();
+    return nextEvent;
+  }
+
+  async deleteAgendaEvent(id: string): Promise<void> {
+    const targetId = String(id || '').trim();
+    if (this.isBrowser() && targetId) {
+      const response = await fetch(`/api/agenda/events/${encodeURIComponent(targetId)}`, {
+        method: 'DELETE',
+        headers: { Accept: 'application/json' },
+      });
+      const payload = await response.json().catch(() => ({})) as {
+        success?: boolean;
+        error?: unknown;
+      };
+      if (!response.ok || !payload.success) {
+        const errorText = typeof payload.error === 'string' ? payload.error : `Falha ao eliminar evento (${response.status}).`;
+        throw new Error(errorText);
+      }
+    }
+    this.agendaEvents = this.agendaEvents.filter((event) => event.id !== targetId);
+    this.persistLocalEntities();
   }
 
   async collectDriObrigacoes(options?: {

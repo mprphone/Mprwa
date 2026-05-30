@@ -281,6 +281,8 @@ const Tasks: React.FC = () => {
           if (selectedTask) {
               // UPDATE EXISTING
               await mockService.updateTask(selectedTask.id, {
+                  id: selectedTask.id,
+                  conversationId: selectedTask.conversationId,
                   title: nextTitle,
                   assignedUserId: editFormData.assignedUserId,
                   priority: editFormData.priority,

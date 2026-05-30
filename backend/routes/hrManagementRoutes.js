@@ -689,7 +689,7 @@ function registerHrManagementRoutes(context) {
         const targetFuncionarioId = String(funcionarioId || '').trim();
         if (!targetFuncionarioId) return [];
         const rows = await dbAllAsync(
-            `SELECT p.*, f.nome AS funcionario_nome, f.email AS funcionario_email
+            `SELECT p.*, f.nome AS funcionario_nome
              FROM hr_pedidos p
              LEFT JOIN hr_funcionarios f ON f.id = COALESCE(NULLIF(p.funcionario_id, ''), p.atribuido_a)
              LEFT JOIN hr_email_autoreply_schedules s ON s.pedido_id = p.id
@@ -1874,7 +1874,7 @@ function registerHrManagementRoutes(context) {
 
             if (pedidoId) {
                 const pedido = await dbGetAsync(
-                    `SELECT p.*, f.nome AS funcionario_nome, f.email AS funcionario_email
+                    `SELECT p.*, f.nome AS funcionario_nome
                      FROM hr_pedidos p
                      LEFT JOIN hr_funcionarios f ON f.id = COALESCE(NULLIF(p.funcionario_id, ''), p.atribuido_a)
                      WHERE p.id = ? LIMIT 1`,

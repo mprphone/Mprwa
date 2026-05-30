@@ -13,6 +13,7 @@ import {
 } from '../types';
 import { Plus, Search, Edit2, Trash2, FolderOpen, Eye, RefreshCw, Upload } from 'lucide-react';
 import { CustomerAccessTab, type CustomerCredentialPreset } from './customers/CustomerAccessTab';
+import { CustomerFiscalSummaryTab } from './customers/CustomerFiscalSummaryTab';
 import { CustomerDocumentBrowser } from './customers/CustomerDocumentBrowser';
 import { useCustomerDocuments } from './customers/hooks/useCustomerDocuments';
 import {
@@ -163,6 +164,8 @@ async function triggerChromeExtensionAutologin(params: {
   submitSelectors?: string[];
   successSelectors?: string[];
   clickSubmit?: boolean;
+  keepPendingAfterSubmit?: boolean;
+  emailPollMs?: number;
 }): Promise<boolean> {
   if (typeof window === 'undefined' || typeof window.postMessage !== 'function') return false;
 
@@ -177,6 +180,11 @@ async function triggerChromeExtensionAutologin(params: {
     submitSelectors: Array.isArray(params.submitSelectors) ? params.submitSelectors : undefined,
     successSelectors: Array.isArray(params.successSelectors) ? params.successSelectors : undefined,
     clickSubmit: params.clickSubmit !== false,
+    keepPendingAfterSubmit: params.keepPendingAfterSubmit === true,
+    emailPollMs: params.emailPollMs,
+    createdAt: Date.now(),
+    // apiBaseUrl não incluído — o background.js usa o default 'https://wa.mpr.pt'
+    // (se incluirmos window.location.origin do Electron seria localhost e falharia a validação)
   };
 
   if (!payload.username || !payload.password || !payload.loginUrl) return false;
@@ -544,7 +552,7 @@ const CUSTOMER_INGEST_TYPES: Array<{ value: CustomerIngestDocumentType; label: s
   { value: 'outros', label: 'Outros' },
 ];
 
-type CustomerModalTab = 'dados' | 'acessos' | 'contactos' | 'relacoes' | 'atividade' | 'sociedade' | 'documentos';
+type CustomerModalTab = 'dados' | 'acessos' | 'contactos' | 'relacoes' | 'atividade' | 'sociedade' | 'documentos' | 'fiscal';
 
 type CustomerTaskSummary = {
   id: string;
@@ -644,6 +652,7 @@ type CustomerFormState = {
   dataNascimento: string;
   inicioAtividade: string;
   caePrincipal: string;
+  caeDescricao: string;
   codigoReparticaoFinancas: string;
   tipoContabilidade: string;
   estadoCliente: string;
@@ -684,6 +693,7 @@ const emptyFormState = (): CustomerFormState => ({
   dataNascimento: '',
   inicioAtividade: '',
   caePrincipal: '',
+  caeDescricao: '',
   codigoReparticaoFinancas: '',
   tipoContabilidade: '',
   estadoCliente: '',
@@ -949,6 +959,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     dataNascimento: customer.dataNascimento || '',
     inicioAtividade: customer.inicioAtividade || '',
     caePrincipal: customer.caePrincipal || '',
+    caeDescricao: customer.caeDescricao || '',
     codigoReparticaoFinancas: customer.codigoReparticaoFinancas || '',
     tipoContabilidade: customer.tipoContabilidade || '',
     estadoCliente: customer.estadoCliente || '',
@@ -1256,6 +1267,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                 niss: String(suggested.niss || '').trim(),
                 morada: String(suggested.morada || '').trim(),
                 caePrincipal: String(suggested.caePrincipal || '').trim(),
+                caeDescricao: String((suggested as Customer).caeDescricao || '').trim(),
                 certidaoPermanenteNumero: String(suggested.certidaoPermanenteNumero || '').trim(),
                 certidaoPermanenteValidade: String(suggested.certidaoPermanenteValidade || '').trim(),
                 inicioAtividade: String(suggested.inicioAtividade || '').trim(),
@@ -1712,6 +1724,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       assignIfFilled('inicioAtividade');
       assignIfFilled('tipoIva');
       assignIfFilled('caePrincipal');
+      assignIfFilled('caeDescricao');
       assignIfFilled('codigoReparticaoFinancas');
       assignIfFilled('tipoContabilidade');
       if (Array.isArray(fields.managers) && fields.managers.length > 0) {
@@ -2021,6 +2034,8 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
         passwordSelectors: SEG_SOCIAL_PASSWORD_SELECTORS,
         submitSelectors: SEG_SOCIAL_SUBMIT_SELECTORS,
         successSelectors: SEG_SOCIAL_SUCCESS_SELECTORS,
+        keepPendingAfterSubmit: true,
+        emailPollMs: 60000,
       });
       if (chromeExtensionHandled) return;
       const localDesktopAutologin = hasDesktopAutologinApi ? window.waDesktop?.financasAutologin : undefined;
@@ -2030,7 +2045,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
           password: resolvedPassword,
           loginUrl,
           closeAfterSubmit: false,
-          returnAfterSubmit: true,
+          returnAfterSubmit: false,  // false = espera pelo flow completo incl. 2FA por email
           credentialLabel: 'SS',
           apiBaseUrl: window.location.origin,
           usernameSelectors: SEG_SOCIAL_USERNAME_SELECTORS,
@@ -2823,6 +2838,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       dataNascimento: String(formData.dataNascimento || '').trim(),
       inicioAtividade: String(formData.inicioAtividade || '').trim(),
       caePrincipal: String(formData.caePrincipal || '').trim(),
+      caeDescricao: String(formData.caeDescricao || '').trim(),
       codigoReparticaoFinancas: String(formData.codigoReparticaoFinancas || '').trim(),
       codigoPostal: String(formData.codigoPostal || '').trim(),
       tipoContabilidade: String(formData.tipoContabilidade || '').trim(),
@@ -3983,6 +3999,17 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                   >
                     Documentos da Pasta
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('fiscal')}
+                    className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition ${
+                      activeTab === 'fiscal'
+                        ? 'border border-green-300 bg-white text-green-700 shadow-sm'
+                        : 'text-slate-700 hover:bg-white'
+                    }`}
+                  >
+                    Resumo Fiscal
+                  </button>
                 </div>
 
               {activeTab === 'dados' && (
@@ -4156,12 +4183,22 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700">CAE Principal</label>
-                        <input
-                          type="text"
-                          className="mt-1 w-full border rounded-md p-2"
-                          value={formData.caePrincipal}
-                          onChange={(e) => setFormData({ ...formData, caePrincipal: e.target.value })}
-                        />
+                        <div className="mt-1 flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="Código"
+                            className="w-28 border rounded-md p-2 shrink-0"
+                            value={formData.caePrincipal}
+                            onChange={(e) => setFormData({ ...formData, caePrincipal: e.target.value })}
+                          />
+                          <input
+                            type="text"
+                            placeholder="Descrição"
+                            className="flex-1 border rounded-md p-2 min-w-0"
+                            value={formData.caeDescricao}
+                            onChange={(e) => setFormData({ ...formData, caeDescricao: e.target.value })}
+                          />
+                        </div>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700">Código Repartição Finanças</label>
@@ -4945,6 +4982,21 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                     </>
                   )}
                 </div>
+              )}
+
+              {activeTab === 'fiscal' && editingCustomer?.id && (
+                <CustomerFiscalSummaryTab
+                  customer={editingCustomer}
+                  anyAutomationBusy={Boolean(
+                    autologinBusyCustomerId ||
+                    segSocialAutologinBusyCustomerId ||
+                    segSocialSubUserBusyCustomerId ||
+                    segSocialActivationBusyCustomerId
+                  )}
+                  triggerFinancasAutologin={triggerFinancasAutologin}
+                  triggerSegSocialSubUserLogin={triggerSegSocialSubUserLogin}
+                  triggerSegSocialInteroperabilityInfo={triggerSegSocialInteroperabilityInfo}
+                />
               )}
 
               <div className="flex justify-end gap-2 mt-6 pt-3 border-t border-slate-200">

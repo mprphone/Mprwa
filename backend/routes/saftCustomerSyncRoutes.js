@@ -1,14 +1,12 @@
 /**
  * SAFT Customer Sync Routes — extracted from localSyncSaftRoutes.js
  * Routes: /api/users/sync, /api/users/:id/delete, /api/customers/sync,
- *         /api/customers/sync/pull, /api/customers/:id/autologin/financas,
- *         /api/customers/:id/autologin/seg-social
+ *         /api/customers/sync/saft-ss-passwords, /api/customers/sync/pull
  */
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { collectFinancasAtProfileInOracle } = require('../services/financasAtProfileOracleService');
-const { collectCertidaoPermanenteProfile, normalizeCertidaoCode } = require('../services/certidaoPermanenteService');
+const portalCredentials = require('../services/autologin/portalCredentials');
 
 function cleanText(value) {
     return String(value || '').replace(/\s+/g, ' ').trim();
@@ -17,7 +15,7 @@ function cleanText(value) {
 function foldText(value) {
     return cleanText(value)
         .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[̀-ͯ]/g, '')
         .toLowerCase();
 }
 
@@ -50,47 +48,11 @@ function todayIsoDate() {
 }
 
 function isSegSocialCredential(entry) {
-    const service = foldText(entry?.service);
-    return service === 'ss' || service.includes('seguranca social') || service.includes('seg_social');
-}
-
-function isSegSocialSubUserCredential(entry) {
-    if (!isSegSocialCredential(entry)) return false;
-    const type = foldText(entry?.credentialType || entry?.credential_type || '');
-    return type.includes('subutilizador') || type.includes('subconta') || type.includes('sub-user') || type.includes('sub user') || type === 'sub' || type.includes('sub');
-}
-
-function isUsableStatus(entry) {
-    const status = foldText(entry?.status || 'active');
-    const validUntil = cleanText(entry?.validUntil || entry?.valid_until || '');
-    return status !== 'expired' && status !== 'inactive' && status !== 'error' && (!validUntil || validUntil >= todayIsoDate());
-}
-
-function isAtCredential(entry) {
-    const service = foldText(entry?.service || '');
-    return service === 'at' || service.includes('autoridade') || service.includes('financ');
-}
-
-function resolveAtCredentialFromCustomer(customer) {
-    const credentials = Array.isArray(customer?.accessCredentials) ? customer.accessCredentials : [];
-    const atCredential = credentials.find((entry) => isAtCredential(entry) && isUsableStatus(entry)) || null;
-    const nif = onlyDigits(customer?.nif || '').slice(-9);
-    return {
-        username: cleanText(atCredential?.username || nif),
-        password: cleanText(atCredential?.password || customer?.senhaFinancas || ''),
-        nif,
-        source: atCredential ? 'access_credentials' : 'senha_financas',
-    };
+    return portalCredentials.isSegSocialCredential(entry);
 }
 
 function hasCompleteSegSocialSubUser(customer) {
-    const credentials = Array.isArray(customer?.accessCredentials) ? customer.accessCredentials : [];
-    return credentials.some((entry) => (
-        isSegSocialSubUserCredential(entry) &&
-        cleanText(entry?.username) &&
-        cleanText(entry?.password) &&
-        isUsableStatus(entry)
-    ));
+    return portalCredentials.hasCompleteSegSocialSubUser(customer);
 }
 
 function isSegSocialPrincipalCredential(entry) {
@@ -143,7 +105,6 @@ function buildSaftCredentialRecord(item) {
         ssPassword: cleanText(ssPassword),
         ssValidUntil,
         detailUrl: cleanText(item?.detailUrl || item?.['URL Ficha'] || ''),
-        error: cleanText(item?.error || ''),
     };
 }
 
@@ -262,21 +223,9 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
         getLocalCustomerBySourceId, findSupabaseCustomerRow,
         normalizeSupabaseTimestamp, materializeSupabaseRowLocally,
         pushLocalCustomerToSupabase, syncBidirectionalCustomerLinksLocal,
-        pullCustomersFromSupabaseIncremental, resolveSupabaseCustomerColumns,
-        bumpCustomersSyncWatermark, buildSupabaseCustomerPayloadFromLocal,
+        pullCustomersFromSupabaseIncremental,
         syncLocalCustomerCredentialsToSupabase,
-        splitSelectorList, resolveAtCredentialForAutologin,
-        launchFinancasBrowserWithFallback, activateFinancasNifTab,
-        findFirstVisibleSelector, clickContinueLoginIf2faPrompt,
-        resolveSsCredentialForAutologin, clickCookieConsentIfPresent,
-        openSegSocialLoginEntryIfNeeded, ensureSegSocialCredentialsFormVisible,
-        clickContinueWithoutActivatingIfPrompt,
-        isFinancasAutologinRunningRef,
     } = helpers;
-
-    /* --- replace isFinancasAutologinRunning with ref --- */
-    const isFinancasAutologinRunning_get = () => isFinancasAutologinRunningRef.value;
-    const isFinancasAutologinRunning_set = (v) => { isFinancasAutologinRunningRef.value = v; };
 
     app.post('/api/users/sync', async (req, res) => {
         const body = req.body || {};
@@ -297,14 +246,14 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
             ? body.aiAllowedSites.map((site) => String(site || '').trim()).filter(Boolean)
             : undefined;
         const shouldDelete = body.delete === true || String(body.delete || '').trim().toLowerCase() === 'true';
-    
+
         if (!userId && !sourceId && !previousEmail && !nextEmail) {
             return res.status(400).json({
                 success: false,
                 error: 'Informe id/sourceId ou email para atualizar funcionário local.',
             });
         }
-    
+
         try {
             if (shouldDelete) {
                 const deletion = await deleteUserWithSafety({
@@ -336,14 +285,14 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                 isAiAssistant: nextIsAiAssistant,
                 aiAllowedSites: nextAiAllowedSites,
             });
-    
+
             if (!normalized) {
                 return res.status(500).json({
                     success: false,
                     error: 'Não foi possível guardar funcionário no SQLite local.',
                 });
             }
-    
+
             await writeAuditLog({
                 actorUserId: body.actorUserId || userId || null,
                 entityType: 'user',
@@ -356,13 +305,13 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                     aiAllowedSitesCount: Array.isArray(normalized.aiAllowedSites) ? normalized.aiAllowedSites.length : 0,
                 },
             });
-    
+
             return res.json({
                 success: true,
                 storage: 'sqlite_local',
                 user: normalized,
             });
-            
+
         } catch (error) {
             const details = error?.message || error;
             console.error('[SQLite] Erro ao atualizar funcionário:', details);
@@ -397,14 +346,14 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
             });
         }
     });
-    
+
     app.post('/api/customers/sync', async (req, res) => {
         const body = req.body || {};
         const customerId = String(body.id || '').trim();
         const sourceId = String(body.sourceId || '').trim() || parseCustomerSourceId(customerId, '');
         const syncToSupabase = body.syncToSupabase !== false;
         const forceLocalToSupabase = body.forceLocalToSupabase === true || body.forceLocalToSupabase === 'true';
-    
+
         try {
             let conflictResolvedBySupabase = false;
             let warnings = [];
@@ -480,6 +429,7 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                 dataConstituicao: body.dataConstituicao,
                 inicioAtividade: body.inicioAtividade,
                 caePrincipal: body.caePrincipal,
+                caeDescricao: body.caeDescricao,
                 codigoReparticaoFinancas: body.codigoReparticaoFinancas,
                 tipoContabilidade: body.tipoContabilidade,
                 estadoCliente: body.estadoCliente,
@@ -493,7 +443,7 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                 contacts: body.contacts,
                 allowAutoResponses: body.allowAutoResponses,
             });
-    
+
             if (!normalized) {
                 return res.status(500).json({
                     success: false,
@@ -553,7 +503,7 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                     warnings,
                 },
             });
-    
+
             return res.json({
                 success: true,
                 storage: 'sqlite_local',
@@ -836,896 +786,6 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
             });
         }
     });
-
-    app.post('/api/customers/:id/update-from-at', async (req, res) => {
-        const customerId = String(req.params.id || '').trim();
-        const body = req.body || {};
-        const actorUserId = String(body.actorUserId || '').trim() || null;
-        if (!customerId) {
-            return res.status(400).json({ success: false, error: 'Cliente inválido.' });
-        }
-        if (isFinancasAutologinRunning_get()) {
-            return res.status(409).json({
-                success: false,
-                error: 'Já existe uma recolha AT em execução. Aguarde alguns segundos e tente novamente.',
-            });
-        }
-
-        isFinancasAutologinRunning_set(true);
-        try {
-            const customer = await getLocalCustomerById(customerId);
-            if (!customer) {
-                return res.status(404).json({ success: false, error: 'Cliente não encontrado.' });
-            }
-            const credentials = resolveAtCredentialFromCustomer(customer);
-            if (!credentials.username || !credentials.password) {
-                return res.status(400).json({ success: false, error: 'Este cliente não tem utilizador/senha AT completos na ficha.' });
-            }
-
-            const customerNif = cleanText(customer.nif || credentials.username);
-            const isCollectiveNif = /^[569]/.test(customerNif);
-            const collected = await collectFinancasAtProfileInOracle(credentials, {
-                timeoutMs: Number(body.timeoutMs || process.env.PORTAL_FINANCAS_TIMEOUT_MS || 120000) || 120000,
-                profileCollectTimeoutMs: Number(body.profileCollectTimeoutMs || 45000) || 45000,
-                headless: body.headless !== false,
-                nif: customerNif,
-                expectedEntityKind: isCollectiveNif ? 'EMPRESA' : 'PARTICULAR',
-            });
-            const fields = collected?.fields && typeof collected.fields === 'object' ? { ...collected.fields } : {};
-            const atProfileWarnings = [];
-            const hadExistingManagers = Array.isArray(customer.managers) && customer.managers.length > 0;
-
-            let certidaoFallback = null;
-            const certidaoCode = normalizeCertidaoCode(customer.certidaoPermanenteNumero || fields.certidaoPermanenteNumero || '');
-            const needsCertidaoManagers = isCollectiveNif && !hadExistingManagers && certidaoCode && !(Array.isArray(fields.managers) && fields.managers.length > 0);
-            if (needsCertidaoManagers) {
-                try {
-                    certidaoFallback = await collectCertidaoPermanenteProfile(certidaoCode, {
-                        headless: true,
-                        loadTimeoutMs: Number(body.certidaoTimeoutMs || 15000) || 15000,
-                    });
-                    const certidaoFields = certidaoFallback?.fields && typeof certidaoFallback.fields === 'object' ? certidaoFallback.fields : {};
-                    Object.entries(certidaoFields).forEach(([key, value]) => {
-                        if (key === 'managers') {
-                            if (Array.isArray(value) && value.length > 0) fields.managers = value;
-                            return;
-                        }
-                        if (!cleanText(fields[key]) && cleanText(value)) fields[key] = value;
-                    });
-                } catch (certidaoError) {
-                    certidaoFallback = { success: false, warning: String(certidaoError?.message || certidaoError) };
-                }
-            }
-            if (isCollectiveNif && !hadExistingManagers && !(Array.isArray(fields.managers) && fields.managers.length > 0)) {
-                if (certidaoCode) {
-                    atProfileWarnings.push('Gerência não encontrada na AT; confirme se a Certidão Permanente registada está válida.');
-                } else {
-                    atProfileWarnings.push('Gerência não encontrada na AT e sem Certidão Permanente registada para segunda fonte.');
-                }
-            } else if (needsCertidaoManagers && Array.isArray(fields.managers) && fields.managers.length > 0) {
-                atProfileWarnings.push('Gerência obtida pela Certidão Permanente.');
-            }
-
-            const updates = {};
-            ['morada', 'codigoPostal', 'dataNascimento', 'dataConstituicao', 'inicioAtividade', 'tipoIva', 'caePrincipal', 'codigoReparticaoFinancas', 'tipoContabilidade', 'certidaoPermanenteValidade'].forEach((key) => {
-                const value = cleanText(fields[key]);
-                if (value) updates[key] = value;
-            });
-
-            const normalizeNif = (value) => {
-                const digits = String(value || '').replace(/\D+/g, '');
-                return digits.length >= 9 ? digits.slice(-9) : '';
-            };
-            const normalizeManager = (manager) => {
-                const name = cleanText(manager?.name || manager?.nome);
-                const nif = normalizeNif(manager?.nif || manager?.vat || manager?.taxId || manager?.tax_id);
-                const email = String(manager?.email || '').trim().toLowerCase();
-                const phone = String(manager?.phone || manager?.telefone || '').trim();
-                if (!name && !nif && !email && !phone) return null;
-                return { name, nif, email, phone };
-            };
-            const mergeManagers = (existing = [], incoming = []) => {
-                const merged = [];
-                const upsert = (manager) => {
-                    const normalized = normalizeManager(manager);
-                    if (!normalized) return;
-                    const key = normalized.nif || cleanText(normalized.name).toLowerCase();
-                    const index = merged.findIndex((item) => {
-                        const itemKey = item.nif || cleanText(item.name).toLowerCase();
-                        return key && itemKey === key;
-                    });
-                    const filled = Object.fromEntries(
-                        Object.entries(normalized).filter(([, value]) => cleanText(value))
-                    );
-                    if (index >= 0) merged[index] = { ...merged[index], ...filled };
-                    else merged.push(normalized);
-                };
-                (Array.isArray(existing) ? existing : []).forEach(upsert);
-                (Array.isArray(incoming) ? incoming : []).forEach(upsert);
-                return merged;
-            };
-            const collectedManagers = Array.isArray(fields.managers) ? fields.managers : [];
-            if (collectedManagers.length > 0) {
-                const managers = mergeManagers(customer.managers || [], collectedManagers);
-                if (managers.length > 0) updates.managers = managers;
-            }
-
-            if (Object.keys(updates).length === 0) {
-                return res.status(422).json({
-                    success: false,
-                    error: collected?.message || 'Login AT feito no Oracle, mas não encontrei dados fiscais para atualizar.',
-                    sourceUrl: collected?.sourceUrl || '',
-                    attempts: collected?.attempts || [],
-                });
-            }
-
-            const saved = await upsertLocalCustomer({
-                ...customer,
-                ...updates,
-                id: customer.id,
-                sourceId: customer.sourceId,
-            });
-            let supabase = null;
-            if (hasSupabaseCustomersSync()) {
-                try {
-                    const tableColumns = await fetchSupabaseTableColumns(SUPABASE_CLIENTS_SOURCE).catch(() => []);
-                    supabase = await pushLocalCustomerToSupabase(saved, tableColumns);
-                } catch (syncError) {
-                    supabase = { success: false, warning: String(syncError?.message || syncError) };
-                }
-            }
-
-            if (actorUserId) {
-                await writeAuditLog({
-                    actorUserId,
-                    entityType: 'customer',
-                    entityId: customer.id,
-                    action: 'update_from_at',
-                    details: { fields: updates, sourceUrl: collected?.sourceUrl || '', certidaoSourceUrl: certidaoFallback?.sourceUrl || '' },
-                }).catch(() => null);
-            }
-
-            const messageSuffix = atProfileWarnings.length ? ` ${atProfileWarnings.join(' ')}` : '';
-            return res.json({
-                success: true,
-                fields: updates,
-                customer: saved,
-                sourceUrl: collected?.sourceUrl || '',
-                certidaoSourceUrl: certidaoFallback?.sourceUrl || '',
-                warnings: atProfileWarnings,
-                message: `Dados AT atualizados (${Object.keys(updates).length} campo(s)).${messageSuffix}`,
-                supabase,
-            });
-        } catch (error) {
-            const details = String(error?.message || error || 'Falha ao recolher dados da AT no Oracle.');
-            console.error('[AT Profile] Erro na recolha Oracle:', details);
-            return res.status(500).json({ success: false, error: details });
-        } finally {
-            isFinancasAutologinRunning_set(false);
-        }
-    });
-
-    app.post('/api/customers/:id/autologin/financas', async (req, res) => {
-        const customerId = String(req.params.id || '').trim();
-        const body = req.body || {};
-        const actorUserId = String(body.actorUserId || '').trim() || null;
-
-        if (!customerId) {
-            return res.status(400).json({ success: false, error: 'Cliente inválido.' });
-        }
-        if (isFinancasAutologinRunning_get()) {
-            return res.status(409).json({
-                success: false,
-                error: 'Já existe um autologin em execução. Aguarde alguns segundos e tente novamente.',
-            });
-        }
-
-        let playwright = null;
-        try {
-            playwright = require('playwright');
-        } catch (error) {
-            return res.status(500).json({
-                success: false,
-                error: 'Playwright não instalado neste ambiente. Execute: npm i playwright && npx playwright install chromium',
-            });
-        }
-
-        const loginUrl = String(process.env.PORTAL_FINANCAS_LOGIN_URL || 'https://www.acesso.gov.pt/v2/loginForm?partID=PFAP').trim();
-        const targetUrl = String(process.env.PORTAL_FINANCAS_TARGET_URL || '').trim();
-        const envHeadless = String(process.env.PORTAL_FINANCAS_HEADLESS || 'false').trim().toLowerCase() === 'true';
-        const hasDesktopSession = Boolean(String(process.env.DISPLAY || process.env.WAYLAND_DISPLAY || '').trim());
-        const bodyHeadless =
-            body?.headless === true ? true : body?.headless === false ? false : null;
-        const headless = bodyHeadless === null ? (hasDesktopSession ? envHeadless : true) : bodyHeadless;
-        const forcedHeadlessByServer = bodyHeadless === null && !hasDesktopSession && !envHeadless;
-        if (bodyHeadless === false && !hasDesktopSession) {
-            return res.status(409).json({
-                success: false,
-                code: 'NO_GUI_SESSION',
-                error: 'Este servidor não tem sessão gráfica ativa (X11/Wayland), por isso não consegue abrir browser visível aqui.',
-                loginUrl,
-            });
-        }
-        const envCloseAfterSubmit =
-            String(process.env.PORTAL_FINANCAS_CLOSE_AFTER_SUBMIT || '').trim().toLowerCase() === 'true';
-        const bodyCloseAfterSubmit =
-            body?.closeAfterSubmit === true ? true : body?.closeAfterSubmit === false ? false : null;
-        const closeBrowserAfterSubmit = bodyCloseAfterSubmit === null ? envCloseAfterSubmit : bodyCloseAfterSubmit;
-        const timeoutMs = Math.max(
-            20000,
-            Math.min(180000, Number(process.env.PORTAL_FINANCAS_TIMEOUT_MS || 90000) || 90000)
-        );
-
-        const usernameSelectors = splitSelectorList(
-            process.env.PORTAL_FINANCAS_USERNAME_SELECTOR,
-            'form[name="loginForm"] input[name="username"], input[name="username"], input[placeholder*="Contribuinte"], input[aria-label*="Contribuinte"], input[name="representante"], input[name="nif"], input[type="text"]'
-        );
-        const passwordSelectors = splitSelectorList(
-            process.env.PORTAL_FINANCAS_PASSWORD_SELECTOR,
-            'form[name="loginForm"] input[name="password"], input[name="password"], input[placeholder*="Senha"], input[type="password"]'
-        );
-        const submitSelectors = splitSelectorList(
-            process.env.PORTAL_FINANCAS_SUBMIT_SELECTOR,
-            'form[name="loginForm"] button[type="submit"], form[name="loginForm"] input[type="submit"], button[type="submit"], input[type="submit"], button:has-text("Autenticar")'
-        );
-        const successSelectors = splitSelectorList(
-            process.env.PORTAL_FINANCAS_SUCCESS_SELECTOR,
-            'a[href*="logout"], a[href*="/v2/logout"], [data-testid="logout"], .logout'
-        );
-
-        let browser = null;
-        let browserLauncherLabel = '';
-        try {
-            const customer = await getLocalCustomerById(customerId);
-            if (!customer) {
-                return res.status(404).json({ success: false, error: 'Cliente não encontrado.' });
-            }
-
-            const resolvedAt = resolveAtCredentialForAutologin(customer);
-            if (!resolvedAt.username || !resolvedAt.password) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Este cliente não tem utilizador/senha AT completos na ficha.',
-                });
-            }
-
-            isFinancasAutologinRunning_set(true);
-            const launched = await launchFinancasBrowserWithFallback(playwright, {
-                headless,
-                args: headless ? [] : ['--start-maximized'],
-            });
-            browser = launched.browser;
-            browserLauncherLabel = String(launched.launcherLabel || '').trim();
-
-            const contextOptions = { acceptDownloads: false };
-            if (!headless) {
-                contextOptions.viewport = null;
-            }
-            const context = await browser.newContext(contextOptions);
-            const page = await context.newPage();
-            page.setDefaultTimeout(timeoutMs);
-
-            await page.goto(loginUrl, { waitUntil: 'domcontentloaded' });
-            await activateFinancasNifTab(page);
-
-            const usernameSelector = await findFirstVisibleSelector(page, usernameSelectors);
-            const passwordSelector = await findFirstVisibleSelector(page, passwordSelectors);
-            const submitSelector = await findFirstVisibleSelector(page, submitSelectors);
-
-            if (!usernameSelector || !passwordSelector || !submitSelector) {
-                throw new Error('Não foi possível localizar os campos de login da AT. Verifique os seletores configurados.');
-            }
-
-            await page.fill(usernameSelector, resolvedAt.username);
-            await page.fill(passwordSelector, resolvedAt.password);
-
-            await Promise.allSettled([
-                page.waitForLoadState('networkidle', { timeout: Math.min(30000, timeoutMs) }),
-                page.locator(submitSelector).first().click(),
-            ]);
-
-            await clickContinueLoginIf2faPrompt(page, Math.min(12000, timeoutMs));
-
-            if (targetUrl) {
-                await page.goto(targetUrl, { waitUntil: 'domcontentloaded' }).catch(() => null);
-            }
-
-            const matchedSuccessSelector = await findFirstVisibleSelector(page, successSelectors);
-            const hasPasswordInputAfterSubmit = (await page.locator('input[type="password"]').count()) > 0;
-            const loginState = matchedSuccessSelector
-                ? 'logged_in'
-                : hasPasswordInputAfterSubmit
-                    ? 'needs_manual_validation'
-                    : 'unknown';
-
-            await writeAuditLog({
-                actorUserId,
-                entityType: 'customer',
-                entityId: customer.id,
-                action: 'autologin_financas',
-                details: {
-                    loginState,
-                    headless,
-                    browserLauncherLabel: browserLauncherLabel || null,
-                    customerNif: resolvedAt.nif || null,
-                    usernameMask: resolvedAt.username ? `***${resolvedAt.username.slice(-3)}` : null,
-                    source: resolvedAt.source,
-                },
-            });
-
-            const shouldCloseBrowser = headless || closeBrowserAfterSubmit;
-            if (shouldCloseBrowser) {
-                await browser.close().catch(() => null);
-                browser = null;
-            }
-
-            return res.json({
-                success: true,
-                channel: 'portal_financas',
-                headless,
-                loginState,
-                browserLauncherLabel: browserLauncherLabel || null,
-                forcedHeadlessByServer,
-                message: shouldCloseBrowser
-                    ? 'Autologin executado. Browser fechado automaticamente.'
-                    : 'Autologin iniciado. O browser foi aberto neste computador.',
-                warning: forcedHeadlessByServer
-                    ? 'Servidor sem sessão gráfica ativa: autologin executado em modo headless.'
-                    : undefined,
-            });
-        } catch (error) {
-            const details = error?.message || error;
-            console.error('[AT Autologin] Erro:', details);
-            if (browser) {
-                await browser.close().catch(() => null);
-            }
-            return res.status(500).json({
-                success: false,
-                error: details,
-            });
-        } finally {
-            isFinancasAutologinRunning_set(false);
-        }
-    });
-
-    app.post('/api/customers/:id/autologin/seg-social', async (req, res) => {
-        const customerId = String(req.params.id || '').trim();
-        const body = req.body || {};
-        const actorUserId = String(body.actorUserId || '').trim() || null;
-
-        if (!customerId) {
-            return res.status(400).json({ success: false, error: 'Cliente inválido.' });
-        }
-        if (isFinancasAutologinRunning_get()) {
-            return res.status(409).json({
-                success: false,
-                error: 'Já existe um autologin em execução. Aguarde alguns segundos e tente novamente.',
-            });
-        }
-
-        let playwright = null;
-        try {
-            playwright = require('playwright');
-        } catch (error) {
-            return res.status(500).json({
-                success: false,
-                error: 'Playwright não instalado neste ambiente. Execute: npm i playwright && npx playwright install chromium',
-            });
-        }
-
-        const loginUrl = String(
-            process.env.PORTAL_SEG_SOCIAL_LOGIN_URL || 'https://www.seg-social.pt/sso/login?service=https%3A%2F%2Fwww.seg-social.pt%2Fptss%2Fcaslogin'
-        ).trim();
-        const targetUrl = String(process.env.PORTAL_SEG_SOCIAL_TARGET_URL || '').trim();
-        const envHeadless = String(process.env.PORTAL_SEG_SOCIAL_HEADLESS || 'false').trim().toLowerCase() === 'true';
-        const hasDesktopSession = Boolean(String(process.env.DISPLAY || process.env.WAYLAND_DISPLAY || '').trim());
-        const bodyHeadless =
-            body?.headless === true ? true : body?.headless === false ? false : null;
-        const headless = bodyHeadless === null ? (hasDesktopSession ? envHeadless : true) : bodyHeadless;
-        const forcedHeadlessByServer = bodyHeadless === null && !hasDesktopSession && !envHeadless;
-        if (bodyHeadless === false && !hasDesktopSession) {
-            return res.status(409).json({
-                success: false,
-                code: 'NO_GUI_SESSION',
-                error: 'Este servidor não tem sessão gráfica ativa (X11/Wayland), por isso não consegue abrir browser visível aqui.',
-                loginUrl,
-            });
-        }
-        const envCloseAfterSubmit =
-            String(process.env.PORTAL_SEG_SOCIAL_CLOSE_AFTER_SUBMIT || '').trim().toLowerCase() === 'true';
-        const bodyCloseAfterSubmit =
-            body?.closeAfterSubmit === true ? true : body?.closeAfterSubmit === false ? false : null;
-        const closeBrowserAfterSubmit = bodyCloseAfterSubmit === null ? envCloseAfterSubmit : bodyCloseAfterSubmit;
-        const timeoutMs = Math.max(
-            20000,
-            Math.min(180000, Number(process.env.PORTAL_SEG_SOCIAL_TIMEOUT_MS || 90000) || 90000)
-        );
-
-        const usernameSelectors = splitSelectorList(
-            process.env.PORTAL_SEG_SOCIAL_USERNAME_SELECTOR,
-            'input[name="username"], input[name="niss"], input[id*="username" i], input[name*="user" i], input[id*="utilizador" i], input[name*="utilizador" i], input[id*="niss" i], input[placeholder*="NISS" i], input[autocomplete="username"]'
-        );
-        const passwordSelectors = splitSelectorList(
-            process.env.PORTAL_SEG_SOCIAL_PASSWORD_SELECTOR,
-            'input[name="password"], input[id*="password" i], input[placeholder*="senha" i], input[type="password"]'
-        );
-        const submitSelectors = splitSelectorList(
-            process.env.PORTAL_SEG_SOCIAL_SUBMIT_SELECTOR,
-            'button[type="submit"], input[type="submit"], button:has-text("Entrar"), button:has-text("Iniciar sessão"), button:has-text("Autenticar"), button:has-text("Continuar")'
-        );
-        const successSelectors = splitSelectorList(
-            process.env.PORTAL_SEG_SOCIAL_SUCCESS_SELECTOR,
-            'a[href*="logout"], a[href*="sair"], button:has-text("Terminar sessão"), button:has-text("Sair"), [data-testid*="logout"]'
-        );
-
-        let browser = null;
-        let browserLauncherLabel = '';
-        try {
-            const customer = await getLocalCustomerById(customerId);
-            if (!customer) {
-                return res.status(404).json({ success: false, error: 'Cliente não encontrado.' });
-            }
-
-            const resolvedSs = resolveSsCredentialForAutologin(customer);
-            if (!resolvedSs.username || !resolvedSs.password) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Este cliente não tem utilizador/senha SS Direta completos na ficha.',
-                });
-            }
-
-            isFinancasAutologinRunning_set(true);
-            const launched = await launchFinancasBrowserWithFallback(playwright, {
-                headless,
-                args: headless ? [] : ['--start-maximized'],
-                browserExecutablePath: String(process.env.PORTAL_SEG_SOCIAL_BROWSER_EXECUTABLE || '').trim() || undefined,
-            });
-            browser = launched.browser;
-            browserLauncherLabel = String(launched.launcherLabel || '').trim();
-
-            const contextOptions = { acceptDownloads: false };
-            if (!headless) {
-                contextOptions.viewport = null;
-            }
-            const context = await browser.newContext(contextOptions);
-            const page = await context.newPage();
-            page.setDefaultTimeout(timeoutMs);
-
-            await page.goto(loginUrl, { waitUntil: 'domcontentloaded' });
-            await clickCookieConsentIfPresent(page, 2500);
-            await openSegSocialLoginEntryIfNeeded(page, Math.min(12000, timeoutMs));
-            await ensureSegSocialCredentialsFormVisible(page, Math.min(12000, timeoutMs));
-
-            const usernameSelector = await findFirstVisibleSelector(page, usernameSelectors);
-            const passwordSelector = await findFirstVisibleSelector(page, passwordSelectors);
-            const submitSelector = await findFirstVisibleSelector(page, submitSelectors);
-
-            if (!usernameSelector || !passwordSelector || !submitSelector) {
-                throw new Error('Não foi possível localizar os campos de login da SS Direta. Verifique os seletores configurados.');
-            }
-
-            await page.fill(usernameSelector, resolvedSs.username);
-            await page.fill(passwordSelector, resolvedSs.password);
-
-            await Promise.allSettled([
-                page.waitForLoadState('networkidle', { timeout: Math.min(30000, timeoutMs) }),
-                page.locator(submitSelector).first().click(),
-            ]);
-
-            await clickContinueLoginIf2faPrompt(page, Math.min(12000, timeoutMs));
-            await clickContinueWithoutActivatingIfPrompt(page, Math.min(18000, timeoutMs));
-
-            if (targetUrl) {
-                await page.goto(targetUrl, { waitUntil: 'domcontentloaded' }).catch(() => null);
-            }
-
-            const matchedSuccessSelector = await findFirstVisibleSelector(page, successSelectors);
-            const hasPasswordInputAfterSubmit = (await page.locator('input[type="password"]').count()) > 0;
-            const loginState = matchedSuccessSelector
-                ? 'logged_in'
-                : hasPasswordInputAfterSubmit
-                    ? 'needs_manual_validation'
-                    : 'unknown';
-
-            await writeAuditLog({
-                actorUserId,
-                entityType: 'customer',
-                entityId: customer.id,
-                action: 'autologin_seg_social',
-                details: {
-                    loginState,
-                    headless,
-                    browserLauncherLabel: browserLauncherLabel || null,
-                    customerNiss: resolvedSs.niss || null,
-                    usernameMask: resolvedSs.username ? `***${resolvedSs.username.slice(-3)}` : null,
-                    source: resolvedSs.source,
-                },
-            });
-
-            const shouldCloseBrowser = headless || closeBrowserAfterSubmit;
-            if (shouldCloseBrowser) {
-                await browser.close().catch(() => null);
-                browser = null;
-            }
-
-            return res.json({
-                success: true,
-                channel: 'seguranca_social_direta',
-                headless,
-                loginState,
-                browserLauncherLabel: browserLauncherLabel || null,
-                forcedHeadlessByServer,
-                message: shouldCloseBrowser
-                    ? 'Autologin executado. Browser fechado automaticamente.'
-                    : 'Autologin iniciado. O browser foi aberto neste computador.',
-                warning: forcedHeadlessByServer
-                    ? 'Servidor sem sessão gráfica ativa: autologin executado em modo headless.'
-                    : undefined,
-            });
-        } catch (error) {
-            const details = error?.message || error;
-            console.error('[SS Autologin] Erro:', details);
-            if (browser) {
-                await browser.close().catch(() => null);
-            }
-            return res.status(500).json({
-                success: false,
-                error: details,
-            });
-        } finally {
-            isFinancasAutologinRunning_set(false);
-        }
-    });
-
-    app.post('/api/customers/:id/seg-social/subuser/setup', async (req, res) => {
-        const customerId = String(req.params.id || '').trim();
-        const body = req.body || {};
-        const actorUserId = String(body.actorUserId || '').trim() || null;
-
-        if (!customerId) {
-            return res.status(400).json({ success: false, error: 'Cliente inválido.' });
-        }
-        if (isFinancasAutologinRunning_get()) {
-            return res.status(409).json({
-                success: false,
-                error: 'Já existe uma automação em execução. Aguarde alguns segundos e tente novamente.',
-            });
-        }
-
-        let playwright = null;
-        try {
-            playwright = require('playwright');
-        } catch (error) {
-            return res.status(500).json({
-                success: false,
-                error: 'Playwright não instalado neste ambiente. Execute: npm i playwright && npx playwright install chromium',
-            });
-        }
-
-        const normalizeText = (value) => String(value || '')
-            .trim()
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .toLowerCase();
-        const todayIso = () => new Date().toISOString().slice(0, 10);
-        const addMonthsIso = (months) => {
-            const date = new Date();
-            date.setMonth(date.getMonth() + months);
-            return date.toISOString().slice(0, 10);
-        };
-        const todayPt = () => {
-            const [year, month, day] = todayIso().split('-');
-            return `${day}/${month}/${year}`;
-        };
-        const isSegSocialCredential = (entry) => {
-            const service = normalizeText(entry?.service);
-            return service === 'ss' || service.includes('seguranca social') || service.includes('seg_social');
-        };
-        const isPrincipalCredential = (entry) => {
-            const credentialType = normalizeText(entry?.credentialType || entry?.credential_type);
-            return isSegSocialCredential(entry) && (credentialType === 'principal' || (!credentialType && !normalizeText(entry?.status).includes('sub')));
-        };
-        const randomPassword = () => {
-            const crypto = require('crypto');
-            const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-            const suffix = Array.from(crypto.randomBytes(8))
-                .map((byte) => alphabet[byte % alphabet.length])
-                .join('');
-            return `Mpr${new Date().getFullYear()}!${suffix}`;
-        };
-        const upsertCredential = (credentials, next) => {
-            const normalizedType = normalizeText(next.credentialType);
-            const normalizedService = normalizeText(next.service);
-            const normalizedEmail = normalizeText(next.emailAssociado);
-            const normalizedUsername = normalizeText(next.username);
-            const index = credentials.findIndex((entry) => (
-                normalizeText(entry?.service) === normalizedService &&
-                normalizeText(entry?.credentialType || entry?.credential_type) === normalizedType &&
-                (
-                    (normalizedEmail && normalizeText(entry?.emailAssociado || entry?.email_associado) === normalizedEmail) ||
-                    (normalizedUsername && normalizeText(entry?.username) === normalizedUsername)
-                )
-            ));
-            if (index >= 0) {
-                credentials[index] = { ...credentials[index], ...next };
-            } else {
-                credentials.push(next);
-            }
-            return credentials;
-        };
-        const clickFirst = async (page, builders, timeoutMs = 2500) => {
-            for (const build of builders) {
-                try {
-                    const locator = build().first();
-                    if ((await locator.count()) <= 0) continue;
-                    const visible = await locator.isVisible().catch(() => false);
-                    if (!visible) continue;
-                    await locator.click({ timeout: timeoutMs });
-                    await page.waitForTimeout(700);
-                    return true;
-                } catch (error) {
-                    // tenta próximo candidato
-                }
-            }
-            return false;
-        };
-        const fillFirst = async (page, builders, value) => {
-            for (const build of builders) {
-                try {
-                    const locator = build().first();
-                    if ((await locator.count()) <= 0) continue;
-                    const visible = await locator.isVisible().catch(() => false);
-                    if (!visible) continue;
-                    await locator.fill(String(value || ''), { timeout: 2500 });
-                    return true;
-                } catch (error) {
-                    // tenta próximo candidato
-                }
-            }
-            return false;
-        };
-
-        const loginUrl = String(
-            process.env.PORTAL_SEG_SOCIAL_LOGIN_URL || 'https://www.seg-social.pt/sso/login?service=https%3A%2F%2Fwww.seg-social.pt%2Fptss%2Fcaslogin'
-        ).trim();
-        const envHeadless = String(process.env.PORTAL_SEG_SOCIAL_HEADLESS || 'false').trim().toLowerCase() === 'true';
-        const hasDesktopSession = Boolean(String(process.env.DISPLAY || process.env.WAYLAND_DISPLAY || '').trim());
-        const bodyHeadless = body?.headless === true ? true : body?.headless === false ? false : null;
-        const headless = bodyHeadless === null ? (hasDesktopSession ? envHeadless : true) : bodyHeadless;
-        const forcedHeadlessByServer = bodyHeadless === null && !hasDesktopSession && !envHeadless;
-        if (bodyHeadless === false && !hasDesktopSession) {
-            return res.status(409).json({
-                success: false,
-                code: 'NO_GUI_SESSION',
-                error: 'Este servidor não tem sessão gráfica ativa (X11/Wayland), por isso não consegue abrir browser visível aqui.',
-                loginUrl,
-            });
-        }
-        const closeBrowserAfterSubmit = body?.closeAfterSubmit === true;
-        const timeoutMs = Math.max(
-            30000,
-            Math.min(240000, Number(process.env.PORTAL_SEG_SOCIAL_TIMEOUT_MS || 120000) || 120000)
-        );
-        const usernameSelectors = splitSelectorList(
-            process.env.PORTAL_SEG_SOCIAL_USERNAME_SELECTOR,
-            'input[name="username"], input[name="niss"], input[id*="username" i], input[name*="user" i], input[id*="utilizador" i], input[name*="utilizador" i], input[id*="niss" i], input[placeholder*="NISS" i], input[autocomplete="username"]'
-        );
-        const passwordSelectors = splitSelectorList(
-            process.env.PORTAL_SEG_SOCIAL_PASSWORD_SELECTOR,
-            'input[name="password"], input[id*="password" i], input[placeholder*="senha" i], input[type="password"]'
-        );
-        const submitSelectors = splitSelectorList(
-            process.env.PORTAL_SEG_SOCIAL_SUBMIT_SELECTOR,
-            'button[type="submit"], input[type="submit"], button:has-text("Entrar"), button:has-text("Iniciar sessão"), button:has-text("Autenticar"), button:has-text("Continuar")'
-        );
-
-        let browser = null;
-        let browserLauncherLabel = '';
-        let shouldKeepBrowserOpen = false;
-        let stage = 'started';
-        try {
-            const customer = await getLocalCustomerById(customerId);
-            if (!customer) {
-                return res.status(404).json({ success: false, error: 'Cliente não encontrado.' });
-            }
-
-            const credentials = Array.isArray(customer.accessCredentials) ? customer.accessCredentials.map((entry) => ({ ...entry })) : [];
-            const principal = credentials.find(isPrincipalCredential) || null;
-            const niss = String(customer.niss || '').replace(/\D/g, '').trim();
-            const principalUsername = String(principal?.username || niss || '').trim();
-            const principalPassword = String(principal?.password || customer.senhaSegurancaSocial || '').trim();
-            if (!principalUsername || !principalPassword) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Este cliente precisa de utilizador/senha principal da Segurança Social antes de criar subutilizador.',
-                });
-            }
-
-            const subEmail = String(body.subEmail || process.env.SEG_SOCIAL_SUBUSER_EMAIL || 'geral@mpr.pt').trim().toLowerCase();
-            const subUsername = niss ? `${niss}_1` : subEmail;
-            const subPassword = randomPassword();
-            const now = todayIso();
-            const validUntil = addMonthsIso(6);
-            const nextCredentials = upsertCredential(credentials, {
-                service: 'Segurança Social',
-                credentialType: 'subutilizador',
-                username: subUsername,
-                password: subPassword,
-                emailAssociado: subEmail,
-                validFrom: now,
-                validUntil: '',
-                status: 'pending',
-                observacoes: 'Subutilizador criado/ativado pelo assistente. Confirmar no portal antes de usar em produção.',
-            });
-            upsertCredential(nextCredentials, {
-                service: 'Segurança Social',
-                credentialType: '2fa',
-                username: subUsername,
-                password: '',
-                emailAssociado: subEmail,
-                validFrom: now,
-                validUntil: '',
-                status: 'pending',
-                observacoes: 'Ativar 2FA do subutilizador com código recebido por email.',
-            });
-            upsertCredential(nextCredentials, {
-                service: 'Segurança Social',
-                credentialType: 'chave_aplicacional',
-                username: subUsername,
-                password: '',
-                emailAssociado: subEmail,
-                validFrom: now,
-                validUntil,
-                status: 'pending',
-                observacoes: 'Gerar a chave aplicacional no portal e copiar no momento em que aparece.',
-            });
-
-            await upsertLocalCustomer({
-                ...customer,
-                accessCredentials: nextCredentials,
-            });
-
-            isFinancasAutologinRunning_set(true);
-            const launched = await launchFinancasBrowserWithFallback(playwright, {
-                headless,
-                args: headless ? [] : ['--start-maximized'],
-                browserExecutablePath: String(process.env.PORTAL_SEG_SOCIAL_BROWSER_EXECUTABLE || '').trim() || undefined,
-            });
-            browser = launched.browser;
-            browserLauncherLabel = String(launched.launcherLabel || '').trim();
-
-            const contextOptions = { acceptDownloads: false };
-            if (!headless) {
-                contextOptions.viewport = null;
-            }
-            const context = await browser.newContext(contextOptions);
-            const page = await context.newPage();
-            page.setDefaultTimeout(timeoutMs);
-
-            stage = 'login_principal';
-            await page.goto(loginUrl, { waitUntil: 'domcontentloaded' });
-            await clickCookieConsentIfPresent(page, 2500);
-            await openSegSocialLoginEntryIfNeeded(page, Math.min(12000, timeoutMs));
-            await ensureSegSocialCredentialsFormVisible(page, Math.min(12000, timeoutMs));
-
-            const usernameSelector = await findFirstVisibleSelector(page, usernameSelectors);
-            const passwordSelector = await findFirstVisibleSelector(page, passwordSelectors);
-            const submitSelector = await findFirstVisibleSelector(page, submitSelectors);
-            if (!usernameSelector || !passwordSelector || !submitSelector) {
-                throw new Error('Não foi possível localizar os campos de login da SS Direta.');
-            }
-            await page.fill(usernameSelector, principalUsername);
-            await page.fill(passwordSelector, principalPassword);
-            await Promise.allSettled([
-                page.waitForLoadState('networkidle', { timeout: Math.min(30000, timeoutMs) }),
-                page.locator(submitSelector).first().click(),
-            ]);
-            await clickContinueLoginIf2faPrompt(page, Math.min(12000, timeoutMs));
-            await clickContinueWithoutActivatingIfPrompt(page, Math.min(18000, timeoutMs));
-
-            stage = 'gestao_acessos';
-            await clickFirst(page, [
-                () => page.getByRole('button', { name: /perfil|utilizador|área de acesso|area de acesso/i }),
-                () => page.getByRole('link', { name: /perfil|utilizador|área de acesso|area de acesso/i }),
-                () => page.locator('button, a, [role="button"]', { hasText: /perfil|utilizador|área de acesso|area de acesso/i }),
-            ], 3500);
-            await clickFirst(page, [
-                () => page.getByRole('link', { name: /gest[aã]o de acessos?/i }),
-                () => page.getByRole('button', { name: /gest[aã]o de acessos?/i }),
-                () => page.locator('a, button, [role="button"]', { hasText: /gest[aã]o de acessos?/i }),
-            ], 3500);
-            await clickFirst(page, [
-                () => page.getByRole('link', { name: /gerir subcontas|subcontas|subconta|utilizadores de empresa/i }),
-                () => page.getByRole('button', { name: /gerir subcontas|subcontas|subconta|utilizadores de empresa/i }),
-                () => page.locator('a, button, [role="button"]', { hasText: /gerir subcontas|subcontas|subconta|utilizadores de empresa/i }),
-            ], 3500);
-            await clickFirst(page, [
-                () => page.getByRole('button', { name: /adicionar utilizador|adicionar subconta|adicionar/i }),
-                () => page.getByRole('link', { name: /adicionar utilizador|adicionar subconta|adicionar/i }),
-                () => page.locator('button, a, [role="button"]', { hasText: /adicionar utilizador|adicionar subconta|adicionar/i }),
-            ], 3500);
-
-            stage = 'preencher_subutilizador';
-            await fillFirst(page, [
-                () => page.getByLabel(/nome/i),
-                () => page.locator('input[name*="nome" i], input[id*="nome" i], input[placeholder*="nome" i]'),
-            ], customer.company || customer.name || 'MPR');
-            await fillFirst(page, [
-                () => page.getByLabel(/email|e-mail|correio/i),
-                () => page.locator('input[type="email"], input[name*="email" i], input[id*="email" i], input[placeholder*="email" i]'),
-            ], subEmail);
-            await fillFirst(page, [
-                () => page.getByLabel(/data.*in[ií]cio|in[ií]cio/i),
-                () => page.locator('input[name*="inicio" i], input[id*="inicio" i], input[placeholder*="início" i], input[placeholder*="inicio" i]'),
-            ], todayPt());
-            await fillFirst(page, [
-                () => page.getByLabel(/data.*fim|fim/i),
-                () => page.locator('input[name*="fim" i], input[id*="fim" i], input[placeholder*="fim" i]'),
-            ], '');
-
-            const clickedNext = await clickFirst(page, [
-                () => page.getByRole('button', { name: /seguinte|continuar|pr[oó]ximo/i }),
-                () => page.locator('button, input[type="submit"], a', { hasText: /seguinte|continuar|pr[oó]ximo/i }),
-            ], 3500);
-            if (clickedNext) {
-                stage = 'confirmar_criacao';
-                await clickFirst(page, [
-                    () => page.getByRole('button', { name: /confirmar|submeter|criar|adicionar/i }),
-                    () => page.locator('button, input[type="submit"], a', { hasText: /confirmar|submeter|criar|adicionar/i }),
-                ], 3500);
-            }
-
-            await writeAuditLog({
-                actorUserId,
-                entityType: 'customer',
-                entityId: customer.id,
-                action: 'seg_social_subuser_setup',
-                details: {
-                    stage,
-                    headless,
-                    subEmail,
-                    subUsername,
-                    validUntil,
-                    browserLauncherLabel: browserLauncherLabel || null,
-                },
-            });
-
-            const shouldCloseBrowser = headless || closeBrowserAfterSubmit;
-            shouldKeepBrowserOpen = !shouldCloseBrowser;
-            if (shouldCloseBrowser) {
-                await browser.close().catch(() => null);
-                browser = null;
-            }
-
-            return res.json({
-                success: true,
-                channel: 'seguranca_social_direta',
-                stage,
-                headless,
-                forcedHeadlessByServer,
-                subEmail,
-                subUsername,
-                appKeyValidUntil: validUntil,
-                message: shouldCloseBrowser
-                    ? 'Assistente de subutilizador executado e credenciais pendentes guardadas.'
-                    : 'Assistente iniciado. O browser ficou aberto para confirmares a criação, ativação, 2FA e chave aplicacional.',
-            });
-        } catch (error) {
-            const details = error?.message || error;
-            console.error('[SS Subutilizador] Erro:', details);
-            if (browser && !shouldKeepBrowserOpen) {
-                await browser.close().catch(() => null);
-            }
-            return res.status(500).json({
-                success: false,
-                stage,
-                error: details,
-            });
-        } finally {
-            isFinancasAutologinRunning_set(false);
-        }
-    });
-    
 }
 
 module.exports = { registerSaftCustomerSyncRoutes };

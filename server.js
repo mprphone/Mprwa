@@ -15,6 +15,7 @@ const { createSupabaseClient } = require('./src/server/services/supabaseClient')
 const { createRobotService } = require('./src/server/services/robotService');
 const { createEmailService } = require('./src/server/services/emailService');
 const { createImapEmailService } = require('./src/server/services/imapEmailService');
+const { createStructuredEmailAutomationService } = require('./src/server/services/structuredEmailAutomationService');
 const { createQueueWorker } = require('./src/server/jobs/queueWorker');
 const { createAutoPullWorker } = require('./src/server/jobs/autoPullWorker');
 const { createUserRepository } = require('./src/server/repositories/userRepository');
@@ -24,6 +25,7 @@ const { registerChatCoreRoutes } = require('./backend/chatCoreRoutes');
 const { registerLocalDataRoutes } = require('./backend/routes/localDataRoutes');
 const { registerHrManagementRoutes } = require('./backend/routes/hrManagementRoutes');
 const { registerOccurrencesRoutes } = require('./backend/routes/occurrencesRoutes');
+const { registerAgendaRoutes } = require('./backend/routes/agendaRoutes');
 const { registerImportRoutes } = require('./backend/routes/importRoutes');
 const { registerImportObrigacoesRoutes } = require('./backend/routes/importObrigacoesRoutes');
 const { registerLocalSyncSaftRoutes } = require('./backend/routes/localSyncSaftRoutes');
@@ -31,6 +33,8 @@ const { registerObrigacoesAutoRoutes } = require('./backend/routes/obrigacoesAut
 const { registerMobileRoutes } = require('./backend/routes/mobileRoutes');
 const { registerDesktopRoutes } = require('./backend/routes/desktopRoutes');
 const { registerFrontendRoutes } = require('./backend/routes/frontendRoutes');
+const { registerSimulatorRoutes } = require('./backend/routes/simulatorRoutes');
+const { registerFiscalSummaryRoutes } = require('./backend/routes/fiscalSummaryRoutes');
 const { createMobilePushService } = require('./backend/services/mobilePushService');
 const { startServerLifecycle } = require('./backend/jobs/startServerLifecycle');
 const {
@@ -117,6 +121,23 @@ const {
     IMAP_USERNAME,
     IMAP_PASSWORD,
     IMAP_MAILBOX,
+    AGENDA_EMAIL_ENABLED,
+    AGENDA_EMAIL_HOST,
+    AGENDA_EMAIL_PORT,
+    AGENDA_EMAIL_USERNAME,
+    AGENDA_EMAIL_PASSWORD,
+    AGENDA_EMAIL_MAILBOX,
+    AGENDA_EMAIL_SINCE_DAYS,
+    AGENDA_EMAIL_MAX_MESSAGES,
+    AGENDA_EMAIL_POLL_INTERVAL_MINUTES,
+    AGENDA_EMAIL_DEFAULT_USER_EMAIL,
+    AGENDA_SMTP_HOST,
+    AGENDA_SMTP_PORT,
+    AGENDA_SMTP_TLS,
+    AGENDA_SMTP_USERNAME,
+    AGENDA_SMTP_PASSWORD,
+    AGENDA_SMTP_FROM_EMAIL,
+    AGENDA_SMTP_FROM_NAME,
     ENABLE_WEBHOOK_AUTOREPLY,
     API_PUBLIC_BASE_URL,
     SUPABASE_URL,
@@ -962,7 +983,7 @@ if (isBaileysProviderEnabled() && !IS_BACKOFFICE_ONLY) {
     });
 }
 
-const { hasEmailProvider, sendEmailDocumentLink } = createEmailService({
+const { hasEmailProvider, sendEmailDocumentLink, sendEmailWithAttachment } = createEmailService({
     axios,
     nodemailer: require('nodemailer'),
     SMTP_HOST,
@@ -976,6 +997,136 @@ const { hasEmailProvider, sendEmailDocumentLink } = createEmailService({
     RESEND_FROM,
 });
 
+const agendaOutboundEmailService = createEmailService({
+    axios,
+    nodemailer: require('nodemailer'),
+    SMTP_HOST: AGENDA_SMTP_HOST || SMTP_HOST,
+    SMTP_PORT: AGENDA_SMTP_PORT || SMTP_PORT,
+    SMTP_TLS: AGENDA_SMTP_TLS,
+    SMTP_USERNAME: AGENDA_SMTP_USERNAME || SMTP_USERNAME,
+    SMTP_PASSWORD: AGENDA_SMTP_PASSWORD || SMTP_PASSWORD,
+    SMTP_FROM_EMAIL: AGENDA_SMTP_FROM_EMAIL || SMTP_FROM_EMAIL,
+    SMTP_FROM_NAME: AGENDA_SMTP_FROM_NAME || SMTP_FROM_NAME,
+    RESEND_API_KEY,
+    RESEND_FROM,
+});
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function escapeIcsText(value) {
+    return String(value || '')
+        .replace(/\\/g, '\\\\')
+        .replace(/;/g, '\\;')
+        .replace(/,/g, '\\,')
+        .replace(/\r?\n/g, '\\n');
+}
+
+function toIcsDateTime(value, fallbackDate = '') {
+    const raw = String(value || '').trim();
+    const candidate = raw || (fallbackDate ? `${fallbackDate}T09:00:00` : '');
+    const date = new Date(candidate);
+    if (!Number.isFinite(date.getTime())) return '';
+    return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+}
+
+function addMinutesIso(value, minutes = 30) {
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return '';
+    return new Date(date.getTime() + Math.max(1, Number(minutes) || 30) * 60000).toISOString();
+}
+
+function buildCalendarIcs({ uid, title, description, startsAt, endsAt, location, organizerEmail, attendeeEmail }) {
+    const dtStart = toIcsDateTime(startsAt);
+    const dtEnd = toIcsDateTime(endsAt || addMinutesIso(startsAt, 30));
+    if (!dtStart || !dtEnd) return '';
+    const now = toIcsDateTime(new Date().toISOString());
+    const organizer = String(organizerEmail || AGENDA_SMTP_FROM_EMAIL || AGENDA_SMTP_USERNAME || SMTP_FROM_EMAIL || SMTP_USERNAME || 'agenda@mpr.pt').trim();
+    const attendee = String(attendeeEmail || '').trim();
+    return [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//MPR//WA PRO//PT',
+        'CALSCALE:GREGORIAN',
+        'METHOD:REQUEST',
+        'BEGIN:VEVENT',
+        `UID:${escapeIcsText(uid || `wa-pro-${Date.now()}@mpr.pt`)}`,
+        `DTSTAMP:${now}`,
+        `DTSTART:${dtStart}`,
+        `DTEND:${dtEnd}`,
+        `SUMMARY:${escapeIcsText(title)}`,
+        'STATUS:CONFIRMED',
+        'SEQUENCE:0',
+        organizer ? `ORGANIZER;CN=Agenda MPR:mailto:${organizer}` : '',
+        attendee ? `ATTENDEE;CN=${escapeIcsText(attendee)};ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:${attendee}` : '',
+        location ? `LOCATION:${escapeIcsText(location)}` : '',
+        description ? `DESCRIPTION:${escapeIcsText(description)}` : '',
+        'END:VEVENT',
+        'END:VCALENDAR',
+        '',
+    ].filter(Boolean).join('\r\n');
+}
+
+async function sendResponsibleNotification({
+    to,
+    entityType,
+    entityId,
+    title,
+    description,
+    startsAt,
+    endsAt,
+    location,
+    customerName,
+}) {
+    const recipient = String(to || '').trim().toLowerCase();
+    const outboundEmailService = agendaOutboundEmailService.hasEmailProvider()
+        ? agendaOutboundEmailService
+        : { hasEmailProvider, sendEmailWithAttachment };
+    if (!recipient || !outboundEmailService.hasEmailProvider()) return false;
+
+    const safeTitle = String(title || 'Novo registo').trim();
+    const entityLabel = String(entityType || 'registo').trim();
+    const subject = `[WA PRO] ${entityLabel}: ${safeTitle}`;
+    const details = [
+        customerName ? `<p><strong>Cliente:</strong> ${escapeHtml(customerName)}</p>` : '',
+        startsAt ? `<p><strong>Data/Hora:</strong> ${escapeHtml(new Date(startsAt).toLocaleString('pt-PT'))}</p>` : '',
+        location ? `<p><strong>Local:</strong> ${escapeHtml(location)}</p>` : '',
+        description ? `<p><strong>Notas:</strong><br>${escapeHtml(description).replace(/\n/g, '<br>')}</p>` : '',
+    ].filter(Boolean).join('');
+    const html = `<p>Foi gravado um novo ${escapeHtml(entityLabel)} atribuído a si.</p><p><strong>${escapeHtml(safeTitle)}</strong></p>${details}<p>Pode abrir o anexo no Outlook para adicionar ao calendário.</p>`;
+    const ics = buildCalendarIcs({
+        uid: `${entityType || 'record'}-${entityId || Date.now()}@wa-pro.mpr.pt`,
+        title: safeTitle,
+        description,
+        startsAt,
+        endsAt,
+        location,
+        organizerEmail: AGENDA_SMTP_FROM_EMAIL || AGENDA_SMTP_USERNAME || SMTP_FROM_EMAIL || SMTP_USERNAME,
+        attendeeEmail: recipient,
+    });
+
+    await outboundEmailService.sendEmailWithAttachment({
+        to: recipient,
+        subject,
+        html,
+        attachments: [],
+        icalEvent: ics
+            ? {
+                  method: 'REQUEST',
+                  filename: `${String(entityType || 'registo').replace(/[^a-z0-9_-]/gi, '_')}.ics`,
+                  content: Buffer.from(ics, 'utf8'),
+              }
+            : null,
+    });
+    return true;
+}
+
 const segSocialEmailInbox = createImapEmailService({
     host: IMAP_HOST,
     port: IMAP_PORT,
@@ -984,7 +1135,16 @@ const segSocialEmailInbox = createImapEmailService({
     mailbox: IMAP_MAILBOX,
 });
 
+const agendaEmailInbox = createImapEmailService({
+    host: AGENDA_EMAIL_HOST,
+    port: AGENDA_EMAIL_PORT,
+    username: AGENDA_EMAIL_USERNAME,
+    password: AGENDA_EMAIL_PASSWORD,
+    mailbox: AGENDA_EMAIL_MAILBOX,
+});
+
 app.get('/api/email/seg-social/latest-code', async (req, res) => {
+    console.error('[Email SS] pedido recebido | origin:', req.headers.origin || req.headers.referer || 'n/a', '| sinceIso:', req.query?.sinceIso || 'n/a');
     try {
         if (!segSocialEmailInbox.hasImapConfig()) {
             return res.status(400).json({
@@ -2070,6 +2230,113 @@ registerOccurrencesRoutes({
     sanitizeDocumentFileName,
 });
 
+const { upsertAgendaEvent } = registerAgendaRoutes({
+    app,
+    dbRunAsync,
+    dbGetAsync,
+    dbAllAsync,
+    writeAuditLog,
+    sendResponsibleNotification,
+    nowIso,
+});
+
+const structuredEmailAutomationService = createStructuredEmailAutomationService({
+    dbRunAsync,
+    dbGetAsync,
+    dbAllAsync,
+    inbox: agendaEmailInbox,
+    mailbox: AGENDA_EMAIL_MAILBOX,
+    upsertLocalTask,
+    upsertAgendaEvent,
+    sendResponsibleNotification,
+    defaultUserEmail: AGENDA_EMAIL_DEFAULT_USER_EMAIL,
+    nowIso,
+});
+
+let agendaEmailScanRunning = false;
+async function runAgendaEmailScan(reason = 'manual') {
+    if (!AGENDA_EMAIL_ENABLED || !agendaEmailInbox.hasImapConfig() || agendaEmailScanRunning) return null;
+    agendaEmailScanRunning = true;
+    try {
+        const summary = await structuredEmailAutomationService.scan({
+            sinceDays: AGENDA_EMAIL_SINCE_DAYS,
+            maxMessages: AGENDA_EMAIL_MAX_MESSAGES,
+        });
+        console.log(`[Agenda Email] scan=${reason} lidos=${summary.scanned} criados=${summary.processed} ignorados=${summary.skipped} erros=${summary.errors}`);
+        return summary;
+    } catch (error) {
+        console.error('[Agenda Email] Falha no scan:', error?.message || error);
+        return null;
+    } finally {
+        agendaEmailScanRunning = false;
+    }
+}
+
+if (AGENDA_EMAIL_ENABLED) {
+    const intervalMs = Math.max(1, Number(AGENDA_EMAIL_POLL_INTERVAL_MINUTES) || 5) * 60 * 1000;
+    setTimeout(() => void runAgendaEmailScan('startup'), 30 * 1000);
+    setInterval(() => void runAgendaEmailScan('interval'), intervalMs);
+}
+
+app.post('/api/email/automation/scan', async (req, res) => {
+    try {
+        if (!AGENDA_EMAIL_ENABLED) {
+            return res.status(400).json({
+                success: false,
+                error: 'Automação por email está desativada. Ative AGENDA_EMAIL_ENABLED=1 no .env.',
+            });
+        }
+        if (!agendaEmailInbox.hasImapConfig()) {
+            return res.status(400).json({
+                success: false,
+                error: 'Conta agenda@mpr.pt sem IMAP configurado.',
+            });
+        }
+
+        const summary = await structuredEmailAutomationService.scan({
+            sinceDays: Number(req.body?.sinceDays || req.query?.sinceDays || AGENDA_EMAIL_SINCE_DAYS) || AGENDA_EMAIL_SINCE_DAYS,
+            maxMessages: Number(req.body?.maxMessages || req.query?.maxMessages || AGENDA_EMAIL_MAX_MESSAGES) || AGENDA_EMAIL_MAX_MESSAGES,
+            dryRun: ['1', 'true', 'yes', 'sim'].includes(String(req.body?.dryRun || req.query?.dryRun || '').toLowerCase()),
+        });
+        return res.json({ success: true, summary });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: error?.message || String(error) });
+    }
+});
+
+app.post('/api/email/automation/entries/:uid/reprocess', async (req, res) => {
+    try {
+        const result = await structuredEmailAutomationService.processManualEntry({
+            uid: req.params.uid,
+            actionType: req.body?.actionType || req.body?.tipo || '',
+            fields: req.body?.fields || {},
+            actor: req.body?.actorUserId || '',
+        });
+        return res.json({ success: true, result });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: error?.message || String(error) });
+    }
+});
+
+app.post('/api/email/automation/entries/:uid/ignore', async (req, res) => {
+    try {
+        const uid = String(req.params.uid || '').trim();
+        if (!uid) return res.status(400).json({ success: false, error: 'UID obrigatório.' });
+        await dbRunAsync(
+            `UPDATE email_automation_processed
+             SET status = 'ignored',
+                 error = ?,
+                 ignored_at = ?,
+                 processed_at = CURRENT_TIMESTAMP
+             WHERE mailbox = ? AND uid = ?`,
+            [String(req.body?.reason || 'Ignorado manualmente.').trim(), nowIso(), AGENDA_EMAIL_MAILBOX, uid]
+        );
+        return res.json({ success: true });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: error?.message || String(error) });
+    }
+});
+
 registerObrigacoesAutoRoutes({
     app,
     getSchedulerConfig: () => ({
@@ -2114,6 +2381,14 @@ registerObrigacoesAutoRoutes({
         obrigacoesAutoState.lastSummary = summary;
         return summary;
     },
+});
+
+registerSimulatorRoutes({
+    app,
+    dbRunAsync,
+    dbAllAsync,
+    hasEmailProvider,
+    sendEmailWithAttachment,
 });
 
 app.get('/api/customers/sync/auto/status', async (req, res) => {
@@ -2162,6 +2437,8 @@ registerDesktopRoutes({
     path,
     baseDir: __dirname,
 });
+
+registerFiscalSummaryRoutes({ app, dbRunAsync, dbGetAsync, dbAllAsync, port: PORT, sendEmailWithAttachment, hasEmailProvider });
 
 if (!IS_BACKOFFICE_ONLY) {
     registerChatCoreRoutes(app, {

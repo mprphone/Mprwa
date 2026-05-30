@@ -1,7 +1,132 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { Customer, CustomerAccessCredential } from '../../types';
 import { SegSocialSubUserState } from './customerAccessUtils';
+
+type AccessIconGridProps = {
+  customer: Customer;
+  busy: boolean;
+  triggerFinancasAutologin: (c: Customer) => void;
+  triggerSegSocialSubUserLogin: (c: Customer) => void;
+  triggerSegSocialInteroperabilityInfo: (c: Customer, type: 'chave_aplicacional' | 'token') => void;
+};
+
+function AccessIconGrid({ customer, busy, triggerFinancasAutologin, triggerSegSocialSubUserLogin, triggerSegSocialInteroperabilityInfo }: AccessIconGridProps) {
+  const [busyPortals, setBusyPortals] = useState<Set<string>>(new Set());
+
+  const certidaoUrl = (() => {
+    const code = String((customer as Record<string, unknown>).certidaoPermanenteNumero || '').trim();
+    const base = 'https://registo.justica.gov.pt/Empresas/Consultar-Certidao-Permanente/Iniciar';
+    return code ? `${base}?codcertidao=${encodeURIComponent(code)}` : base;
+  })();
+
+  async function triggerPortalLogin(portal: string) {
+    if (busyPortals.has(portal) || busy) return;
+    setBusyPortals((prev) => new Set(prev).add(portal));
+    try {
+      await fetch(`/api/customers/${encodeURIComponent(customer.id)}/autologin/${portal}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ headless: true }),
+      });
+    } catch { /* silent */ } finally {
+      setBusyPortals((prev) => { const s = new Set(prev); s.delete(portal); return s; });
+    }
+  }
+
+  // Banco Portugal: usa extensão Chrome (o servidor é bloqueado por Cloudflare)
+  async function triggerBancoPortugalCrc() {
+    if (busyPortals.has('bportugal') || busy) return;
+    setBusyPortals((prev) => new Set(prev).add('bportugal'));
+    try {
+      // Pedir ao servidor as credenciais para passar à extensão
+      const resp = await fetch(`/api/customers/${encodeURIComponent(customer.id)}/autologin/bportugal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ useExtension: true }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (data.useExtension && data.credentialForExtension) {
+        const cred = data.credentialForExtension;
+        // Acionar extensão Chrome com flag de recolha CRC
+        window.postMessage({
+          source: 'WA_PRO',
+          type: 'AUTLOGIN_REQUEST',
+          requestId: `bp-crc-${Date.now()}`,
+          payload: {
+            username: cred.username,
+            password: cred.password,
+            loginUrl: cred.loginUrl,
+            credentialLabel: cred.credentialLabel,
+            keepPendingAfterSubmit: true,
+            collectBpCrc: true,
+            customerId: cred.customerId,
+          },
+        }, window.location.origin);
+      }
+    } catch { /* silent */ } finally {
+      setBusyPortals((prev) => { const s = new Set(prev); s.delete('bportugal'); return s; });
+    }
+  }
+
+  type IconItem =
+    | { kind: 'autologin'; src: string; label: string; onClick: () => void }
+    | { kind: 'link'; src: string; label: string; href: string };
+
+  const items: IconItem[] = [
+    { kind: 'autologin', src: '/icones_autologin/01_financas.png', label: 'Autoridade Tributária', onClick: () => triggerFinancasAutologin(customer) },
+    { kind: 'autologin', src: '/icones_autologin/03_subutilizador_ss.png', label: 'Sub SS (subutilizador)', onClick: () => triggerSegSocialSubUserLogin(customer) },
+    { kind: 'autologin', src: '/icones_autologin/02_seguranca_social.png', label: 'SS Chave Aplicacional', onClick: () => triggerSegSocialInteroperabilityInfo(customer, 'chave_aplicacional') },
+    { kind: 'autologin', src: '/icones_autologin/04_banco_portugal.png', label: 'Banco de Portugal', onClick: () => void triggerBancoPortugalCrc() },
+    { kind: 'link', src: '/icones_autologin/05_certidao_permanente.png', label: 'Certidão Permanente', href: certidaoUrl },
+    { kind: 'autologin', src: '/icones_autologin/06_iefp_online.png', label: 'IEFP Online', onClick: () => void triggerPortalLogin('iefp') },
+    { kind: 'link', src: '/icones_autologin/07_livro_reclamacoes.png', label: 'Livro de Reclamações', href: 'https://www.livroreclamacoes.pt/entrar' },
+    { kind: 'link', src: '/icones_autologin/08_siliamb_apa.png', label: 'SILiAmb / APA', href: 'https://siliamb.apambiente.pt/pages/public/login.xhtml' },
+    { kind: 'autologin', src: '/icones_autologin/09_iapmei.png', label: 'IAPMEI PME', onClick: () => void triggerPortalLogin('pme') },
+    { kind: 'link', src: '/icones_autologin/10_balcao_empreendedor.png', label: 'Balcão do Empreendedor', href: 'https://www2.gov.pt/inicio/balcao-do-empreendedor' },
+    { kind: 'autologin', src: '/icones_autologin/11_viactt.png', label: 'ViaCTT', onClick: () => void triggerPortalLogin('viactt') },
+    { kind: 'link', src: '/icones_autologin/12_relatorio_unico.png', label: 'Relatório Único', href: 'https://www.relatoriounico.pt/ru/login.seam' },
+  ];
+
+  const isItemBusy = (item: IconItem) =>
+    item.kind === 'autologin' && (
+      busy ||
+      (item.label === 'Banco de Portugal' && busyPortals.has('bportugal')) ||
+      (item.label === 'IEFP Online' && busyPortals.has('iefp')) ||
+      (item.label === 'IAPMEI PME' && busyPortals.has('pme')) ||
+      (item.label === 'ViaCTT' && busyPortals.has('viactt'))
+    );
+
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      {items.map((item) =>
+        item.kind === 'autologin' ? (
+          <button
+            key={item.label}
+            type="button"
+            title={item.label}
+            disabled={isItemBusy(item)}
+            onClick={item.onClick}
+            className="flex items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-2 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+          >
+            <img src={item.src} alt={item.label} className="h-20 w-20 object-contain" draggable={false} />
+          </button>
+        ) : (
+          <a
+            key={item.label}
+            href={item.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={item.label}
+            className="flex items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-2 hover:bg-slate-100 transition-colors"
+          >
+            <img src={item.src} alt={item.label} className="h-20 w-20 object-contain" draggable={false} />
+          </a>
+        )
+      )}
+    </div>
+  );
+}
 
 export type CustomerCredentialPreset = {
   key: string;
@@ -331,51 +456,19 @@ export function CustomerAccessTab({
 
         <aside className="rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
-            <h3 className="text-sm font-semibold text-slate-900">Login Automático</h3>
+            <h3 className="text-sm font-semibold text-slate-900">Acessos</h3>
           </div>
-          <div className="space-y-3 p-4">
+          <div className="p-3">
             {editingCustomer ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => void triggerFinancasAutologin(editingCustomer)}
-                  disabled={anyAutomationBusy}
-                  className="flex w-full items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-3 text-left text-sm font-semibold text-blue-800 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Autoridade Tributária
-                  <span className="text-xs">{autologinBusyCustomerId === editingCustomer.id ? 'A abrir...' : 'Abrir'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void triggerSegSocialSubUserLogin(editingCustomer)}
-                  disabled={anyAutomationBusy}
-                  className="flex w-full items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-3 text-left text-sm font-semibold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-                  title="Entra na Segurança Social com o subutilizador guardado. Se faltar senha, tenta ler a senha recebida no email."
-                >
-                  Entrar com subutilizador
-                  <span className="text-xs">{segSocialAutologinBusyCustomerId === editingCustomer.id ? 'A entrar...' : 'Entrar'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void triggerSegSocialInteroperabilityInfo(editingCustomer, 'chave_aplicacional')}
-                  disabled={anyAutomationBusy}
-                  className="flex w-full items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-3 text-left text-sm font-semibold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Seg. Social Aplicacional
-                  <span className="text-xs">{segSocialAutologinBusyCustomerId === editingCustomer.id ? 'A testar...' : 'Testar'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void triggerSegSocialInteroperabilityInfo(editingCustomer, 'token')}
-                  disabled={anyAutomationBusy}
-                  className="flex w-full items-center justify-between rounded-lg border border-emerald-100 bg-white px-3 py-3 text-left text-sm font-semibold text-emerald-800 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Seg. Social Token
-                  <span className="text-xs">{segSocialAutologinBusyCustomerId === editingCustomer.id ? 'A testar...' : 'Testar'}</span>
-                </button>
-              </>
+              <AccessIconGrid
+                customer={editingCustomer}
+                busy={anyAutomationBusy}
+                triggerFinancasAutologin={triggerFinancasAutologin}
+                triggerSegSocialSubUserLogin={triggerSegSocialSubUserLogin}
+                triggerSegSocialInteroperabilityInfo={triggerSegSocialInteroperabilityInfo}
+              />
             ) : (
-              <p className="text-sm text-slate-500">Guarde o cliente primeiro para usar o login automático.</p>
+              <p className="text-sm text-slate-500">Guarde o cliente primeiro.</p>
             )}
           </div>
         </aside>

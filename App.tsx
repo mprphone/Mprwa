@@ -3,6 +3,7 @@ import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/Layout';
 import Inbox from './pages/Inbox';
 import InternalChat from './pages/InternalChat';
+import Agenda from './pages/Agenda';
 import Tasks from './pages/Tasks';
 import Occurrences from './pages/Occurrences';
 import Customers from './pages/Customers';
@@ -13,6 +14,7 @@ import CallImport from './pages/CallImport';
 import AutoResponses from './pages/AutoResponses';
 import ResponseForms from './pages/ResponseForms';
 import SoftwareHub from './pages/SoftwareHub';
+import Simulators from './pages/Simulators';
 import Login from './pages/Login';
 import { mockService } from './services/mockData';
 
@@ -27,12 +29,14 @@ const ProtectedApp: React.FC = () => {
         <Route path="/" element={<Navigate to="/inbox" replace />} />
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/internal-chat" element={<InternalChat />} />
+        <Route path="/agenda" element={<Agenda />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/occurrences" element={<Occurrences />} />
         <Route path="/customers" element={<Customers />} />
         <Route path="/employees" element={<Employees />} />
         <Route path="/pedidos" element={<Pedidos />} />
         <Route path="/software" element={<SoftwareHub />} />
+        <Route path="/simulators" element={<Simulators />} />
         <Route path="/automation" element={<AutoResponses />} />
         <Route path="/response-forms" element={<ResponseForms />} />
         <Route path="/reports" element={<Reports />} />

@@ -479,6 +479,53 @@ function registerSaftDocumentRoutes(context, helpers) {
                 },
             });
 
+            // Actualizar Resumo Fiscal "Outros Documentos" com o ficheiro guardado
+            const FISCAL_DOC_LABELS = {
+                certidao_permanente: 'Certidão Permanente',
+                rcbe: 'RCBE',
+                pacto_social: 'Pacto Social',
+                inicio_atividade: 'Início de Atividade',
+                cartao_cidadao: 'Cartão de Cidadão',
+            };
+            // Para CC: usar tipo único por sócio (cc_{nif})
+            const managerNif = String(body.managerNif || '').trim().replace(/\D+/g, '').slice(-9);
+            const fiscalDocTipo = (documentType === 'cartao_cidadao' && managerNif)
+                ? `cc_${managerNif}` : documentType;
+            const fiscalDocLabel = (documentType === 'cartao_cidadao' && managerNif)
+                ? `CC — ${managerNif}` : (FISCAL_DOC_LABELS[documentType] || documentType);
+
+            if (FISCAL_DOC_LABELS[documentType]) {
+                try {
+                    const { mergeFiscalSummaryData } = require('../services/fiscal/config/fiscalSummaryDefaults');
+                    const row = await dbGetAsync('SELECT data FROM customer_fiscal_summary WHERE customer_id = ?', [customerId]);
+                    const current = mergeFiscalSummaryData(row?.data ? JSON.parse(row.data) : {});
+                    const docs = Array.isArray(current.documentos) ? [...current.documentos] : [];
+                    const idx = docs.findIndex((d) => d?.tipo === fiscalDocTipo);
+                    const entry = {
+                        tipo: fiscalDocTipo,
+                        label: fiscalDocLabel,
+                        ficheiroPdf: fullPath,
+                        valida: true,
+                        notas: extraction.rcbeNumero || extraction.certidaoPermanenteCodigo || '',
+                        dataValidade: documentType === 'certidao_permanente'
+                            ? (parseDateToIso(extraction.certidaoPermanenteValidade || '') || '')
+                            : '',
+                    };
+                    if (idx >= 0) docs[idx] = { ...docs[idx], ...entry };
+                    else docs.push(entry);
+                    current.documentos = docs;
+                    current.updatedAt = new Date().toISOString();
+                    await dbRunAsync(
+                        `INSERT INTO customer_fiscal_summary (customer_id, data, updated_at)
+                         VALUES (?, ?, ?)
+                         ON CONFLICT(customer_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
+                        [customerId, JSON.stringify(current), current.updatedAt]
+                    );
+                } catch (summaryErr) {
+                    console.error('[Ingest] Falha ao actualizar resumo fiscal:', summaryErr?.message);
+                }
+            }
+
             return res.json({
                 success: true,
                 documentType,

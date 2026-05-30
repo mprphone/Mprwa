@@ -31,6 +31,10 @@ function sanitizeCustomerForPopup(customer) {
     phone: String(customer.phone || '').trim(),
     senhaFinancas: String(customer.senhaFinancas || '').trim(),
     senhaSegurancaSocial: String(customer.senhaSegurancaSocial || '').trim(),
+    certidaoPermanenteNumero: String(customer.certidaoPermanenteNumero || '').trim(),
+    certidaoPermanenteValidade: String(customer.certidaoPermanenteValidade || '').trim(),
+    caePrincipal: String(customer.caePrincipal || '').trim(),
+    caeDescricao: String(customer.caeDescricao || '').trim(),
     accessCredentials: Array.isArray(customer.accessCredentials)
       ? customer.accessCredentials.map((credential) => ({
         service: String(credential?.service || '').trim(),

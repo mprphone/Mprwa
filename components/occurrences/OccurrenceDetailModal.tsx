@@ -18,6 +18,7 @@ import {
   ProjectSupportDetail,
   ProjectSupportEmployeeItem,
   ProjectSupportListItem,
+  ProjectSupportReceivedValueItem,
   ProjectSupportRefundItem,
   syncTrackedListFromBase,
 } from './projectSupportDetail';
@@ -393,7 +394,16 @@ const OccurrenceDetailModal: React.FC<Props> = ({
     const measure = projectSupport.medidaApoio || createEmptyProjectSupportDetail().medidaApoio;
     const investimentoPrevisto = isSupportMeasure ? parseAmountText(measure.valorPrevisto) : projectSupport.candidatura.investimento.reduce((sum, item) => sum + parseAmountText(item.valor), 0);
     const investimentoAprovado = isSupportMeasure ? parseAmountText(measure.valorAprovado) : parseAmountText(projectSupport.acompanhamento.investimentoAprovado);
-    const investimentoExecutado = projectSupport.acompanhamento.investimento.reduce((sum, item) => sum + parseAmountText(item.realizado), 0);
+    const medidaRecebido = isSupportMeasure
+      ? (measure.valoresRecebidos || []).reduce((sum, item) => {
+          const estado = String(item.estado || '').toLowerCase();
+          const isConfirmed = estado.includes('receb') || estado.includes('confirm');
+          return sum + (isConfirmed ? parseAmountText(item.valorRecebido) : 0);
+        }, 0)
+      : 0;
+    const investimentoExecutado = isSupportMeasure
+      ? medidaRecebido
+      : projectSupport.acompanhamento.investimento.reduce((sum, item) => sum + parseAmountText(item.realizado), 0);
     const reembolsos = projectSupport.acompanhamento.pedidosReembolso.reduce((sum, item) => sum + parseAmountText(item.montante), 0);
     const dataSubmissao = String((isSupportMeasure ? measure.dataSubmissao : projectSupport.acompanhamento.dataSubmissao) || '').trim();
     const dataInicio = String(projectSupport.acompanhamento.dataInicio || '').trim();
@@ -444,6 +454,7 @@ const OccurrenceDetailModal: React.FC<Props> = ({
       investimentoPrevisto,
       investimentoAprovado,
       investimentoExecutado,
+      medidaRecebido,
       reembolsos,
       alerts,
       movements,
@@ -702,6 +713,76 @@ const OccurrenceDetailModal: React.FC<Props> = ({
     });
   };
 
+  const addMedidaValorRecebido = () => {
+    patchProjectSupport({
+      ...projectSupport,
+      medidaApoio: {
+        ...projectSupport.medidaApoio,
+        valoresRecebidos: [
+          ...(projectSupport.medidaApoio.valoresRecebidos || []),
+          {
+            dataPedido: new Date().toISOString().slice(0, 10),
+            tranche: '',
+            valorPedido: '',
+            estado: 'Pedido',
+            dataRecebimento: '',
+            valorRecebido: '',
+            observacoes: '',
+          },
+        ],
+      },
+      dossieEletronico: { ...projectSupport.dossieEletronico, modelo: 'IEFP' },
+    });
+  };
+
+  const updateMedidaValorRecebido = (index: number, field: keyof ProjectSupportReceivedValueItem, value: string) => {
+    const list = [...(projectSupport.medidaApoio.valoresRecebidos || [])];
+    list[index] = {
+      ...(list[index] || {
+        dataPedido: '',
+        tranche: '',
+        valorPedido: '',
+        estado: 'Pedido',
+        dataRecebimento: '',
+        valorRecebido: '',
+        observacoes: '',
+      }),
+      [field]: value,
+    };
+    patchProjectSupport({
+      ...projectSupport,
+      medidaApoio: { ...projectSupport.medidaApoio, valoresRecebidos: list },
+      dossieEletronico: { ...projectSupport.dossieEletronico, modelo: 'IEFP' },
+    });
+  };
+
+  const updateMedidaValorRecebidoInput = (index: number, rawValue: string) => {
+    updateMedidaValorRecebido(index, 'valorPedido', normalizeMoneyInputText(rawValue));
+  };
+
+  const commitMedidaValorRecebido = (index: number) => {
+    const current = String(projectSupport.medidaApoio.valoresRecebidos?.[index]?.valorPedido || '');
+    updateMedidaValorRecebido(index, 'valorPedido', formatEuroText(current));
+  };
+
+  const updateMedidaValorConfirmadoInput = (index: number, rawValue: string) => {
+    updateMedidaValorRecebido(index, 'valorRecebido', normalizeMoneyInputText(rawValue));
+  };
+
+  const commitMedidaValorConfirmado = (index: number) => {
+    const current = String(projectSupport.medidaApoio.valoresRecebidos?.[index]?.valorRecebido || '');
+    updateMedidaValorRecebido(index, 'valorRecebido', formatEuroText(current));
+  };
+
+  const removeMedidaValorRecebido = (index: number) => {
+    const list = (projectSupport.medidaApoio.valoresRecebidos || []).filter((_, i) => i !== index);
+    patchProjectSupport({
+      ...projectSupport,
+      medidaApoio: { ...projectSupport.medidaApoio, valoresRecebidos: list },
+      dossieEletronico: { ...projectSupport.dossieEletronico, modelo: 'IEFP' },
+    });
+  };
+
   const toggleDossieItemNotApplicable = (itemKey: string, checked: boolean) => {
     const current = projectSupport.dossieEletronico.naoAplicavelPorItem || {};
     const next = { ...current, [itemKey]: !!checked };
@@ -913,7 +994,16 @@ const OccurrenceDetailModal: React.FC<Props> = ({
                       <SummaryCard label="Próxima ação" value={projectDashboard.nextAction} tone="amber" />
                       <SummaryCard label="Responsável" value={projectDashboard.responsible} />
                       <SummaryCard label="Prazo" value={projectDashboard.deadline} hint={projectDashboard.daysLeft === null ? '' : `${projectDashboard.daysLeft} dia(s)`} tone={projectDashboard.daysLeft !== null && projectDashboard.daysLeft <= 7 ? 'red' : 'slate'} />
-                      <SummaryCard label="Investimento" value={`${formatEuroCompact(projectDashboard.investimentoExecutado)} / ${formatEuroCompact(projectDashboard.investimentoAprovado || projectDashboard.investimentoPrevisto)}`} />
+                      <SummaryCard
+                        label={isSupportMeasure ? 'Apoio recebido' : 'Investimento'}
+                        value={`${formatEuroCompact(projectDashboard.investimentoExecutado)} / ${formatEuroCompact(projectDashboard.investimentoAprovado || projectDashboard.investimentoPrevisto)}`}
+                        hint={
+                          isSupportMeasure && projectDashboard.investimentoAprovado > 0
+                            ? `${formatEuroCompact(Math.max(0, projectDashboard.investimentoAprovado - projectDashboard.investimentoExecutado))} por receber`
+                            : undefined
+                        }
+                        tone={projectDashboard.investimentoExecutado > 0 ? 'green' : 'slate'}
+                      />
                       <SummaryCard label="Docs pendentes" value={String(projectDashboard.docsPending)} hint={`${projectDashboard.compliance}% completo`} tone={projectDashboard.docsPending > 0 ? 'red' : 'green'} />
                     </div>
                   )}
@@ -1180,6 +1270,7 @@ const OccurrenceDetailModal: React.FC<Props> = ({
                             <Field label="Tipo de medida"><input type="text" value={projectSupport.medidaApoio.medidaIefp} onChange={(e) => updateMedidaApoioField('medidaIefp', e.target.value)} placeholder="Ex: Criação de oferta de emprego" className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
                             <Field label="Nº processo/oferta"><input type="text" value={projectSupport.medidaApoio.processoOferta} onChange={(e) => updateMedidaApoioField('processoOferta', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
                             <Field label="Entidade gestora"><input type="text" value={projectSupport.medidaApoio.entidadeGestora} onChange={(e) => updateMedidaApoioField('entidadeGestora', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
+                            <Field label="Nome de quem tem o processo"><input type="text" value={projectSupport.medidaApoio.nomeGestorIefp} onChange={(e) => updateMedidaApoioField('nomeGestorIefp', e.target.value)} placeholder="Ex: técnico/gestor IEFP" className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
                             <Field label="Contacto IEFP"><input type="text" value={projectSupport.medidaApoio.contactoIefp} onChange={(e) => updateMedidaApoioField('contactoIefp', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
                             <Field label="Data do pedido"><input type="date" value={projectSupport.medidaApoio.dataPedido} onChange={(e) => updateMedidaApoioField('dataPedido', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
                             <Field label="Data de submissão"><input type="date" value={projectSupport.medidaApoio.dataSubmissao} onChange={(e) => updateMedidaApoioField('dataSubmissao', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" /></Field>
@@ -1187,6 +1278,26 @@ const OccurrenceDetailModal: React.FC<Props> = ({
                             <Field label="Valor previsto"><input type="text" value={projectSupport.medidaApoio.valorPrevisto} onChange={(e) => updateMedidaApoioField('valorPrevisto', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-right" /></Field>
                             <Field label="Valor aprovado"><input type="text" value={projectSupport.medidaApoio.valorAprovado} onChange={(e) => updateMedidaApoioField('valorAprovado', e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-right" /></Field>
                           </div>
+                          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                            <SummaryCard label="Previsto" value={formatEuroCompact(projectDashboard.investimentoPrevisto)} />
+                            <SummaryCard label="Aprovado" value={formatEuroCompact(projectDashboard.investimentoAprovado)} tone="blue" />
+                            <SummaryCard
+                              label="Recebido"
+                              value={formatEuroCompact(projectDashboard.investimentoExecutado)}
+                              hint={`${formatEuroCompact(Math.max(0, projectDashboard.investimentoAprovado - projectDashboard.investimentoExecutado))} por receber`}
+                              tone={projectDashboard.investimentoExecutado > 0 ? 'green' : 'amber'}
+                            />
+                          </div>
+                          <ReceivedSupportValuesEditor
+                            rows={projectSupport.medidaApoio.valoresRecebidos || []}
+                            onAdd={addMedidaValorRecebido}
+                            onChange={updateMedidaValorRecebido}
+                            onValorChange={updateMedidaValorRecebidoInput}
+                            onValorBlur={commitMedidaValorRecebido}
+                            onValorRecebidoChange={updateMedidaValorConfirmadoInput}
+                            onValorRecebidoBlur={commitMedidaValorConfirmado}
+                            onRemove={removeMedidaValorRecebido}
+                          />
                         </>
                       ) : (
                         <>
@@ -2091,6 +2202,95 @@ const RefundsListEditor: React.FC<{
         </div>
       ))}
       {rows.length === 0 && <p className="text-xs text-slate-500">Sem pedidos de reembolso.</p>}
+    </div>
+  </div>
+);
+
+const ReceivedSupportValuesEditor: React.FC<{
+  rows: ProjectSupportReceivedValueItem[];
+  onAdd: () => void;
+  onChange: (index: number, field: keyof ProjectSupportReceivedValueItem, value: string) => void;
+  onValorChange: (index: number, value: string) => void;
+  onValorBlur: (index: number) => void;
+  onValorRecebidoChange: (index: number, value: string) => void;
+  onValorRecebidoBlur: (index: number) => void;
+  onRemove: (index: number) => void;
+}> = ({ rows, onAdd, onChange, onValorChange, onValorBlur, onValorRecebidoChange, onValorRecebidoBlur, onRemove }) => (
+  <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3">
+    <div className="mb-2 flex items-center justify-between">
+      <div>
+        <h4 className="text-sm font-semibold text-blue-950">Pedidos e recebimentos da medida</h4>
+        <p className="text-xs text-blue-800">Registe primeiro o pedido. Depois confirme o recebimento com data e valor efetivo.</p>
+      </div>
+      <button type="button" onClick={onAdd} className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-white px-2 py-1 text-xs font-semibold text-blue-800 hover:bg-blue-50">
+        <Plus size={12} /> Novo pedido
+      </button>
+    </div>
+    <div className="space-y-2">
+      {rows.map((row, index) => (
+        <div key={`valor-recebido-${index}`} className="grid grid-cols-1 gap-2 rounded-xl border border-blue-100 bg-white p-2 md:grid-cols-[130px_170px_120px_120px_130px_120px_minmax(160px,1fr)_82px]">
+          <input
+            type="date"
+            value={row.dataPedido}
+            onChange={(e) => onChange(index, 'dataPedido', e.target.value)}
+            className="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm"
+            title="Data do pedido"
+          />
+          <input
+            type="text"
+            placeholder="Pedido / tranche"
+            value={row.tranche}
+            onChange={(e) => onChange(index, 'tranche', e.target.value)}
+            className="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm"
+          />
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="Valor pedido"
+            value={row.valorPedido}
+            onChange={(e) => onValorChange(index, e.target.value)}
+            onBlur={() => onValorBlur(index)}
+            className="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-right text-sm"
+          />
+          <select
+            value={row.estado || 'Pedido'}
+            onChange={(e) => onChange(index, 'estado', e.target.value)}
+            className="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm"
+          >
+            <option value="Pedido">Pedido</option>
+            <option value="Submetido">Submetido</option>
+            <option value="Recebido">Recebido</option>
+            <option value="Não recebido">Não recebido</option>
+          </select>
+          <input
+            type="date"
+            value={row.dataRecebimento}
+            onChange={(e) => onChange(index, 'dataRecebimento', e.target.value)}
+            className="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm"
+            title="Data de recebimento"
+          />
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="Valor recebido"
+            value={row.valorRecebido}
+            onChange={(e) => onValorRecebidoChange(index, e.target.value)}
+            onBlur={() => onValorRecebidoBlur(index)}
+            className="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-right text-sm"
+          />
+          <input
+            type="text"
+            placeholder="Observações"
+            value={row.observacoes}
+            onChange={(e) => onChange(index, 'observacoes', e.target.value)}
+            className="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm"
+          />
+          <button type="button" onClick={() => onRemove(index)} className="rounded-lg border border-red-200 bg-white px-2 py-2 text-xs text-red-700 hover:bg-red-50">
+            Remover
+          </button>
+        </div>
+      ))}
+      {rows.length === 0 && <p className="text-xs text-blue-800">Sem pedidos registados.</p>}
     </div>
   </div>
 );

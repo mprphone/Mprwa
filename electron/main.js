@@ -408,7 +408,7 @@ function resolveDesktopAutologinConfig(payload = {}) {
     shouldActivateFinancasNifTab: payload?.activateFinancasNifTab !== false,
     browserExecutablePath: String(payload?.browserExecutablePath || fallbackExecutablePath).trim() || undefined,
     browserChannel: String(payload?.browserChannel || '').trim() || undefined,
-    segSocialLoginVerificationSinceIso: new Date(Date.now() - 2 * 60_000).toISOString(),
+    segSocialLoginVerificationSinceIso: '',
   };
 }
 
@@ -459,7 +459,7 @@ function requirePlaywrightForDesktopAutologin() {
 async function createDesktopAutologinPage(browser, config) {
   const context = await browser.newContext({
     viewport: null,
-    acceptDownloads: false,
+    acceptDownloads: true,
     permissions: ['clipboard-read', 'clipboard-write'],
   });
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
@@ -468,7 +468,112 @@ async function createDesktopAutologinPage(browser, config) {
 
   const page = await context.newPage();
   page.setDefaultTimeout(config.timeoutMs);
+  attachDesktopPdfDownloadHandler(context, page);
   return { context, page };
+}
+
+function safeDesktopDownloadFileName(value, fallback = 'documento.pdf') {
+  const cleaned = path.basename(String(value || '').trim() || fallback)
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned || fallback;
+}
+
+function uniqueDesktopDownloadPath(folder, fileName) {
+  const parsed = path.parse(fileName);
+  const base = parsed.name || 'documento';
+  const ext = parsed.ext || '.pdf';
+  let candidate = path.join(folder, `${base}${ext}`);
+  let index = 1;
+  while (fs.existsSync(candidate)) {
+    candidate = path.join(folder, `${base} (${index})${ext}`);
+    index += 1;
+  }
+  return candidate;
+}
+
+function fileNameFromContentDisposition(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const encodedMatch = raw.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
+  if (encodedMatch) {
+    try {
+      return decodeURIComponent(encodedMatch[1].replace(/^"|"$/g, ''));
+    } catch (_) {
+      return encodedMatch[1].replace(/^"|"$/g, '');
+    }
+  }
+  const plainMatch = raw.match(/filename\s*=\s*"?([^";]+)"?/i);
+  return plainMatch ? plainMatch[1] : '';
+}
+
+function fileNameFromUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    const base = path.basename(url.pathname || '');
+    return base && /\.[a-z0-9]{2,8}$/i.test(base) ? base : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function attachDesktopPdfDownloadHandler(context, page) {
+  const downloadsFolder = app.getPath('downloads');
+  const openedPdfKeys = new Set();
+
+  const saveAndOpenPdfBuffer = async (buffer, fileName, sourceKey) => {
+    if (!buffer?.length) return;
+    const key = String(sourceKey || fileName || '').trim();
+    if (key && openedPdfKeys.has(key)) return;
+    if (key) openedPdfKeys.add(key);
+
+    const safeName = safeDesktopDownloadFileName(fileName, 'documento-seguranca-social.pdf');
+    const pdfName = /\.pdf$/i.test(safeName) ? safeName : `${safeName}.pdf`;
+    const targetPath = uniqueDesktopDownloadPath(downloadsFolder, pdfName);
+    await fs.promises.writeFile(targetPath, buffer);
+    await shell.openPath(targetPath).catch(() => null);
+  };
+
+  const openDownload = async (download) => {
+    try {
+      const suggested = safeDesktopDownloadFileName(await download.suggestedFilename(), 'documento-seguranca-social.pdf');
+      const targetPath = uniqueDesktopDownloadPath(downloadsFolder, suggested);
+      await download.saveAs(targetPath);
+      if (/\.pdf$/i.test(targetPath)) {
+        await shell.openPath(targetPath).catch(() => null);
+      }
+    } catch (error) {
+      console.warn('[Electron] Falha ao guardar/abrir PDF do autologin:', error?.message || error);
+    }
+  };
+
+  const openPdfResponse = async (response) => {
+    try {
+      const headers = response.headers();
+      const contentType = String(headers['content-type'] || '').toLowerCase();
+      const responseUrl = response.url();
+      const isPdf = contentType.includes('application/pdf') || /\.pdf(?:[?#]|$)/i.test(responseUrl);
+      if (!isPdf || response.status() >= 400) return;
+
+      const fileName =
+        fileNameFromContentDisposition(headers['content-disposition']) ||
+        fileNameFromUrl(responseUrl) ||
+        'documento-seguranca-social.pdf';
+      const buffer = await response.body().catch(() => null);
+      await saveAndOpenPdfBuffer(buffer, fileName, responseUrl);
+    } catch (error) {
+      console.warn('[Electron] Falha ao capturar PDF inline do autologin:', error?.message || error);
+    }
+  };
+
+  const attachToPage = (targetPage) => {
+    targetPage.on('download', openDownload);
+    targetPage.on('response', openPdfResponse);
+  };
+
+  attachToPage(page);
+  context.on('page', attachToPage);
 }
 
 async function prepareDesktopAutologinLoginPage(page, config) {
@@ -506,6 +611,9 @@ async function findDesktopAutologinFormTargets(page, selectors, config) {
 async function submitDesktopAutologinCredentials(page, targets, config) {
   await targets.usernameTarget.locator.fill(config.username);
   await targets.passwordTarget.locator.fill(config.password);
+  if (config.normalizedCredentialLabel === 'SS') {
+    config.segSocialLoginVerificationSinceIso = new Date().toISOString();
+  }
 
   const afterSubmitWait = () => (
     config.normalizedCredentialLabel === 'SS' && config.isEnterpriseSubUserFlow

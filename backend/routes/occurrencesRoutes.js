@@ -15,42 +15,42 @@ const DEFAULT_OCCURRENCE_TYPES = [
 
 
 const IAPMEI_DOSSIE_ITEMS = [
-    { key: '1_1_comunicacao_convite', principal: '1.Candidatura', nivel2: '1.1 Candidatura' },
-    { key: '1_1_formulario_candidatura', principal: '1.Candidatura', nivel2: '1.1 Candidatura' },
-    { key: '1_1_comprovativo_envio', principal: '1.Candidatura', nivel2: '1.1 Candidatura' },
-    { key: '1_2_comprovativos_elegibilidade', principal: '1.Candidatura', nivel2: '1.2 Comprovativos dos Critérios de Elegibilidade' },
-    { key: '1_3_correspondencia', principal: '1.Candidatura', nivel2: '1.3 Correspondência Trocada' },
-    { key: '2_1_condicionantes_pre_contratuais', principal: '2.Decisão', nivel2: '2.1 Comprovativos das Condicionantes Pré Contratuais' },
-    { key: '2_2_termo_aceitacao', principal: '2.Decisão', nivel2: '2.2 Termo de Aceitação' },
-    { key: '2_3_pedidos_ate_termo', principal: '2.Decisão', nivel2: '2.3 Pedidos de Alteração (até ao Termo de Aceitação)' },
-    { key: '2_4_correspondencia_decisao', principal: '2.Decisão', nivel2: '2.4 Correspondência Trocada' },
-    { key: '3_1_adenda_termo', principal: '3.Pedidos de Alteração', nivel2: '3.1 Adenda ao Termo de Aceitação' },
-    { key: '3_2_pedidos_pos_termo', principal: '3.Pedidos de Alteração', nivel2: '3.2 Pedidos de Alteração (após o Termo de Aceitação)' },
-    { key: '4_1_acompanhamento_visita', principal: '4.Ações de Acompanhamento e Controlo', nivel2: '4.1 Acompanhamento / Visita' },
-    { key: '4_2_controlo_auditoria', principal: '4.Ações de Acompanhamento e Controlo', nivel2: '4.2 Controlo / Auditoria' },
-    { key: '5_1_relatorios_intercalares', principal: '5.Execução', nivel2: '5.1 Relatórios Intercalar de Progresso (Trimestral)' },
-    { key: '5_2_auditorias_intercalares', principal: '5.Execução', nivel2: '5.2 Auditorias técnico científicas intercalares' },
-    { key: '5_3_pedidos_pagamento_intercalares', principal: '5.Execução', nivel2: '5.3 Pedidos de Pagamento Intercalares' },
-    { key: '5_4_pedido_pagamento_final', principal: '5.Execução', nivel2: '5.4 Pedido de Pagamento Final' },
-    { key: '5_5_encerramento_projeto', principal: '5.Execução', nivel2: '5.5 Encerramento projeto' },
-    { key: '5_6_avaliacao_metas', principal: '5.Execução', nivel2: '5.6 Avaliação de Metas' },
-    { key: '5_7_comprovantes_investimento', principal: '5.Execução', nivel2: '5.7 Comprovantes de Investimento' },
-    { key: '5_8_evidencias_divulgacao', principal: '5.Execução', nivel2: '5.8 Evidências da Divulgação de Resultados' },
-    { key: '5_9_outros_documentos', principal: '5.Execução', nivel2: '5.9 Outros Documentos' },
-    { key: '6_1_publicitacao_apoio', principal: '6.Publicitação de Apoio', nivel2: '6.1 A cumprir pelo Beneficiário (web/cartaz/ecrã eletrónico)' },
-    { key: '7_1_contratacao_publica', principal: '7.Contratação Pública', nivel2: '7.1 Procedimentos de Contratação Pública' },
+    { key: '1_1_comunicacao_convite', principal: '1.Candidatura', nivel2: '1.1 Candidatura', designacao: 'Comunicação do convite à apresentação da candidatura' },
+    { key: '1_1_formulario_candidatura', principal: '1.Candidatura', nivel2: '1.1 Candidatura', designacao: 'Formulário de candidatura e respetivos anexos submetidos' },
+    { key: '1_1_comprovativo_envio', principal: '1.Candidatura', nivel2: '1.1 Candidatura', designacao: 'Comprovativo de envio e da receção da candidatura' },
+    { key: '1_2_comprovativos_elegibilidade', principal: '1.Candidatura', nivel2: '1.2 Comprovativos dos Critérios de Elegibilidade', designacao: 'Comprovativos dos critérios de Elegibilidade dos Beneficiários e do Projeto' },
+    { key: '1_3_correspondencia', principal: '1.Candidatura', nivel2: '1.3 Correspondência Trocada', designacao: 'Correspondência com o Beneficiário Intermediário, relativa ao pedido de elementos e esclarecimentos' },
+    { key: '2_1_condicionantes_pre_contratuais', principal: '2.Decisão', nivel2: '2.1 Comprovativos das Condicionantes Pré Contratuais', designacao: 'Comprovativos das Condicionantes Pré Contratuais' },
+    { key: '2_2_termo_aceitacao', principal: '2.Decisão', nivel2: '2.2 Termo de Aceitação', designacao: 'Termo de Aceitação / Contrato Consórcio / Anexos / Outros' },
+    { key: '2_3_pedidos_ate_termo', principal: '2.Decisão', nivel2: '2.3 Pedidos de Alteração (até ao Termo de Aceitação)', designacao: 'Pedidos de alteração e respetiva documentação de suporte' },
+    { key: '2_4_correspondencia_decisao', principal: '2.Decisão', nivel2: '2.4 Correspondência Trocada', designacao: 'Correspondência com o Beneficiário Intermediário relativa a notificação da proposta de decisão e decisão final' },
+    { key: '3_1_adenda_termo', principal: '3.Pedidos de Alteração', nivel2: '3.1 Adenda ao Termo de Aceitação', designacao: 'Adenda ao Termo de Aceitação e eventuais anexos' },
+    { key: '3_2_pedidos_pos_termo', principal: '3.Pedidos de Alteração', nivel2: '3.2 Pedidos de Alteração (após o Termo de Aceitação)', designacao: 'Pedidos de alteração, documentação de suporte e correspondência' },
+    { key: '4_1_acompanhamento_visita', principal: '4.Ações de Acompanhamento e Controlo', nivel2: '4.1 Acompanhamento / Visita', designacao: 'Correspondência, relatórios e outros documentos' },
+    { key: '4_2_controlo_auditoria', principal: '4.Ações de Acompanhamento e Controlo', nivel2: '4.2 Controlo / Auditoria', designacao: 'Correspondência, relatórios e outros documentos' },
+    { key: '5_1_relatorios_intercalares', principal: '5.Execução', nivel2: '5.1 Relatórios Intercalar de Progresso (Trimestral)', designacao: 'Relatórios Intercalar de Progresso (Trimestral)' },
+    { key: '5_2_auditorias_intercalares', principal: '5.Execução', nivel2: '5.2 Auditorias técnico científicas intercalares', designacao: 'Auditorias técnico científicas intercalares' },
+    { key: '5_3_pedidos_pagamento_intercalares', principal: '5.Execução', nivel2: '5.3 Pedidos de Pagamento Intercalares', designacao: 'Pedidos de Pagamento Intercalares' },
+    { key: '5_4_pedido_pagamento_final', principal: '5.Execução', nivel2: '5.4 Pedido de Pagamento Final', designacao: 'Pedido de Pagamento Final' },
+    { key: '5_5_encerramento_projeto', principal: '5.Execução', nivel2: '5.5 Encerramento projeto', designacao: 'Encerramento projeto' },
+    { key: '5_6_avaliacao_metas', principal: '5.Execução', nivel2: '5.6 Avaliação de Metas', designacao: 'Avaliação de Metas' },
+    { key: '5_7_comprovantes_investimento', principal: '5.Execução', nivel2: '5.7 Comprovantes de Investimento', designacao: 'Comprovantes de Investimento' },
+    { key: '5_8_evidencias_divulgacao', principal: '5.Execução', nivel2: '5.8 Evidências da Divulgação de Resultados', designacao: 'Evidências da Divulgação de Resultados' },
+    { key: '5_9_outros_documentos', principal: '5.Execução', nivel2: '5.9 Outros Documentos', designacao: 'Outros Documentos' },
+    { key: '6_1_publicitacao_apoio', principal: '6.Publicitação de Apoio', nivel2: '6.1 A cumprir pelo Beneficiário (web/cartaz/ecrã eletrónico)', designacao: 'Elementos de publicitação de apoio' },
+    { key: '7_1_contratacao_publica', principal: '7.Contratação Pública', nivel2: '7.1 Procedimentos de Contratação Pública', designacao: 'Procedimentos de Contratação Pública' },
 ];
 
 
 const IEFP_DOSSIE_ITEMS = [
-    { key: 'iefp_candidatura_eletronica', principal: '1.Candidatura', nivel2: 'Candidatura Eletrónica' },
-    { key: 'iefp_identificacao_empresa', principal: '1.Candidatura', nivel2: 'Identificação da Empresa' },
-    { key: 'iefp_contrato_trabalho', principal: '2.Execução', nivel2: 'Contrato de Trabalho' },
-    { key: 'iefp_inscricao_trabalhador', principal: '2.Execução', nivel2: 'Inscrição do Trabalhador' },
-    { key: 'iefp_regularizacao_at_ss', principal: '1.Candidatura', nivel2: 'Situação Regularizada' },
-    { key: 'iefp_recuperacao_aplicavel', principal: '1.Candidatura', nivel2: 'Declarações' },
-    { key: 'iefp_majoracoes', principal: '1.Candidatura', nivel2: 'Majorações' },
-    { key: 'iefp_plano_formacao', principal: '2.Execução', nivel2: 'Plano de Formação' },
+    { key: 'iefp_candidatura_eletronica', principal: '1.Candidatura', nivel2: 'Candidatura Eletrónica', designacao: 'Formulário de candidatura submetido no IEFP Online' },
+    { key: 'iefp_identificacao_empresa', principal: '1.Candidatura', nivel2: 'Identificação da Empresa', designacao: 'Certidão permanente e registo de beneficiário (Segurança Social)' },
+    { key: 'iefp_contrato_trabalho', principal: '2.Execução', nivel2: 'Contrato de Trabalho', designacao: 'Cópia do contrato sem termo celebrado (com data de início)' },
+    { key: 'iefp_inscricao_trabalhador', principal: '2.Execução', nivel2: 'Inscrição do Trabalhador', designacao: 'Prova de inscrição do desempregado no IEFP' },
+    { key: 'iefp_regularizacao_at_ss', principal: '1.Candidatura', nivel2: 'Situação Regularizada', designacao: 'Regularidade perante Autoridade Tributária e Segurança Social' },
+    { key: 'iefp_recuperacao_aplicavel', principal: '1.Candidatura', nivel2: 'Declarações', designacao: 'Declaração de não se encontrar em processo de recuperação (se aplicável)' },
+    { key: 'iefp_majoracoes', principal: '1.Candidatura', nivel2: 'Majorações', designacao: 'Atestado multiuso / comprovativos de residência (se aplicável)' },
+    { key: 'iefp_plano_formacao', principal: '2.Execução', nivel2: 'Plano de Formação', designacao: 'Plano de formação na empresa (quando exigido)' },
 ];
 
 const IEFP_DOSSIE_MAP = new Map(IEFP_DOSSIE_ITEMS.map((item) => [item.key, item]));
@@ -479,6 +479,45 @@ function registerOccurrencesRoutes(context) {
             principal: String(row.principal || '').trim(),
             nivel2: String(row.nivel2 || '').trim(),
         };
+    }
+
+    async function resolveDossieItemLabel(dossieModel, dossieItemKey) {
+        const model = normalizeDossieModel(dossieModel) || 'OUTROS';
+        const key = normalizeDossieItemKey(dossieItemKey);
+        if (!key) return '';
+
+        const map = resolveDossieMapByModel(model);
+        const builtIn = (map && map.get(key)) || COMBINED_DOSSIE_MAP.get(key);
+        if (builtIn) {
+            return String(builtIn.designacao || builtIn.nivel2 || builtIn.principal || '').trim();
+        }
+
+        await ensureDossieItemTemplatesTable();
+        const row = await dbGetAsync(
+            `SELECT designacao, nivel2, principal
+             FROM occurrence_dossie_items
+             WHERE is_active = 1
+               AND key = ?
+               AND (model = 'GLOBAL' OR model = ?)
+             ORDER BY CASE WHEN model = 'GLOBAL' THEN 0 ELSE 1 END
+             LIMIT 1`,
+            [key, model]
+        );
+        if (!row) return '';
+        return String(row.designacao || row.nivel2 || row.principal || '').trim();
+    }
+
+    function prefixFileNameWithDossieLabel(fileName, label) {
+        const safeName = safeFileName(fileName, 'anexo.bin');
+        const safeLabel = safeFileName(label, '').replace(/\.[a-z0-9]{1,8}$/i, '').trim();
+        if (!safeLabel) return safeName;
+
+        const parsed = path.parse(safeName);
+        const base = String(parsed.name || '').trim();
+        const ext = parsed.ext || '';
+        const normalizedLabel = safeLabel.toLowerCase();
+        if (base.toLowerCase().startsWith(normalizedLabel)) return safeName;
+        return safeFileName(`${safeLabel} - ${base}${ext}`, safeName);
     }
 
     function normalizeOccurrenceTypeFolderName(rawTypeName) {
@@ -1298,16 +1337,13 @@ function registerOccurrencesRoutes(context) {
                 titleFolder
             );
 
+            let dossieItemLabel = '';
             if (sectionKey === 'dossie_eletronico') {
                 const resolved = await resolveDossieFoldersWithCustom(dossieModel, dossieItemKey);
+                dossieItemLabel = await resolveDossieItemLabel(dossieModel, dossieItemKey);
                 targetDir = path.join(targetDir, 'dossie eletronico');
                 if (resolved.principal) {
                     targetDir = path.join(targetDir, safeFolderName(resolved.principal, 'Sem separador'));
-                }
-                if (resolved.nivel2) {
-                    targetDir = path.join(targetDir, safeFolderName(resolved.nivel2, 'Sem nivel'));
-                } else if (dossieItemKey) {
-                    targetDir = path.join(targetDir, safeFolderName(dossieItemKey, 'Sem separador'));
                 }
             }
             await ensureWritableAncestors(targetDir);
@@ -1322,7 +1358,9 @@ function registerOccurrencesRoutes(context) {
                 throw mkdirError;
             }
 
-            const safeName = safeFileName(fileNameRaw, 'anexo.bin');
+            const safeName = sectionKey === 'dossie_eletronico' && dossieItemKey
+                ? prefixFileNameWithDossieLabel(fileNameRaw, dossieItemLabel || dossieItemKey)
+                : safeFileName(fileNameRaw, 'anexo.bin');
             const targetPath = await resolveUniqueFilePath(path.join(targetDir, safeName));
             try {
                 await fs.promises.writeFile(targetPath, fileBuffer);
