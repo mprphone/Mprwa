@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, Clock3, FileText, ListChecks, Loader2, Mail, RefreshCw, ThumbsDown, ThumbsUp, Upload, XCircle } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Clock3, FileText, Info, Loader2, Mail, RefreshCw, Shield, ThumbsDown, ThumbsUp, Upload, XCircle } from 'lucide-react';
 import { Customer } from '../../types';
 
 // ─── Data model ───────────────────────────────────────────────────────────────
@@ -318,6 +318,19 @@ function CertidoesTable({ rows, customer }: { rows: FiscalCertidao[]; customer: 
       </tbody>
     </table>
   );
+}
+
+// ─── FilingBadge ──────────────────────────────────────────────────────────────
+
+function FilingBadge({ situacao }: { situacao: string }) {
+  const s = String(situacao || '');
+  if (/certa|entregue|aceite|validad/i.test(s))
+    return <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">{s}</span>;
+  if (/sem\s+declara|não\s+dispon|indispon/i.test(s))
+    return <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">Não disponível</span>;
+  if (/erro|invalida|errada|anulad/i.test(s))
+    return <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-600">{s}</span>;
+  return <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">{s}</span>;
 }
 
 // ─── OutrosDocumentosTable ───────────────────────────────────────────────────
@@ -669,178 +682,328 @@ export function CustomerFiscalSummaryTab({ customer, anyAutomationBusy }: Props)
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-16 text-slate-400 text-sm gap-2">
-        <Loader2 size={16} className="animate-spin" /> A carregar...
-      </div>
-    );
-  }
-
   const atIdx = data.dividas.findIndex((d) => d.entidade === 'at');
   const ssIdx = data.dividas.findIndex((d) => d.entidade === 'ss');
   const hasQueue = jobs.length > 0;
-  const visibleJobs = jobs.slice(0, 6);
-  const visibleLogs = logs.slice(0, 5);
   const customerType = normalizeCustomerType((customer as any).type);
   const isParticular = customerType === 'particular';
   const isEmpresa = customerType === 'empresa';
+  const robotBusy = activeJobs.size > 0;
+
+  // Métricas para o card de situação geral
+  const allFilings = [...data.ies, ...data.modelo22];
+  const certasCount = allFilings.filter((f) => /certa|entregue|aceite/i.test(f.situacao || '')).length;
+  const certidoesValidasCount = data.certidoes.filter((c) => c.valida).length;
+  const semDeclaracaoItems = allFilings.filter((f) => /sem\s+declara|não\s+dispon/i.test(f.situacao || ''));
+  const hasProblems = data.certidoes.some((c) => c.dataValidade && isExpired(c.dataValidade));
+  const situacaoLabel = hasProblems ? 'Atenção' : certasCount >= 2 ? 'Regular' : 'Incompleto';
+  const situacaoColor = hasProblems ? 'text-amber-600' : certasCount >= 2 ? 'text-emerald-600' : 'text-slate-500';
+  const situacaoBg = hasProblems ? 'bg-amber-50 border-amber-200' : certasCount >= 2 ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200';
+
+  // Alertas para anos sem submissão
+  const alerts: string[] = [];
+  data.ies.forEach((f) => { if (f.ano && /sem\s+declara|não\s+dispon/i.test(f.situacao || '')) alerts.push(`A IES de ${f.ano} ainda não tem submissão disponível.`); });
+  data.modelo22.forEach((f) => { if (f.ano && /sem\s+declara|não\s+dispon/i.test(f.situacao || '')) alerts.push(`O Modelo 22 de ${f.ano} ainda não tem submissão disponível.`); });
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-20 text-slate-400 text-sm gap-2">
+      <Loader2 size={18} className="animate-spin" /> A carregar...
+    </div>
+  );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5 pb-4">
 
-      {/* Toolbar — recolha buttons */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
-          <div className="flex items-center gap-2 text-xs text-slate-500 min-h-[20px]">
-            <ListChecks size={15} className="text-emerald-600" />
-            <span className="font-semibold text-slate-700">Robô de recolhas</span>
-          {data.updatedAt && (
-              <span className="text-slate-400">Atualizado {formatDateTime(data.updatedAt)}</span>
-          )}
+      {/* ── Cabeçalho ──────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-slate-800">Situação Fiscal e Declarativa</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Visão geral das obrigações fiscais, declarações e documentos</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {/* Botão: Atualizar dados (respeita política — só recolhe o que falta) */}
-          <button type="button"
-            disabled={batchBusy || anyAutomationBusy}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Última recolha + robot status */}
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-500 shadow-sm">
+            <Clock3 size={12} />
+            {data.updatedAt ? <span>Última recolha: <strong className="text-slate-700">{formatDateTime(data.updatedAt)}</strong></span> : <span>Sem recolha</span>}
+            <span className={`ml-1 inline-flex items-center gap-1 font-semibold ${robotBusy ? 'text-blue-600' : 'text-emerald-600'}`}>
+              <span className={`h-2 w-2 rounded-full ${robotBusy ? 'bg-blue-500 animate-pulse' : 'bg-emerald-500'}`} />
+              {robotBusy ? 'A recolher' : 'Robô ativo'}
+            </span>
+          </div>
+          {/* Atualizar dados */}
+          <button type="button" disabled={batchBusy || anyAutomationBusy}
             onClick={() => void triggerBatchRecolha(false)}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${
-              batchBusy ? 'bg-emerald-100 text-emerald-600' : 'bg-emerald-500 text-white hover:bg-emerald-600 hover:shadow'
-            }`}>
-            {batchBusy ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50 ${batchBusy ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-500 text-white hover:bg-emerald-600'}`}>
+            {batchBusy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
             Atualizar dados
           </button>
-
-          {/* Botão: Forçar recolha (força tudo mesmo que já exista) */}
-          <button type="button"
-            disabled={batchBusy || anyAutomationBusy}
+          {/* Forçar recolha */}
+          <button type="button" disabled={batchBusy || anyAutomationBusy}
             onClick={() => void triggerBatchRecolha(true)}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${
-              batchBusy ? 'bg-slate-100 text-slate-600' : 'bg-slate-500 text-white hover:bg-slate-600 hover:shadow'
-            }`}>
-            {batchBusy ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-all disabled:opacity-50">
+            {batchBusy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
             Forçar recolha
           </button>
-
-          {/* Botão: CRC Bancos (comportamento próprio — extensão Chrome) */}
+          {/* Enviar ao cliente */}
+          <button type="button" onClick={() => setShowEmailModal(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-all">
+            <Mail size={13} /> Enviar ao cliente
+          </button>
+          {/* CRC Bancos */}
           {(() => {
             const job: RecolhaJob = 'bportugal';
             const busy = runningJobs.has(job) || activeJobs.has(job);
-            const latest = jobs.find((item) => item.job === job);
-            const buttonLabel = jobMessages[job] || (busy && latest ? jobStatusLabel(latest.status) : 'CRC Bancos');
             return (
-              <button key={job} type="button"
-                disabled={busy || anyAutomationBusy}
-                onClick={() => void triggerRecolha(job)}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${
-                  busy ? 'bg-blue-100 text-blue-600' : 'bg-blue-500 text-white hover:bg-blue-600 hover:shadow'
-                }`}>
-                {busy ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-                {buttonLabel}
+              <button type="button" disabled={busy || anyAutomationBusy} onClick={() => void triggerRecolha(job)}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-sm font-semibold shadow-sm transition-all disabled:opacity-50 ${busy ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-blue-200 bg-white text-blue-600 hover:bg-blue-50'}`}>
+                {busy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                CRC Bancos
               </button>
             );
           })()}
-          {/* Botão: Enviar ao cliente */}
-          <button type="button"
-            onClick={() => setShowEmailModal(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm hover:bg-slate-50 transition-all">
-            <Mail size={11} />
-            Enviar ao cliente
-          </button>
-
-          {/* Botão Ver Logs — só aparece se existirem jobs */}
+          {/* Mais opções — Ver logs */}
           {hasQueue && (
-            <button type="button"
-              onClick={() => setShowLogs((v) => !v)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm hover:bg-slate-50 transition-all">
-              <FileText size={11} />
-              {showLogs ? 'Ocultar logs' : 'Ver logs'}
+            <button type="button" onClick={() => setShowLogs((v) => !v)}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50 transition-all">
+              {showLogs ? 'Menos' : 'Mais opções'} <ChevronDown size={13} className={`transition-transform ${showLogs ? 'rotate-180' : ''}`} />
             </button>
           )}
+        </div>
+      </div>
+
+      {/* ── Logs (expandível) ──────────────────────────────────────── */}
+      {hasQueue && showLogs && (
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="grid gap-4 bg-slate-50/60 px-4 py-4 lg:grid-cols-[1.3fr_0.7fr]">
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Lista de espera e últimas recolhas</p>
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {jobs.slice(0, 6).map((job) => (
+                  <div key={job.id} className={`rounded-lg border px-3 py-2 ${jobStatusClass(job.status)}`}>
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="truncate text-xs font-bold">{JOB_LABELS[job.job] || job.job}</span>
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold whitespace-nowrap">{jobStatusIcon(job.status)} {jobStatusLabel(job.status)}</span>
+                    </div>
+                    <div className="mt-0.5 flex items-center justify-between text-[10px] opacity-70">
+                      <span>{formatDateTime(job.requested_at)}</span>
+                      {job.attempts > 0 && <span>{job.attempts} tent.</span>}
+                    </div>
+                    {(job.message || job.error) && <p className="mt-0.5 truncate text-[10px] opacity-80">{job.error || job.message}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Log recente</p>
+              <div className="rounded-lg border border-slate-200 bg-white divide-y divide-slate-50">
+                {logs.slice(0, 5).length === 0
+                  ? <p className="px-3 py-3 text-xs text-slate-400">Sem registos.</p>
+                  : logs.slice(0, 5).map((log) => (
+                    <div key={log.id} className="flex items-start gap-2 px-3 py-2">
+                      <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${log.level === 'error' ? 'bg-red-500' : log.level === 'warn' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium text-slate-700">{JOB_LABELS[log.job] || log.job}</p>
+                        <p className="truncate text-[11px] text-slate-500">{log.message}</p>
+                      </div>
+                      <span className="shrink-0 text-[10px] text-slate-400">{formatDateTime(log.created_at)}</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
           </div>
         </div>
-        {hasQueue && showLogs && (
-          <div className="grid gap-3 bg-slate-50/80 px-4 py-3 lg:grid-cols-[1.25fr_0.75fr]">
-            <div className="space-y-2">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Lista de espera e últimas recolhas</div>
-              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                {visibleJobs.map((job) => (
-                  <div key={job.id} className={`rounded-lg border px-3 py-2 ${jobStatusClass(job.status)}`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-bold">{JOB_LABELS[job.job] || job.job}</span>
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold">
-                        {jobStatusIcon(job.status)} {jobStatusLabel(job.status)}
-                      </span>
-                    </div>
-                    <div className="mt-1 flex items-center justify-between gap-2 text-[11px] opacity-80">
-                      <span>{formatDateTime(job.requested_at)}</span>
-                      {job.attempts > 0 && <span>{job.attempts} tentativa{job.attempts === 1 ? '' : 's'}</span>}
-                    </div>
-                    {(job.message || job.error) && (
-                      <p className="mt-1 truncate text-[11px] opacity-90">{job.error || job.message}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Log recente</div>
-              <div className="rounded-lg border border-slate-200 bg-white">
-                {visibleLogs.length === 0 ? (
-                  <div className="px-3 py-3 text-xs text-slate-400">Ainda sem registos.</div>
-                ) : visibleLogs.map((log) => (
-                  <div key={log.id} className="flex items-start gap-2 border-b border-slate-100 px-3 py-2 last:border-0">
-                    <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
-                      log.level === 'error' ? 'bg-red-500' : log.level === 'warn' ? 'bg-amber-500' : 'bg-emerald-500'
-                    }`} />
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-medium text-slate-700">{JOB_LABELS[log.job] || log.job}</p>
-                      <p className="truncate text-[11px] text-slate-500">{log.message}</p>
-                    </div>
-                    <span className="ml-auto shrink-0 text-[10px] text-slate-400">{formatDateTime(log.created_at)}</span>
-                  </div>
-                ))}
-              </div>
+      )}
+
+      {/* ── Card situação geral ────────────────────────────────────── */}
+      <div className={`rounded-xl border p-4 ${situacaoBg}`}>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${hasProblems ? 'bg-amber-100' : certasCount >= 2 ? 'bg-emerald-100' : 'bg-slate-100'}`}>
+            {hasProblems ? <AlertTriangle size={22} className="text-amber-600" /> : certasCount >= 2 ? <CheckCircle2 size={22} className="text-emerald-600" /> : <AlertCircle size={22} className="text-slate-400" />}
+          </div>
+          <div>
+            <p className="text-base font-bold text-slate-800">Situação geral: <span className={situacaoColor}>{situacaoLabel}</span></p>
+            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+              {certasCount > 0 && <span className="flex items-center gap-1"><CheckCircle2 size={11} className="text-emerald-500" /> {certasCount} declarações certas</span>}
+              {certidoesValidasCount > 0 && <span className="flex items-center gap-1"><Shield size={11} className="text-emerald-500" /> {certidoesValidasCount} certidões válidas</span>}
+              {semDeclaracaoItems.length > 0 && <span className="flex items-center gap-1 text-slate-400"><Info size={11} /> {semDeclaracaoItems.length} {semDeclaracaoItems.length === 1 ? 'item' : 'itens'} sem declaração disponível</span>}
             </div>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* IES + Modelo 22 */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <SectionCard title="IES">
-          <FilingTable rows={data.ies} customer={customer} />
-        </SectionCard>
-        <SectionCard title={isParticular ? 'IRS' : 'Modelos 22'}>
-          <FilingTable rows={data.modelo22} customer={customer} />
-        </SectionCard>
-      </div>
+      {/* ── Grid 4 colunas ─────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
 
-      {/* Certidões + Dívidas */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <SectionCard title="Certidões de Não Dívida">
-          <CertidoesTable rows={data.certidoes} customer={customer} />
-        </SectionCard>
-        <SectionCard title="Dívidas">
-          <div className="flex gap-3 p-3">
-            <DividaCard divida={data.dividas[atIdx] ?? DEFAULT_DATA.dividas[0]} />
-            <DividaCard divida={data.dividas[ssIdx] ?? DEFAULT_DATA.dividas[1]} />
+        {/* IES */}
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+            <FileText size={14} className="text-emerald-600" />
+            <span className="text-sm font-bold text-slate-800">IES</span>
           </div>
-        </SectionCard>
+          <div className="divide-y divide-slate-50">
+            <div className="grid grid-cols-4 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              <span>Ano</span><span>Situação</span><span>Receção</span><span className="text-right">PDF</span>
+            </div>
+            {data.ies.map((f, i) => (
+              <div key={i} className="grid grid-cols-4 items-center px-4 py-2.5 text-xs hover:bg-slate-50/60">
+                <span className="font-semibold text-slate-700">{f.ano || '—'}</span>
+                <span>{f.situacao ? <FilingBadge situacao={f.situacao} /> : <span className="text-slate-300">—</span>}</span>
+                <span className="text-slate-500">{f.dataRecepcao ? formatDate(f.dataRecepcao) : <span className="text-slate-300">—</span>}</span>
+                <span className="text-right">
+                  {f.comprovativoPath ? <a href={fiscalFileUrl(customer, f.comprovativoPath)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-emerald-600 hover:text-emerald-700 font-medium"><FileText size={11} /> Ver PDF</a> : <span className="text-slate-300">—</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-slate-50 px-4 py-2">
+            <button className="text-[11px] text-slate-400 hover:text-slate-600 flex items-center gap-1">Ver histórico completo <ChevronRight size={11} /></button>
+          </div>
+        </div>
+
+        {/* Modelo 22 */}
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+            <FileText size={14} className="text-emerald-600" />
+            <span className="text-sm font-bold text-slate-800">{isParticular ? 'IRS' : 'Modelo 22'}</span>
+          </div>
+          <div className="divide-y divide-slate-50">
+            <div className="grid grid-cols-4 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              <span>Ano</span><span>Situação</span><span>Receção</span><span className="text-right">PDF</span>
+            </div>
+            {data.modelo22.map((f, i) => (
+              <div key={i} className="grid grid-cols-4 items-center px-4 py-2.5 text-xs hover:bg-slate-50/60">
+                <span className="font-semibold text-slate-700">{f.ano || '—'}</span>
+                <span>{f.situacao ? <FilingBadge situacao={f.situacao} /> : <span className="text-slate-300">—</span>}</span>
+                <span className="text-slate-500">{f.dataRecepcao ? formatDate(f.dataRecepcao) : <span className="text-slate-300">—</span>}</span>
+                <span className="text-right">
+                  {f.comprovativoPath ? <a href={fiscalFileUrl(customer, f.comprovativoPath)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-emerald-600 hover:text-emerald-700 font-medium"><FileText size={11} /> Ver PDF</a> : <span className="text-slate-300">—</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-slate-50 px-4 py-2">
+            <button className="text-[11px] text-slate-400 hover:text-slate-600 flex items-center gap-1">Ver histórico completo <ChevronRight size={11} /></button>
+          </div>
+        </div>
+
+        {/* Certidões */}
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+            <Shield size={14} className="text-emerald-600" />
+            <span className="text-sm font-bold text-slate-800">Certidões de Não Dívida</span>
+          </div>
+          <div className="divide-y divide-slate-50">
+            <div className="grid grid-cols-4 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              <span className="col-span-1">Certidão</span><span>Situação</span><span>Validade</span><span className="text-right">PDF</span>
+            </div>
+            {data.certidoes.map((c, i) => (
+              <div key={i} className="grid grid-cols-4 items-center px-4 py-2.5 text-xs hover:bg-slate-50/60">
+                <span className="font-semibold text-slate-700 truncate">{c.tipo.replace('Certidão Dívida ', '')}</span>
+                <span>{c.valida ? <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Válida</span> : <span className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">—</span>}</span>
+                <span className={`text-[11px] ${c.dataValidade && isExpired(c.dataValidade) ? 'text-red-500' : 'text-slate-500'}`}>{c.dataValidade ? `até ${formatDate(c.dataValidade)}` : '—'}</span>
+                <span className="text-right">
+                  {c.ficheiroPdf ? <a href={fiscalFileUrl(customer, c.ficheiroPdf)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-emerald-600 hover:text-emerald-700 font-medium text-[11px]"><FileText size={11} /> Ver certidão</a> : <span className="text-slate-300">—</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-slate-50 px-4 py-2">
+            <button className="text-[11px] text-slate-400 hover:text-slate-600 flex items-center gap-1">Ver todas as certidões <ChevronRight size={11} /></button>
+          </div>
+        </div>
+
+        {/* Dívidas */}
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+            <AlertCircle size={14} className="text-emerald-600" />
+            <span className="text-sm font-bold text-slate-800">Dívidas</span>
+          </div>
+          <div className="divide-y divide-slate-50 px-4 py-2 space-y-2">
+            {[data.dividas[atIdx] ?? DEFAULT_DATA.dividas[0], data.dividas[ssIdx] ?? DEFAULT_DATA.dividas[1]].map((d, i) => {
+              const icon = d.entidade === 'at' ? '/icones_autologin/01_financas.png' : '/icones_autologin/02_seguranca_social.png';
+              const label = d.entidade === 'at' ? 'AT' : 'Segurança Social';
+              return (
+                <div key={i} className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 ${d.semDivida ? 'border-emerald-100 bg-emerald-50' : 'border-slate-100 bg-slate-50'}`}>
+                  <img src={icon} alt={label} className="h-8 w-8 shrink-0 rounded-md object-contain bg-white p-0.5" />
+                  <span className="flex-1 text-xs font-semibold text-slate-700">{label}</span>
+                  {d.semDivida
+                    ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">Sem dívidas</span>
+                    : <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500">Por verificar</span>
+                  }
+                  <span className={d.semDivida ? 'text-emerald-500' : 'text-slate-400'}>{d.semDivida ? <ThumbsUp size={14} /> : <ThumbsDown size={14} />}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="border-t border-slate-50 px-4 py-2">
+            <button className="text-[11px] text-slate-400 hover:text-slate-600 flex items-center gap-1">Ver detalhe de dívidas <ChevronRight size={11} /></button>
+          </div>
+        </div>
       </div>
 
-      {/* Outros documentos */}
-      <SectionCard title="Outros Documentos">
-        <OutrosDocumentosTable rows={data.documentos} customer={customer} onRefresh={() => { void load(); }} />
-      </SectionCard>
+      {/* ── Alertas ────────────────────────────────────────────────── */}
+      {alerts.slice(0, 2).map((alert, i) => (
+        <div key={i} className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <AlertTriangle size={15} className="shrink-0 text-amber-500" />
+          <p className="text-xs text-amber-800"><strong>Atenção:</strong> {alert}</p>
+        </div>
+      ))}
+
+      {/* ── Outros Documentos + Sidebar ───────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_260px]">
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="border-b border-slate-100 px-4 py-3">
+            <span className="text-sm font-bold text-slate-800">Outros Documentos</span>
+          </div>
+          <OutrosDocumentosTable rows={data.documentos} customer={customer} onRefresh={() => { void load(); }} />
+        </div>
+
+        {/* Informações rápidas */}
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="border-b border-slate-100 px-4 py-3">
+            <span className="text-sm font-bold text-slate-800">Informações rápidas</span>
+          </div>
+          <div className="divide-y divide-slate-50 px-4 py-2 text-xs">
+            <div className="py-2.5 flex items-start gap-2">
+              <span className="mt-0.5 text-slate-400"><Info size={12} /></span>
+              <div><p className="text-[10px] uppercase tracking-wider text-slate-400 mb-0.5">Cliente</p>
+              <p className="font-medium text-emerald-700">{(customer as any).company || customer.name}</p></div>
+            </div>
+            <div className="py-2.5 flex items-start gap-2">
+              <span className="mt-0.5 text-slate-400"><CheckCircle2 size={12} /></span>
+              <div><p className="text-[10px] uppercase tracking-wider text-slate-400 mb-0.5">Respostas automáticas</p>
+              <p className={`font-semibold ${(customer as any).allowAutoResponses !== false ? 'text-emerald-600' : 'text-slate-400'}`}>
+                {(customer as any).allowAutoResponses !== false ? '✓ Ativo' : '✗ Inativo'}
+              </p></div>
+            </div>
+            <div className="py-2.5 flex items-start gap-2">
+              <span className="mt-0.5 text-slate-400"><Clock3 size={12} /></span>
+              <div><p className="text-[10px] uppercase tracking-wider text-slate-400 mb-0.5">Última sincronização</p>
+              <p className="text-slate-600">{data.updatedAt ? formatDateTime(data.updatedAt) : '—'}</p></div>
+            </div>
+            <div className="py-2.5 flex items-start gap-2">
+              <span className="mt-0.5 text-slate-400"><RefreshCw size={12} /></span>
+              <div><p className="text-[10px] uppercase tracking-wider text-slate-400 mb-0.5">Robô de recolhas</p>
+              <p className={`flex items-center gap-1 font-semibold ${robotBusy ? 'text-blue-600' : 'text-emerald-600'}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${robotBusy ? 'bg-blue-500 animate-pulse' : 'bg-emerald-500'}`} />
+                {robotBusy ? 'A recolher...' : 'Ativo'}
+              </p></div>
+            </div>
+            {hasQueue && (
+              <div className="pt-2.5">
+                <button type="button" onClick={() => setShowLogs((v) => !v)}
+                  className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-all">
+                  <FileText size={12} /> {showLogs ? 'Ocultar logs' : 'Ver logs'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Modal: Enviar ao cliente */}
       {showEmailModal && (
-        <SendEmailModal
-          customer={customer}
-          data={data}
-          onClose={() => setShowEmailModal(false)}
-        />
+        <SendEmailModal customer={customer} data={data} onClose={() => setShowEmailModal(false)} />
       )}
 
     </div>
