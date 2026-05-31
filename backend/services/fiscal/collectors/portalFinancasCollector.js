@@ -39,7 +39,16 @@ async function collectPortalFinancasJob(context) {
         // Antes de 15 de Abril: o ano fiscal mais recente (index 0) ainda não foi entregue — ignorar se vazio
         const isBeforeApril15 = today.getMonth() < 3 || (today.getMonth() === 3 && today.getDate() < 15);
 
+        // Ano de início de actividade — não faz sentido pedir IES/M22 de anos anteriores
+        const inicioRaw = String(context.customer?.inicioAtividade || '').trim();
+        const inicioYear = inicioRaw
+            ? Number(inicioRaw.match(/\b(\d{4})\b/)?.[1] || 0)
+            : 0;
+
         const missingYears = allRecentYears.filter((y, index) => {
+            // Ignorar anos anteriores ao início de actividade
+            if (inicioYear > 0 && Number(y) < inicioYear) return false;
+
             if (isBeforeApril15 && index === 0) {
                 // Antes de 15/Abr: o ano mais recente vazio é esperado, não recolher
                 const row = (Array.isArray(filingRows) ? filingRows : []).find((r) => String(r?.ano || '') === String(y));
@@ -66,15 +75,18 @@ async function collectPortalFinancasJob(context) {
         { headless: true, closeAfterSubmit: true, fiscalCollectionJob: target, fiscalCollectionYear: targetYear, fiscalCollectionYears: targetYears },
         300000
     );
-    if (result.statusCode < 200 || result.statusCode >= 300 || result.payload?.success === false) {
-        throw new Error(result.payload?.error || `Autologin AT respondeu HTTP ${result.statusCode}.`);
+    // Bug #1: statusCode pode ser undefined em caso de timeout/falha de rede
+    const statusCode = result.statusCode;
+    if (!statusCode || statusCode < 200 || statusCode >= 300 || result.payload?.success === false) {
+        throw new Error(result.payload?.error || `Autologin AT respondeu HTTP ${statusCode ?? 'sem resposta'}.`);
     }
     await log('info', result.payload?.message || 'Autologin AT concluído.');
     const fiscalCollection = result.payload?.fiscalCollection || null;
     if (fiscalCollection?.status !== 'completed' && fiscalCollection?.pageTextSample) {
         await log('warn', '[Diagnóstico] Texto da página AT no momento da recolha:', {
             pageUrl: fiscalCollection.pageUrl || '',
-            pageTextSample: fiscalCollection.pageTextSample.slice(0, 600),
+            // Bug #5: null check antes de slice
+            pageTextSample: String(fiscalCollection.pageTextSample || '').slice(0, 600),
         });
     }
     if (fiscalCollection?.status !== 'completed' && fiscalCollection?.diagLinks?.length) {

@@ -383,7 +383,10 @@ function registerFiscalSummaryRoutes({ app, dbRunAsync, dbGetAsync, dbAllAsync, 
             const attempts = Number(row.attempts || 0) + 1;
             const canRetry = attempts < 3;
             const finishedAt = nowIso();
-            const nextAttempt = new Date(Date.now() + Math.min(30, attempts * 5) * 60_000).toISOString();
+            // Melhoria #10: backoff exponencial com jitter para evitar thundering herd
+            const baseDelayMs = attempts * 5 * 60_000; // 5min, 10min, 15min
+            const jitterMs = Math.floor(Math.random() * 60_000); // ±1min aleatório
+            const nextAttempt = new Date(Date.now() + Math.min(30 * 60_000, baseDelayMs) + jitterMs).toISOString();
             await dbRunAsync(
                 `UPDATE fiscal_collection_jobs
                  SET status = ?, finished_at = ?, next_attempt_at = ?, message = ?, error = ?, updated_at = ?
@@ -421,14 +424,15 @@ function registerFiscalSummaryRoutes({ app, dbRunAsync, dbGetAsync, dbAllAsync, 
 
     async function cleanupOldJobs() {
         try {
+            // Melhoria #11: manter histórico 1 ano (requisito auditoria fiscal) em vez de 30 dias
             await dbRunAsync(
                 `DELETE FROM fiscal_collection_jobs
                  WHERE status IN ('completed', 'failed', 'skipped', 'needs_review')
-                   AND datetime(updated_at) < datetime('now', '-30 days')`
+                   AND datetime(updated_at) < datetime('now', '-365 days')`
             );
             await dbRunAsync(
                 `DELETE FROM fiscal_collection_logs
-                 WHERE datetime(created_at) < datetime('now', '-30 days')
+                 WHERE datetime(created_at) < datetime('now', '-365 days')
                    AND job_id NOT IN (SELECT id FROM fiscal_collection_jobs)`
             );
         } catch (err) {

@@ -55,6 +55,13 @@ function findDocumento(data, tipo) {
     return (Array.isArray(data.documentos) ? data.documentos : []).find((entry) => entry?.tipo === tipo) || null;
 }
 
+// Melhoria #8: função partilhada (era duplicada em IES e Modelo 22)
+function isFilingYearComplete(year, rows) {
+    const row = (Array.isArray(rows) ? rows : []).find((r) => String(r?.ano || '') === String(year));
+    if (!row) return false;
+    return /certa|entregue|aceite|validad/i.test(String(row.situacao || '')) && Boolean(row.comprovativoPath);
+}
+
 function hasFilingForYear(rows, year) {
     return (Array.isArray(rows) ? rows : []).some((row) => {
         if (String(row?.ano || '') !== String(year)) return false;
@@ -88,27 +95,14 @@ function assessFiscalCollectionNeed(job, data, options = {}) {
 
     if (job === 'ies') {
         if (isParticular) return { shouldCollect: false, requiresConfirmation: false, reason: 'IES não se aplica a particulares.' };
-        // Só pede confirmação se todos os anos recentes estiverem completos (Certa + PDF)
-        const isYearComplete = (year, rows) => {
-            const row = (Array.isArray(rows) ? rows : []).find((r) => String(r?.ano || '') === String(year));
-            if (!row) return false;
-            return /certa|entregue|aceite|validad/i.test(String(row.situacao || '')) && Boolean(row.comprovativoPath);
-        };
-        const recentYears = recentFiscalYears(3);
-        const allComplete = recentYears.every((y) => isYearComplete(y, data.ies));
+        const allComplete = recentFiscalYears(3).every((y) => isFilingYearComplete(y, data.ies));
         if (allComplete) return { shouldCollect: false, requiresConfirmation: true, reason: 'IES dos últimos 3 anos está completo. Quer recolher novamente?' };
         return { shouldCollect: true, requiresConfirmation: false, reason: 'IES com anos em falta ou incompletos.' };
     }
 
     if (job === 'modelo22') {
         const label = isParticular ? 'IRS' : 'Modelo 22';
-        // Só pede confirmação se todos os anos recentes estiverem completos (Certa + PDF)
-        const isYearComplete = (year, rows) => {
-            const row = (Array.isArray(rows) ? rows : []).find((r) => String(r?.ano || '') === String(year));
-            if (!row) return false;
-            return /certa|entregue|aceite|validad/i.test(String(row.situacao || '')) && Boolean(row.comprovativoPath);
-        };
-        const allComplete = recentFiscalYears(3).every((y) => isYearComplete(y, data.modelo22));
+        const allComplete = recentFiscalYears(3).every((y) => isFilingYearComplete(y, data.modelo22));
         if (allComplete) return { shouldCollect: false, requiresConfirmation: true, reason: `${label} dos últimos 3 anos está completo. Quer recolher novamente?` };
         return { shouldCollect: true, requiresConfirmation: false, reason: `${label} com anos em falta ou incompletos.` };
     }

@@ -42,7 +42,9 @@ async function captureViaPdfRouteInterception(page, customer, year, documentType
     };
 
     const routePattern = `https://${interceptDomain}/**`;
+    // Bug #4: guardar referência exacta para garantir que unroute funciona
     await context.route(routePattern, handler);
+    const cleanupRoute = () => context.unroute(routePattern, handler).catch(() => null);
 
     const formUrl = page.url().split('#')[0]; // URL base do formulário (sem hash)
 
@@ -111,7 +113,7 @@ async function captureViaPdfRouteInterception(page, customer, year, documentType
             }
         }
     } finally {
-        await context.unroute(routePattern, handler).catch(() => null);
+        await cleanupRoute();
     }
 
     return savedPath;

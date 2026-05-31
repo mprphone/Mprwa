@@ -190,8 +190,10 @@ function fiscalFileUrl(customer: Customer, filePath?: string) {
   const raw = String(filePath || '').trim();
   if (!raw) return '';
   if (/^https?:\/\//i.test(raw) || raw.startsWith('/api/')) return raw;
+  // Bug #12: rejeitar paths com traversal (../) para prevenir path injection
+  if (raw.includes('..') || raw.includes('\0')) return '';
   const params = new URLSearchParams({ path: raw });
-  return `/api/customers/${encodeURIComponent(customer.id)}/fiscal-summary/file?${params.toString()}`;
+  return `/api/customers/${encodeURIComponent((customer as any).id)}/fiscal-summary/file?${params.toString()}`;
 }
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
