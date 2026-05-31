@@ -11,7 +11,7 @@ import {
   CustomerHouseholdRelation,
   CustomerRelatedRecord,
 } from '../types';
-import { Plus, Search, Edit2, Trash2, FolderOpen, Eye, RefreshCw, Upload } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, FolderOpen, Eye, RefreshCw, Upload, User, Building2, Shield, Users } from 'lucide-react';
 import { CustomerAccessTab, type CustomerCredentialPreset } from './customers/CustomerAccessTab';
 import { CustomerFiscalSummaryTab } from './customers/CustomerFiscalSummaryTab';
 import { CustomerDocumentBrowser } from './customers/CustomerDocumentBrowser';
@@ -4013,254 +4013,139 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                 </div>
 
               {activeTab === 'dados' && (
-                <div className="space-y-5">
-                  <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-                    <h3 className="text-base font-semibold text-slate-900">Identificação</h3>
-                    <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div className="space-y-4">
+
+                  {/* ── Identificação ─────────────────────────────── */}
+                  <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div className="flex items-center gap-2.5 border-b border-slate-100 px-5 py-3.5">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100"><User size={14} className="text-emerald-600" /></span>
+                      <h3 className="text-sm font-bold text-slate-800">Identificação</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-x-4 gap-y-3 px-5 py-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Nome *</label>
-                        <input
-                          required
-                          type="text"
-                          className="mt-1 w-full border rounded-md p-2"
-                          value={formData.name}
-                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        />
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Nome *</label>
+                        <input required type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">NIF</label>
-                        <input
-                          type="text"
-                          className={`mt-1 w-full border rounded-md p-2 font-mono ${isNifLocked ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
-                          value={formData.nif}
-                          onChange={(e) => setFormData({ ...formData, nif: e.target.value })}
-                          disabled={isNifLocked}
-                          title={isNifLocked ? 'NIF bloqueado após validação. Para corrigir, criar nova ficha e migrar dados.' : 'Introduza um NIF válido'}
-                        />
-                        {isNifLocked && (
-                          <p className="mt-1 text-xs text-slate-500">NIF validado e bloqueado para evitar alterações indevidas.</p>
-                        )}
+                        <label className="block text-xs font-medium text-slate-500 mb-1">NIF</label>
+                        <input type="text" className={`w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 ${isNifLocked ? 'bg-slate-50 text-slate-400 cursor-not-allowed' : ''}`} value={formData.nif} onChange={(e) => setFormData({ ...formData, nif: e.target.value })} disabled={isNifLocked} title={isNifLocked ? 'NIF bloqueado após validação.' : ''} />
+                        {isNifLocked && <p className="mt-1 text-[11px] text-slate-400">NIF validado e bloqueado para evitar alterações indevidas.</p>}
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">NISS</label>
-                        <input
-                          type="text"
-                          className="mt-1 w-full border rounded-md p-2 font-mono"
-                          value={formData.niss}
-                          onChange={(e) => setFormData({ ...formData, niss: e.target.value })}
-                        />
+                        <label className="block text-xs font-medium text-slate-500 mb-1">NISS</label>
+                        <input type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.niss} onChange={(e) => setFormData({ ...formData, niss: e.target.value })} />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Data de nascimento</label>
-                        <input
-                          type="date"
-                          className="mt-1 w-full border rounded-md p-2"
-                          value={formData.dataNascimento}
-                          onChange={(e) => setFormData({ ...formData, dataNascimento: e.target.value })}
-                        />
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Data de nascimento</label>
+                        <input type="date" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.dataNascimento} onChange={(e) => setFormData({ ...formData, dataNascimento: e.target.value })} />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Morada</label>
-                        <input
-                          type="text"
-                          className="mt-1 w-full border rounded-md p-2"
-                          value={formData.morada}
-                          onChange={(e) => setFormData({ ...formData, morada: e.target.value })}
-                        />
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Morada</label>
+                        <input type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.morada} onChange={(e) => setFormData({ ...formData, morada: e.target.value })} />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Código Postal</label>
-                        <input
-                          type="text"
-                          className="mt-1 w-full border rounded-md p-2"
-                          placeholder="0000-000 Localidade"
-                          value={formData.codigoPostal}
-                          onChange={(e) => setFormData({ ...formData, codigoPostal: e.target.value })}
-                        />
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Código Postal</label>
+                        <input type="text" placeholder="0000-000 Localidade" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.codigoPostal} onChange={(e) => setFormData({ ...formData, codigoPostal: e.target.value })} />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Email</label>
-                        <input
-                          type="email"
-                          className="mt-1 w-full border rounded-md p-2"
-                          value={formData.email}
-                          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        />
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Email</label>
+                        <input type="email" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Telefone (opcional)</label>
-                        <input
-                          type="text"
-                          placeholder="+3519..."
-                          className="mt-1 w-full border rounded-md p-2"
-                          value={formData.phone}
-                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        />
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Telefone (opcional)</label>
+                        <input type="text" placeholder="+351..." className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
                       </div>
                       <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700">Empresa</label>
-                        <input
-                          required
-                          type="text"
-                          className="mt-1 w-full border rounded-md p-2"
-                          value={formData.company}
-                          onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                        />
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Empresa</label>
+                        <input required type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.company} onChange={(e) => setFormData({ ...formData, company: e.target.value })} />
                       </div>
                       <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700">Nome do Contacto (Telemóvel)</label>
-                        <input
-                          type="text"
-                          className="mt-1 w-full border rounded-md p-2"
-                          placeholder="Ex.: Marco Rebelo"
-                          value={formData.contactName}
-                          onChange={(e) => setFormData({ ...formData, contactName: e.target.value })}
-                        />
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Nome do Contacto (Telemóvel)</label>
+                        <input type="text" placeholder="Ex.: Marco Rebelo" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.contactName} onChange={(e) => setFormData({ ...formData, contactName: e.target.value })} />
                       </div>
                     </div>
                   </section>
 
-                  <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-                    <h3 className="text-base font-semibold text-slate-900">Dados Corporativos</h3>
-                    <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3">
+                  {/* ── Dados Corporativos ────────────────────────── */}
+                  <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div className="flex items-center gap-2.5 border-b border-slate-100 px-5 py-3.5">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100"><Building2 size={14} className="text-emerald-600" /></span>
+                      <h3 className="text-sm font-bold text-slate-800">Dados Corporativos</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-x-4 gap-y-3 px-5 py-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Certidão Permanente (nº)</label>
-                        <input
-                          type="text"
-                          className="mt-1 w-full border rounded-md p-2"
-                          value={formData.certidaoPermanenteNumero}
-                          onChange={(e) => setFormData({ ...formData, certidaoPermanenteNumero: e.target.value })}
-                        />
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Certidão Permanente (nº)</label>
+                        <input type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.certidaoPermanenteNumero} onChange={(e) => setFormData({ ...formData, certidaoPermanenteNumero: e.target.value })} />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Certidão Permanente (validade)</label>
-                        <input
-                          type="text"
-                          className="mt-1 w-full border rounded-md p-2"
-                          placeholder="dd/mm/aaaa"
-                          value={formData.certidaoPermanenteValidade}
-                          onChange={(e) => setFormData({ ...formData, certidaoPermanenteValidade: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">RCBE (nº)</label>
-                        <input
-                          type="text"
-                          className="mt-1 w-full border rounded-md p-2"
-                          value={formData.rcbeNumero}
-                          onChange={(e) => setFormData({ ...formData, rcbeNumero: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">RCBE (data)</label>
-                        <input
-                          type="text"
-                          className="mt-1 w-full border rounded-md p-2"
-                          placeholder="dd/mm/aaaa"
-                          value={formData.rcbeData}
-                          onChange={(e) => setFormData({ ...formData, rcbeData: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Data de constituição</label>
-                        <input
-                          type="text"
-                          className="mt-1 w-full border rounded-md p-2"
-                          placeholder="dd/mm/aaaa"
-                          value={formData.dataConstituicao}
-                          onChange={(e) => setFormData({ ...formData, dataConstituicao: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Início de atividade</label>
-                        <input
-                          type="text"
-                          className="mt-1 w-full border rounded-md p-2"
-                          placeholder="dd/mm/aaaa"
-                          value={formData.inicioAtividade}
-                          onChange={(e) => setFormData({ ...formData, inicioAtividade: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">CAE Principal</label>
-                        <div className="mt-1 flex gap-2">
-                          <input
-                            type="text"
-                            placeholder="Código"
-                            className="w-28 border rounded-md p-2 shrink-0"
-                            value={formData.caePrincipal}
-                            onChange={(e) => setFormData({ ...formData, caePrincipal: e.target.value })}
-                          />
-                          <input
-                            type="text"
-                            placeholder="Descrição"
-                            className="flex-1 border rounded-md p-2 min-w-0"
-                            value={formData.caeDescricao}
-                            onChange={(e) => setFormData({ ...formData, caeDescricao: e.target.value })}
-                          />
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Certidão Permanente (validade)</label>
+                        <div className="flex items-center gap-2">
+                          <input type="date" className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.certidaoPermanenteValidade} onChange={(e) => setFormData({ ...formData, certidaoPermanenteValidade: e.target.value })} />
+                          {formData.certidaoPermanenteValidade && new Date(formData.certidaoPermanenteValidade) > new Date() && (
+                            <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Válida</span>
+                          )}
                         </div>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Código Repartição Finanças</label>
-                        <input
-                          type="text"
-                          className="mt-1 w-full border rounded-md p-2"
-                          value={formData.codigoReparticaoFinancas}
-                          onChange={(e) => setFormData({ ...formData, codigoReparticaoFinancas: e.target.value })}
-                        />
+                        <label className="block text-xs font-medium text-slate-500 mb-1">RCBE (nº)</label>
+                        <input type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.rcbeNumero} onChange={(e) => setFormData({ ...formData, rcbeNumero: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">RCBE (data)</label>
+                        <input type="date" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.rcbeData} onChange={(e) => setFormData({ ...formData, rcbeData: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Data de constituição</label>
+                        <input type="date" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.dataConstituicao} onChange={(e) => setFormData({ ...formData, dataConstituicao: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Início de atividade</label>
+                        <input type="date" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.inicioAtividade} onChange={(e) => setFormData({ ...formData, inicioAtividade: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">CAE Principal</label>
+                        <div className="flex gap-2">
+                          <input type="text" placeholder="Código" className="w-24 shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.caePrincipal} onChange={(e) => setFormData({ ...formData, caePrincipal: e.target.value })} />
+                          <input type="text" placeholder="Descrição" className="flex-1 min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.caeDescricao} onChange={(e) => setFormData({ ...formData, caeDescricao: e.target.value })} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Código Repartição Finanças</label>
+                        <input type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.codigoReparticaoFinancas} onChange={(e) => setFormData({ ...formData, codigoReparticaoFinancas: e.target.value })} />
                       </div>
                       <div className="md:col-span-4">
-                        <label className="block text-sm font-medium text-gray-700">Pasta de documentos (caminho)</label>
-                        <div className="mt-1 relative">
-                          <FolderOpen size={16} className="absolute left-3 top-2.5 text-gray-400" />
-                          <input
-                            type="text"
-                            className="w-full border rounded-md p-2 pl-9 font-mono text-sm"
-                            value={formData.documentsFolder}
-                            onChange={(e) => setFormData({ ...formData, documentsFolder: e.target.value })}
-                            placeholder="\\10.0.0.6\OneDrive - MPR\Documentos\Contabilidades\Empresas\Cliente"
-                          />
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Pasta de documentos (caminho)</label>
+                        <div className="relative">
+                          <FolderOpen size={14} className="absolute left-3 top-2.5 text-slate-400" />
+                          <input type="text" className="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.documentsFolder} onChange={(e) => setFormData({ ...formData, documentsFolder: e.target.value })} placeholder="\\10.0.0.6\OneDrive - MPR\Documentos\Contabilidades\Empresas\Cliente" />
                         </div>
                         {!formData.documentsFolder && pickImportedValue(importedLookup, ['pasta_documentos', 'documents_folder']) && (
-                          <p className="mt-1 text-xs text-blue-600 break-all">
-                            Pasta importada: {pickImportedValue(importedLookup, ['pasta_documentos', 'documents_folder'])}
-                          </p>
+                          <p className="mt-1 text-xs text-blue-600 break-all">Pasta importada: {pickImportedValue(importedLookup, ['pasta_documentos', 'documents_folder'])}</p>
                         )}
                       </div>
                       <div className="md:col-span-4">
-                        <label className="block text-sm font-medium text-gray-700">Notas</label>
-                        <textarea
-                          className="mt-1 w-full border rounded-md p-2 min-h-[96px]"
-                          placeholder="Notas internas do cliente..."
-                          value={formData.notes}
-                          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                        />
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Notas</label>
+                        <textarea className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-[80px] resize-y" placeholder="Notas internas do cliente..." value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} />
                       </div>
                     </div>
                   </section>
 
-                  <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-                    <h3 className="text-base font-semibold text-slate-900">Enquadramento Fiscal</h3>
-                    <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3">
+                  {/* ── Enquadramento Fiscal ──────────────────────── */}
+                  <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div className="flex items-center gap-2.5 border-b border-slate-100 px-5 py-3.5">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100"><Shield size={14} className="text-emerald-600" /></span>
+                      <h3 className="text-sm font-bold text-slate-800">Enquadramento Fiscal</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-x-4 gap-y-3 px-5 py-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Tipo de entidade</label>
-                        <select
-                          className="mt-1 w-full border rounded-md p-2"
-                          value={formData.type}
-                          onChange={(e) => setFormData({ ...formData, type: e.target.value as CustomerType })}
-                        >
-                          {Object.values(CustomerType).map((t) => (
-                            <option key={t} value={t}>{t}</option>
-                          ))}
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Tipo de entidade</label>
+                        <select className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.type} onChange={(e) => setFormData({ ...formData, type: e.target.value as CustomerType })}>
+                          {Object.values(CustomerType).map((t) => <option key={t} value={t}>{t}</option>)}
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Regime de IVA</label>
-                        <select
-                          className="mt-1 w-full border rounded-md p-2"
-                          value={formData.tipoIva}
-                          onChange={(e) => setFormData({ ...formData, tipoIva: e.target.value })}
-                        >
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Regime de IVA</label>
+                        <select className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.tipoIva} onChange={(e) => setFormData({ ...formData, tipoIva: e.target.value })}>
                           <option value="">-- Selecionar --</option>
                           <option value="MENSAL">MENSAL</option>
                           <option value="TRIMESTRAL">TRIMESTRAL</option>
@@ -4269,12 +4154,8 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Tipo de contabilidade</label>
-                        <select
-                          className="mt-1 w-full border rounded-md p-2"
-                          value={formData.tipoContabilidade}
-                          onChange={(e) => setFormData({ ...formData, tipoContabilidade: e.target.value })}
-                        >
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Tipo de contabilidade</label>
+                        <select className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.tipoContabilidade} onChange={(e) => setFormData({ ...formData, tipoContabilidade: e.target.value })}>
                           <option value="">-- Selecionar --</option>
                           <option value="ORGANIZADA">ORGANIZADA</option>
                           <option value="SIMPLIFICADO">SIMPLIFICADA</option>
@@ -4282,12 +4163,8 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Estado</label>
-                        <select
-                          className="mt-1 w-full border rounded-md p-2"
-                          value={formData.estadoCliente}
-                          onChange={(e) => setFormData({ ...formData, estadoCliente: e.target.value })}
-                        >
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Estado</label>
+                        <select className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.estadoCliente} onChange={(e) => setFormData({ ...formData, estadoCliente: e.target.value })}>
                           <option value="">-- Selecionar --</option>
                           <option value="ACTIVA">ACTIVA</option>
                           <option value="SUSPENSA">SUSPENSA</option>
@@ -4296,105 +4173,68 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Responsável interno</label>
-                        <select
-                          className="mt-1 w-full border rounded-md p-2"
-                          value={formData.ownerId}
-                          onChange={(e) => setFormData({ ...formData, ownerId: e.target.value })}
-                        >
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Responsável interno</label>
+                        <select className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.ownerId} onChange={(e) => setFormData({ ...formData, ownerId: e.target.value })}>
                           <option value="">-- Selecionar --</option>
-                          {users.map((u) => (
-                            <option key={u.id} value={u.id}>{u.name}</option>
-                          ))}
+                          {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Contabilista Certificado</label>
-                        <input
-                          type="text"
-                          className="mt-1 w-full border rounded-md p-2"
-                          value={formData.contabilistaCertificado}
-                          onChange={(e) => setFormData({ ...formData, contabilistaCertificado: e.target.value })}
-                        />
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Contabilista Certificado</label>
+                        <input type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.contabilistaCertificado} onChange={(e) => setFormData({ ...formData, contabilistaCertificado: e.target.value })} />
                       </div>
                     </div>
                   </section>
 
-                  <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="text-base font-semibold text-slate-900">Gerência / Administração</h3>
-                        <p className="text-xs text-slate-500">Adicionar gerentes com NIF, nome, email e telefone.</p>
+                  {/* ── Gerência / Administração ──────────────────── */}
+                  <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
+                      <div className="flex items-center gap-2.5">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100"><Users size={14} className="text-emerald-600" /></span>
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-800">Gerência / Administração</h3>
+                          <p className="text-[11px] text-slate-400">Adicionar gerentes com NIF, nome, email e telefone.</p>
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={addManager}
-                        className="text-xs text-whatsapp-700 hover:underline inline-flex items-center gap-1"
-                      >
-                        <Plus size={14} /> Adicionar gerente
+                      <button type="button" onClick={addManager} className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 hover:text-emerald-700">
+                        <Plus size={13} /> Adicionar gerente
                       </button>
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-2 px-5 py-4">
                       {formData.managers.map((manager, index) => (
-                        <div key={`manager-${index}`} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border rounded-md p-2 bg-white">
-                          <input
-                            type="text"
-                            placeholder="NIF"
-                            className="md:col-span-2 text-sm border rounded-md p-2 font-mono"
-                            value={manager.nif || ''}
-                            onChange={(e) => updateManager(index, 'nif', e.target.value)}
-                          />
-                          <input
-                            type="text"
-                            placeholder="Nome"
-                            className="md:col-span-4 text-sm border rounded-md p-2"
-                            value={manager.name || ''}
-                            onChange={(e) => updateManager(index, 'name', e.target.value)}
-                          />
-                          <input
-                            type="email"
-                            placeholder="Email"
-                            className="md:col-span-3 text-sm border rounded-md p-2"
-                            value={manager.email || ''}
-                            onChange={(e) => updateManager(index, 'email', e.target.value)}
-                          />
-                          <input
-                            type="text"
-                            placeholder="Telefone"
-                            className="md:col-span-2 text-sm border rounded-md p-2"
-                            value={manager.phone || ''}
-                            onChange={(e) => updateManager(index, 'phone', e.target.value)}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removeManager(index)}
-                            className="md:col-span-1 text-red-600 text-xs hover:underline justify-self-start md:justify-self-end"
-                          >
-                            Remover
-                          </button>
+                        <div key={`manager-${index}`} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
+                          <input type="text" placeholder="NIF" className="md:col-span-2 rounded-lg border border-slate-200 px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" value={manager.nif || ''} onChange={(e) => updateManager(index, 'nif', e.target.value)} />
+                          <input type="text" placeholder="Nome" className="md:col-span-4 rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" value={manager.name || ''} onChange={(e) => updateManager(index, 'name', e.target.value)} />
+                          <input type="email" placeholder="Email" className="md:col-span-3 rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" value={manager.email || ''} onChange={(e) => updateManager(index, 'email', e.target.value)} />
+                          <input type="text" placeholder="Telefone" className="md:col-span-2 rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" value={manager.phone || ''} onChange={(e) => updateManager(index, 'phone', e.target.value)} />
+                          <button type="button" onClick={() => removeManager(index)} className="md:col-span-1 text-red-500 text-xs font-semibold hover:text-red-700 justify-self-end">Remover</button>
                         </div>
                       ))}
                       {formData.managers.length === 0 && (
-                        <p className="text-xs text-gray-400 italic">Sem gerentes definidos nesta ficha.</p>
+                        <p className="text-xs text-slate-400 italic py-1">Sem gerentes definidos nesta ficha.</p>
                       )}
                     </div>
                   </section>
 
+                  {/* ── Campos importados ─────────────────────────── */}
                   {editingCustomer && (
-                    <details className="rounded-xl border border-slate-200 bg-white p-3">
-                      <summary className="cursor-pointer text-sm font-semibold text-slate-700">Campos importados do Supabase</summary>
-                      <div className="mt-3 space-y-2">
+                    <details className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                      <summary className="cursor-pointer px-5 py-3.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors list-none flex items-center gap-2">
+                        <span className="flex h-5 w-5 items-center justify-center rounded text-slate-400 text-xs">▶</span>
+                        Campos importados do Supabase
+                      </summary>
+                      <div className="border-t border-slate-100 px-5 py-4">
                         {importedFields.length > 0 ? (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                             {importedFields.map((field) => (
-                              <div key={field.label} className="border rounded-md p-2 bg-gray-50">
-                                <div className="text-[11px] uppercase tracking-wide text-gray-500">{field.label}</div>
-                                <div className="text-sm text-gray-800 break-words">{field.value}</div>
+                              <div key={field.label} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-wider text-slate-400">{field.label}</div>
+                                <div className="text-sm text-slate-700 break-words mt-0.5">{field.value}</div>
                               </div>
                             ))}
                           </div>
                         ) : (
-                          <p className="text-xs text-gray-400 italic">Sem campos extra importados para este cliente.</p>
+                          <p className="text-xs text-slate-400 italic">Sem campos extra importados para este cliente.</p>
                         )}
                       </div>
                     </details>
