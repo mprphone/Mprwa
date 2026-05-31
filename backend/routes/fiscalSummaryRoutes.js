@@ -601,9 +601,9 @@ function registerFiscalSummaryRoutes({ app, dbRunAsync, dbGetAsync, dbAllAsync, 
                         JSON.stringify({ token }),
                         readAt,
                     ]
-                ).catch(() => null);
+                ).catch((e) => console.error('[EmailTrack] Falha ao gravar log de abertura:', e?.message));
             }
-        } catch (_) {}
+        } catch (trackErr) { console.error('[EmailTrack] Erro no tracking pixel:', trackErr?.message); }
         const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
         res.setHeader('Content-Type', 'image/gif');
         res.setHeader('Cache-Control', 'no-store');
@@ -686,10 +686,9 @@ function registerFiscalSummaryRoutes({ app, dbRunAsync, dbGetAsync, dbAllAsync, 
                 `INSERT INTO fiscal_email_log (id, customer_id, sent_to, subject, sent_at, token, attachment_count)
                  VALUES (?, ?, ?, ?, ?, ?, ?)`,
                 [logId, customerId, String(to).trim(), String(subject).trim(), sentAt, token, attachments.length]
-            ).catch(() => null);
+            ).catch((e) => console.error('[FiscalEmail] Falha ao gravar email_log:', e?.message));
 
             // Registar no log de recolhas (visível no "Log Recente")
-            const sentAtPt = new Date(sentAt).toLocaleString('pt-PT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
             await dbRunAsync(
                 `INSERT INTO fiscal_collection_logs (job_id, customer_id, job, level, message, details, created_at)
                  VALUES (?, ?, 'email', 'info', ?, ?, ?)`,
@@ -700,7 +699,7 @@ function registerFiscalSummaryRoutes({ app, dbRunAsync, dbGetAsync, dbAllAsync, 
                     JSON.stringify({ to: String(to).trim(), subject: String(subject).trim(), attachmentCount: attachments.length, token }),
                     sentAt,
                 ]
-            ).catch(() => null);
+            ).catch((e) => console.error('[FiscalEmail] Falha ao gravar collection_log:', e?.message));
 
             console.error(`[FiscalEmail] Email enviado para ${to} com ${attachments.length} anexo(s). Token: ${token}`);
             return res.json({ success: true, attachmentCount: attachments.length, sentAt, logId });
