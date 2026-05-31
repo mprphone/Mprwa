@@ -160,10 +160,11 @@ async function validateSalaryWithDoutorFinancas(input) {
     }
 
     const netSalary = extractAfter(/[Ss]al[aá]rio l[ií]quido\b/);
-    // IRS: a página mostra "Retenção IRS (Rendimentos + Duodécimos) 0,00 €"
-    const irsRetention = extractAfter(/[Rr]eten[cç][aã]o IRS\b/);
-    // SS trabalhador: "Contribuição segurança social XX,XX €" (não confundir com "Tipo de Segurança Social" no form)
-    const socialSecurity = extractAfter(/Contribui[cç][aã]o segurança social\b/);
+    // IRS total = Rendimentos + Duodécimos
+    const irsRetention = extractAfter(/[Rr]eten[cç][aã]o IRS.*[Rr]endimentos|[Rr]eten[cç][aã]o IRS\b/);
+    // SS trabalhador: procurar especificamente "trabalhador" para não apanhar a quota patronal
+    const socialSecurity = extractAfter(/[Ss]egurança [Ss]ocial.*[Tt]rabalhador|[Cc]ontribui[cç][aã]o.*[Tt]rabalhador|[Dd]esconto.*[Ss]egurança [Ss]ocial/)
+                        || extractAfter(/Contribui[cç][aã]o segurança social\b/);
     const grossAnnual = extractAfter(/sal[aá]rio bruto anual\b/i);
     const employerCost = extractAfter(/custo anual.*empregador|empregador.*custo anual/i);
 

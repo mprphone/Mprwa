@@ -216,10 +216,12 @@ const defaultSalaryInput: SalaryNetInput = {
   holidayAllowance: true,
   christmasAllowance: true,
   youngIrs: false,
+  youngIrsYear: 1,
   disability: false,
   region: 'continent',
   socialSecurityRate: 11,
   employerSocialSecurityRate: 23.75,
+  workAccidentInsuranceRate: 1.75,
   monthsPerYear: 14,
 };
 
@@ -687,19 +689,48 @@ const Simulators: React.FC = () => {
           </div>
         )}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {[
-            ['youngIrs', 'IRS Jovem'],
-            ['disability', 'Deficiência'],
-          ].map(([key, label]) => (
-            <label key={key} className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          <div>
+            <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 cursor-pointer">
               <input
                 type="checkbox"
-                checked={Boolean((state as any)[key])}
-                onChange={(event) => update({ [key]: event.target.checked } as Partial<EmployeeCostInput>)}
+                checked={Boolean((state as any).youngIrs)}
+                onChange={(event) => update({ youngIrs: event.target.checked } as Partial<EmployeeCostInput>)}
               />
-              {label}
+              IRS Jovem
             </label>
-          ))}
+            {(state as any).youngIrs && (
+              <div className="mt-2">
+                <label className="block text-xs font-medium text-slate-500 mb-1">Ano de trabalho (1-10)</label>
+                <select
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  value={(state as any).youngIrsYear ?? 1}
+                  onChange={(e) => update({ youngIrsYear: Number(e.target.value) } as Partial<EmployeeCostInput>)}
+                >
+                  {[1,2,3,4,5,6,7,8,9,10].map((y) => (
+                    <option key={y} value={y}>
+                      {y}º ano — {y===1?'100%':y===2?'75%':y<=4?'50%':'25%'} isento
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+          <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={Boolean((state as any).disability)}
+              onChange={(event) => update({ disability: event.target.checked } as Partial<EmployeeCostInput>)}
+            />
+            Deficiência
+          </label>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <Field label="Taxa SS Trabalhador (%)">
+            <input className={inputClass} type="number" step="0.01" value={(state as any).socialSecurityRate ?? 11} onChange={(e) => update({ socialSecurityRate: Number(e.target.value) } as Partial<EmployeeCostInput>)} />
+          </Field>
+          <Field label="Seguro Acidentes Trabalho (%)">
+            <input className={inputClass} type="number" step="0.01" min="0" max="10" value={(state as any).workAccidentInsuranceRate ?? 1.75} onChange={(e) => update({ workAccidentInsuranceRate: Number(e.target.value) } as Partial<EmployeeCostInput>)} />
+          </Field>
         </div>
       </div>
     );

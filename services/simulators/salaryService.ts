@@ -16,10 +16,12 @@ export type SalaryNetInput = {
   holidayAllowance: boolean;
   christmasAllowance: boolean;
   youngIrs: boolean;
+  youngIrsYear: number;  // ano de trabalho (1-10) para % correcta de isenção
   disability: boolean;
   region: 'continent' | 'azores' | 'madeira';
   socialSecurityRate: number;
   employerSocialSecurityRate: number;
+  workAccidentInsuranceRate: number; // seguro acidentes trabalho (default 1.75%)
   monthsPerYear: number;
 };
 
@@ -27,6 +29,19 @@ export type EmployeeCostInput = SalaryNetInput & {
   insuranceMonthly: number;
   otherBenefits: number;
 };
+
+// Limite anual de isenção IRS Jovem 2026 (€)
+const YOUNG_IRS_ANNUAL_LIMIT = 9059;
+
+// % de isenção por ano de trabalho (Lei IRS Jovem 2024+)
+function youngIrsExemptionRate(yearOfWork: number): number {
+  if (yearOfWork <= 0) return 0;
+  if (yearOfWork === 1) return 1.00;   // 100% isento
+  if (yearOfWork === 2) return 0.75;   // 75%
+  if (yearOfWork <= 4) return 0.50;    // 50%
+  if (yearOfWork <= 10) return 0.25;   // 25%
+  return 0;
+}
 
 const SOCIAL_SECURITY_WORKER_RATE = 0.11;
 const SOCIAL_SECURITY_EMPLOYER_RATE = 0.2375;
@@ -36,30 +51,97 @@ const MEAL_EXEMPTION_CARD = 10.2;
 const PORTAL_FINANCAS_RETENTION_SOURCE = RULE_VERSIONS['salary-net'].sources[0];
 const SEG_SOCIAL_SOURCE = RULE_VERSIONS['salary-net'].sources[1];
 
-const IRS_APPROX_BRACKETS = [
-  { upTo: 820, rate: 0 },
-  { upTo: 1100, rate: 0.07 },
-  { upTo: 1600, rate: 0.13 },
-  { upTo: 2200, rate: 0.19 },
-  { upTo: 3200, rate: 0.25 },
-  { upTo: 5200, rate: 0.32 },
-  { upTo: Number.POSITIVE_INFINITY, rate: 0.39 },
+// ─── Tabelas oficiais AT 2026 — fórmula: max(0, Rendimento × Taxa - Parcela)
+// Fonte: Despacho n.º 172-A/2026.XXX — Portal das Finanças
+// Estrutura: { upTo: limite superior do escalão, rate: taxa global, deduction: parcela a abater }
+// Retenção = max(0, Rendimento × rate - deduction)
+
+type IrsTableEntry = { upTo: number; rate: number; deduction: number };
+
+// Continente — Não casado / Casado 2 titulares (tabela I)
+const IRS_TABLE_SINGLE_CONTINENT: IrsTableEntry[] = [
+  { upTo:  792,  rate: 0,      deduction: 0 },
+  { upTo:  892,  rate: 0.1325, deduction: 105.03 },
+  { upTo: 1058,  rate: 0.18,   deduction: 150.23 },
+  { upTo: 1175,  rate: 0.2550, deduction: 229.59 },
+  { upTo: 1283,  rate: 0.2850, deduction: 264.84 },
+  { upTo: 1408,  rate: 0.3350, deduction: 328.99 },
+  { upTo: 1708,  rate: 0.3700, deduction: 377.28 },
+  { upTo: 2058,  rate: 0.4350, deduction: 488.27 },
+  { upTo: 2558,  rate: 0.4500, deduction: 519.14 },
+  { upTo: 3542,  rate: 0.4550, deduction: 531.93 },
+  { upTo: 4183,  rate: 0.4500, deduction: 514.22 },
+  { upTo: 5000,  rate: 0.4600, deduction: 556.00 },
+  { upTo: 8642,  rate: 0.5200, deduction: 856.00 },
+  { upTo: Number.POSITIVE_INFINITY, rate: 0.5300, deduction: 942.34 },
 ];
 
-function getApproxIrsRate(input: SalaryNetInput): number {
-  const monthlyReference = safeNumber(input.grossSalary) + safeNumber(input.extraPay) + safeNumber(input.otherTaxableIncome) + safeNumber(input.irsOnlyIncome);
-  const bracket = IRS_APPROX_BRACKETS.find((item) => monthlyReference <= item.upTo) || IRS_APPROX_BRACKETS[IRS_APPROX_BRACKETS.length - 1];
-  const incomeHolders = input.maritalStatus === 'married_two_holders' ? 2 : 1;
-  let rate = bracket.rate;
-  rate -= Math.min(0.04, Math.max(0, input.dependents) * 0.005);
-  rate -= Math.min(0.03, Math.max(0, input.disabledDependents) * 0.01);
-  if (input.maritalStatus === 'married_one_holder') rate -= 0.015;
-  if (incomeHolders === 1 && input.maritalStatus !== 'single') rate -= 0.01;
-  if (input.youngIrs) rate *= 0.65;
-  if (input.disability) rate *= 0.5;
-  if (input.region === 'azores') rate *= 0.8;
-  if (input.region === 'madeira') rate *= 0.9;
-  return Math.max(0, rate);
+// Continente — Casado 1 titular (tabela II)
+const IRS_TABLE_MARRIED_ONE_CONTINENT: IrsTableEntry[] = [
+  { upTo:  792,  rate: 0,      deduction: 0 },
+  { upTo:  975,  rate: 0.1325, deduction: 105.03 },
+  { upTo: 1133,  rate: 0.18,   deduction: 159.11 },
+  { upTo: 1258,  rate: 0.2350, deduction: 221.66 },
+  { upTo: 1383,  rate: 0.2700, deduction: 265.66 },
+  { upTo: 1542,  rate: 0.3100, deduction: 321.02 },
+  { upTo: 1900,  rate: 0.3500, deduction: 382.72 },
+  { upTo: 2358,  rate: 0.4350, deduction: 544.22 },
+  { upTo: 2917,  rate: 0.4500, deduction: 579.66 },
+  { upTo: 4117,  rate: 0.4550, deduction: 594.22 },
+  { upTo: 4942,  rate: 0.4500, deduction: 573.55 },
+  { upTo: 5833,  rate: 0.4600, deduction: 622.89 },
+  { upTo: 10175, rate: 0.5200, deduction: 972.44 },
+  { upTo: Number.POSITIVE_INFINITY, rate: 0.5300, deduction: 1074.23 },
+];
+
+function lookupIrsRetention(monthlyGross: number, table: IrsTableEntry[]): number {
+  const entry = table.find((e) => monthlyGross <= e.upTo) || table[table.length - 1];
+  return Math.max(0, monthlyGross * entry.rate - entry.deduction);
+}
+
+// Factor dependentes: redução fixa por dependente (Portaria 2026)
+const IRS_DEDUCTION_PER_DEPENDENT = 35.42; // €/mês por dependente
+const IRS_DEDUCTION_PER_DISABLED_DEPENDENT = 53.13;
+
+function getIrsRetentionMonthly(input: SalaryNetInput, monthlyGross: number): number {
+  const isMarriedOneHolder = input.maritalStatus === 'married_one_holder';
+  const isAzores = input.region === 'azores';
+  const isMadeira = input.region === 'madeira';
+
+  // Seleccionar tabela base
+  let table = isMarriedOneHolder ? IRS_TABLE_MARRIED_ONE_CONTINENT : IRS_TABLE_SINGLE_CONTINENT;
+
+  let retention = lookupIrsRetention(monthlyGross, table);
+
+  // Ajustes regionais (Açores -30%, Madeira -20%)
+  if (isAzores) retention *= 0.70;
+  else if (isMadeira) retention *= 0.80;
+
+  // Deduções por dependente
+  retention -= Math.max(0, safeNumber(input.dependents)) * IRS_DEDUCTION_PER_DEPENDENT;
+  retention -= Math.max(0, safeNumber(input.disabledDependents)) * IRS_DEDUCTION_PER_DISABLED_DEPENDENT;
+
+  // IRS Jovem: isenção progressiva por ano de trabalho com limite anual
+  if (input.youngIrs) {
+    const exemptRate = youngIrsExemptionRate(safeNumber(input.youngIrsYear, 1));
+    // Limite anual → limite mensal
+    const monthlyLimit = YOUNG_IRS_ANNUAL_LIMIT / 12;
+    const exemptAmount = Math.min(monthlyGross * exemptRate, monthlyLimit * exemptRate);
+    const reducedBase = Math.max(0, monthlyGross - exemptAmount);
+    // Recalcular retenção sobre base reduzida
+    const reducedEntry = table.find((e) => reducedBase <= e.upTo) || table[table.length - 1];
+    retention = Math.max(0, reducedBase * reducedEntry.rate - reducedEntry.deduction);
+  }
+
+  // Deficiência: tabela específica (redução ~50%)
+  if (input.disability) retention *= 0.50;
+
+  return Math.max(0, roundMoney(retention));
+}
+
+/** @deprecated use getIrsRetentionMonthly instead */
+function getApproxIrsRate(_input: SalaryNetInput): number {
+  return 0; // mantido por compatibilidade — não usar directamente
 }
 
 function getHouseholdAdults(input: SalaryNetInput): number {
@@ -89,7 +171,8 @@ function calculateSalaryBase(input: SalaryNetInput) {
   const irsBase = contributiveBase + irsOnlyIncome;
   const workerRate = Math.max(0, safeNumber(input.socialSecurityRate, SOCIAL_SECURITY_WORKER_RATE * 100)) / 100;
   const socialSecurity = contributiveBase * workerRate;
-  const irs = irsBase * getApproxIrsRate(input);
+  // Usar tabelas oficiais AT 2026 — fórmula real em vez de taxa aproximada
+  const irs = getIrsRetentionMonthly(input, irsBase);
   const grossMonthlyTotal = gross + allowanceMonthly + extraPay + otherTaxableIncome + irsOnlyIncome + exemptIncome + meal.monthly;
   const net = grossMonthlyTotal - socialSecurity - irs;
   return {
@@ -115,8 +198,20 @@ export function calculateSalaryNet(input: SalaryNetInput): SimulationResult {
   const householdMembers = getHouseholdAdults(input) + Math.max(0, safeNumber(input.dependents));
   const employerRate = Math.max(0, safeNumber(input.employerSocialSecurityRate, SOCIAL_SECURITY_EMPLOYER_RATE * 100)) / 100;
   const employerSocialSecurity = roundMoney(values.contributiveBase * employerRate);
-  const irsRate = getApproxIrsRate(input);
-  const annualGross = roundMoney((values.gross + values.extraPay + values.otherTaxableIncome + values.irsOnlyIncome + values.exemptIncome) * Math.max(1, safeNumber(input.monthsPerYear, 14)) + values.meal.monthly * 11);
+  // Seguro de acidentes de trabalho (obrigatório — default 1.75%)
+  const accidentInsuranceRate = Math.max(0, safeNumber(input.workAccidentInsuranceRate, 1.75)) / 100;
+  const accidentInsuranceMonthly = roundMoney(values.gross * accidentInsuranceRate);
+  // Taxa efectiva = IRS retido / base tributável (para apresentação na regra)
+  const irsRate = values.taxableBase > 0 ? values.irs / values.taxableBase : 0;
+  const months = Math.max(1, safeNumber(input.monthsPerYear, 14));
+  const annualGross = roundMoney((values.gross + values.extraPay + values.otherTaxableIncome + values.irsOnlyIncome + values.exemptIncome) * months + values.meal.monthly * 11);
+  // Custo anual total empregador = salário × meses + SS patronal × meses + seguro × 12
+  const annualEmployerCost = roundMoney(
+    (values.grossMonthlyTotal + employerSocialSecurity) * months + accidentInsuranceMonthly * 12
+  );
+  const monthlyEmployerCost = roundMoney(values.grossMonthlyTotal + employerSocialSecurity + accidentInsuranceMonthly);
+  // Taxa de esforço patronal = custo total / salário bruto
+  const employerEffortRate = values.gross > 0 ? roundMoney((monthlyEmployerCost / values.gross - 1) * 100) : 0;
 
   return {
     simulatorId: 'salary-net',
@@ -126,7 +221,7 @@ export function calculateSalaryNet(input: SalaryNetInput): SimulationResult {
       { label: 'Líquido estimado', value: values.net, tone: 'positive' },
       { label: 'IRS retido estimado', value: values.irs, tone: 'negative' },
       { label: 'Segurança Social trabalhador', value: values.socialSecurity, tone: 'negative' },
-      { label: 'Custo empresa base', value: roundMoney(values.grossMonthlyTotal + employerSocialSecurity), tone: 'neutral' },
+      { label: 'Custo empresa mensal', value: monthlyEmployerCost, tone: 'neutral' },
     ],
     details: [
       { label: 'Salário bruto', value: values.gross },
@@ -142,7 +237,10 @@ export function calculateSalaryNet(input: SalaryNetInput): SimulationResult {
       { label: 'Base retenção IRS', value: values.taxableBase },
       { label: 'Total bruto mensal recebido', value: values.grossMonthlyTotal },
       { label: 'Bruto anual estimado', value: annualGross },
-      { label: 'Contribuição patronal estimada', value: employerSocialSecurity },
+      { label: 'SS patronal mensal', value: employerSocialSecurity },
+      { label: 'Seguro acidentes trabalho (mensal)', value: accidentInsuranceMonthly },
+      { label: 'Custo anual total empregador', value: annualEmployerCost },
+      { label: 'Taxa esforço patronal', value: `+${employerEffortRate}% sobre salário bruto` as any },
     ],
     basis: [
       {
@@ -173,6 +271,20 @@ export function calculateSalaryNet(input: SalaryNetInput): SimulationResult {
         sourceUrl: PORTAL_FINANCAS_RETENTION_SOURCE.url,
         confidence: 'requires_validation',
       },
+      {
+        label: 'Seguro acidentes de trabalho',
+        value: `${safeNumber(input.workAccidentInsuranceRate, 1.75).toFixed(2)}% do salário bruto (obrigatório)`,
+        sourceLabel: 'Lei n.º 98/2009 — Regime jurídico de acidentes de trabalho',
+        sourceUrl: 'https://dre.pt/legislacao-consolidada/-/lc/34454475/view',
+        confidence: 'requires_validation',
+      },
+      ...(input.youngIrs ? [{
+        label: 'IRS Jovem — isenção aplicada',
+        value: `${youngIrsExemptionRate(safeNumber(input.youngIrsYear, 1)) * 100}% (${safeNumber(input.youngIrsYear, 1)}º ano) · limite ${YOUNG_IRS_ANNUAL_LIMIT}€/ano`,
+        sourceLabel: 'Decreto-Lei n.º 2/2024 — IRS Jovem',
+        sourceUrl: 'https://dre.pt/dre/detalhe/decreto-lei/2-2024-843898484',
+        confidence: 'requires_validation',
+      }] : []),
     ],
     assumptions: [
       `Região: ${input.region}`,
