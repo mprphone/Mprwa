@@ -2,6 +2,7 @@
 
 const http = require('http');
 const https = require('https');
+const { clipboard } = require('electron');
 
 const {
   splitSelectorList,
