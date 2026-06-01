@@ -57,7 +57,11 @@ Write-Host "Pasta: $Root"
 
 if (-not $SkipGitPull -and (Test-Path '.git')) {
   Write-Step 'A atualizar codigo pelo Git'
+  # Descartar alteracoes locais ao package.json (bump anterior nao commitado)
+  & git checkout -- package.json package-lock.json 2>$null
   Run-Cmd 'git' @('pull', '--ff-only')
+  # Garantir que o working tree tem a versao do servidor (nao uma anterior com bump)
+  & git checkout -- package.json package-lock.json 2>$null
 }
 
 Assert-SourceReady
