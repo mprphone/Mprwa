@@ -23,22 +23,35 @@ async function collectDesktopCartaoEletronico(page, payload = {}) {
     waitUntil: 'domcontentloaded',
     timeout: Number(payload?.navigationTimeoutMs || 30000),
   });
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(2000);
 
-  // Clicar "Iniciar"
-  const iniciarBtn = page.locator('button:has-text("Iniciar"), a:has-text("Iniciar")').first();
-  await iniciarBtn.click({ timeout: 10000 }).catch(() => null);
-  await page.waitForTimeout(1500);
+  // Step 1 → 2: clicar "Iniciar"
+  await page.evaluate(() => {
+    const btn = document.getElementById('PageBreak_1477_4_next');
+    if (btn) btn.click();
+  });
+  await page.waitForTimeout(1200);
 
   // Preencher o código
-  const codeInput = page.locator('input[placeholder*="0000"], input[id*="odigo"], input[name*="odigo"], input[type="text"]').first();
-  await codeInput.fill(code, { timeout: 8000 }).catch(() => null);
-  await page.waitForTimeout(500);
+  await page.evaluate((c) => {
+    const inp = document.getElementById('dnn_ctr1477_View_Textbox_1477_7');
+    if (inp) {
+      inp.value = c;
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+      inp.dispatchEvent(new Event('blur', { bubbles: true }));
+    }
+  }, code);
 
-  // Submeter
-  const obterBtn = page.locator('button:has-text("Obter"), button:has-text("Consultar"), button[type="submit"]').first();
-  await obterBtn.click({ timeout: 8000 }).catch(async () => { await page.keyboard.press('Enter'); });
-  await page.waitForTimeout(Number(payload?.settleMs || 3000));
+  // Aguardar que a API apiv2.justica.gov.pt preencha os campos (só funciona com IP residencial)
+  await page.waitForTimeout(Number(payload?.settleMs || 4000));
+
+  // Clicar Seguinte / Obter Dados (step 2 → 3)
+  await page.evaluate(() => {
+    const btn = document.getElementById('PageBreak_1477_26_next') || document.getElementById('irn_lightbox_search_button');
+    if (btn) btn.click();
+  });
+  await page.waitForTimeout(3000);
 
   const text = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
   const fields = parseCartaoText(text, code);

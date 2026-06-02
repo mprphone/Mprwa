@@ -837,14 +837,16 @@ async function performDesktopFinancasAtProfile(payload = {}) {
 
 async function performDesktopCartaoEletronico(payload = {}) {
   const playwright = requirePlaywrightForDesktopAutologin();
+  // Lançar browser visível (não headless) para evitar detecção pelo IRN
   const { browser, launcherLabel } = await launchDesktopAutomationBrowser(playwright, {
     ...payload,
+    headless: false,
     browserExecutablePath: payload.browserExecutablePath,
-    browserChannel: payload.browserChannel,
+    browserChannel: payload.browserChannel || 'msedge',
   });
 
   try {
-    const context = await browser.newContext({ viewport: { width: 1365, height: 1600 } });
+    const context = await browser.newContext({ viewport: { width: 1365, height: 900 } });
     const page = await context.newPage();
     const collected = await collectDesktopCartaoEletronico(page, payload);
     if (payload?.closeAfterCollect !== false) {
