@@ -25,13 +25,32 @@ async function collectCartaoEletronicoProfile(code, options = {}) {
         return { fields: {}, sourceUrl: '', textPreview: '', ficheiroPdf: '', message: 'Playwright não está disponível.' };
     }
 
-    // Portal IRN - mesmo domínio que a certidão permanente (não bloqueado por WAF)
-    const url = `https://registo.justica.gov.pt/Empresas/Cartao-Empresa/Iniciar?codigocartao=${encodeURIComponent(normalizedCode)}`;
+    const url = 'https://registo.justica.gov.pt/Empresas/Consultar-Cartao-de-Empresa-ou-Pessoa-Coletiva/iniciar';
 
     const browser = await playwright.chromium.launch({ headless: options.headless !== false });
     try {
         const page = await browser.newPage({ viewport: { width: 1365, height: 1600 } });
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: Number(options.navigationTimeoutMs || 30000) });
+        await page.waitForTimeout(1000);
+
+        // Passo 1: clicar "Iniciar"
+        const iniciarBtn = page.locator('button:has-text("Iniciar"), a:has-text("Iniciar"), input[value*="Iniciar"]').first();
+        await iniciarBtn.click({ timeout: 10000 }).catch(async () => {
+            // Tentar submit do form directamente
+            await page.locator('form').first().evaluate(f => f.requestSubmit()).catch(() => null);
+        });
+        await page.waitForTimeout(1500);
+
+        // Passo 2: preencher o código
+        const codeInput = page.locator('input[placeholder*="0000"], input[id*="odigo"], input[name*="odigo"], input[type="text"]').first();
+        await codeInput.fill(normalizedCode, { timeout: 8000 }).catch(() => null);
+        await page.waitForTimeout(500);
+
+        // Passo 3: submeter
+        const obterBtn = page.locator('button:has-text("Obter"), button:has-text("Consultar"), button[type="submit"]').first();
+        await obterBtn.click({ timeout: 8000 }).catch(async () => {
+            await page.keyboard.press('Enter');
+        });
         await page.waitForTimeout(Number(options.settleMs || 3000));
 
         let text = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
@@ -68,22 +87,37 @@ async function collectCartaoEletronicoProfile(code, options = {}) {
 
 function parseCartaoEletronicoText(text, code) {
     const raw = compactSpaces(text);
-    const fields = {};
+    const fields = { cartaoEletronicoNumero: code };
 
-    // Extrair NIF
-    const nifMatch = raw.match(/\b(\d{9})\b/);
-    if (nifMatch) fields.nif = nifMatch[1];
+    // NIPC (9 dígitos)
+    const nipcMatch = raw.match(/NIPC\s*(\d{9})/i) || raw.match(/\b([25]\d{8})\b/);
+    if (nipcMatch) fields.nif = nipcMatch[1];
 
-    // Extrair denominação/empresa
-    const denomMatch = raw.match(/Denomina[cç][aã]o\s*[:\-]?\s*([^\n\r]+)/i);
-    if (denomMatch) fields.company = denomMatch[1].trim();
+    // Nome / denominação
+    const nomeMatch = raw.match(/Nome\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][^\n]{3,80})/i)
+        || raw.match(/Denomina[cç][aã]o\s*[:\-]?\s*([^\n\r]{3,80})/i);
+    if (nomeMatch) fields.company = nomeMatch[1].trim();
 
-    // Extrair data de registo/constituição
-    const dataMatch = raw.match(/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\b/);
-    if (dataMatch) fields.dataRegisto = `${dataMatch[3]}-${dataMatch[2].padStart(2,'0')}-${dataMatch[1].padStart(2,'0')}`;
+    // Natureza Jurídica
+    const natMatch = raw.match(/Natureza Jur[ií]dica\s+([^\n]{3,60})/i);
+    if (natMatch) fields.naturezaJuridica = natMatch[1].trim();
 
-    // Guardar código
-    fields.cartaoEletronicoNumero = code;
+    // Sede — Código Postal
+    const cpMatch = raw.match(/(\d{4})\s*[—\-]\s*(\d{3})/);
+    if (cpMatch) fields.codigoPostal = `${cpMatch[1]}-${cpMatch[2]}`;
+
+    // Localidade
+    const locMatch = raw.match(/Localidade\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][^\n]{2,50})/i);
+    if (locMatch) fields.localidade = locMatch[1].trim();
+
+    // Data de constituição
+    const dataMatch = raw.match(/Data de constitui[cç][aã]o\s+(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/i)
+        || raw.match(/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\b/);
+    if (dataMatch) fields.dataConstituicao = `${dataMatch[3]}-${dataMatch[2].padStart(2,'0')}-${dataMatch[1].padStart(2,'0')}`;
+
+    // CAE principal
+    const caeMatch = raw.match(/CAE principal\s+(\d{4,5})/i);
+    if (caeMatch) fields.caePrincipal = caeMatch[1];
 
     return fields;
 }
