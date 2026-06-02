@@ -771,6 +771,7 @@ const Customers: React.FC = () => {
   const [ingestSelectedFile, setIngestSelectedFile] = useState<File | null>(null);
   const [ingestCodigo, setIngestCodigo] = useState('');
   const [ingestLoading, setIngestLoading] = useState(false);
+  const [fiscalSummaryRefreshKey, setFiscalSummaryRefreshKey] = useState(0);
   const [ingestStatus, setIngestStatus] = useState<string>('');
   const [ingestWarnings, setIngestWarnings] = useState<string[]>([]);
   const [showHeaderIngestModal, setShowHeaderIngestModal] = useState(false);
@@ -1526,11 +1527,14 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
 
         if (isCartao) {
           // Registar no resumo fiscal via servidor
-          await fetch('/api/cartao-eletronico/finalizar', {
+          const finRes = await fetch('/api/cartao-eletronico/finalizar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ codigo: codigoCert, customerId: editingCustomer.id, ficheiroPdf: data.ficheiroPdf || '', fields: f }),
-          }).catch(() => null);
+          }).catch(e => ({ ok: false, _err: e }));
+          const finData = finRes && 'ok' in finRes && finRes.ok ? await (finRes as Response).json().catch(() => ({})) : {};
+          if (finData?.error) console.warn('[CartaoEletronico] finalizar error:', finData.error);
+          setFiscalSummaryRefreshKey(k => k + 1);
         }
 
         // Actualizar campos do cliente
@@ -5319,6 +5323,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
 
               {activeTab === 'fiscal' && editingCustomer?.id && (
                 <CustomerFiscalSummaryTab
+                  key={fiscalSummaryRefreshKey}
                   customer={editingCustomer}
                   anyAutomationBusy={Boolean(
                     autologinBusyCustomerId ||

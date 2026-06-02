@@ -44,17 +44,56 @@ async function collectDesktopCartaoEletronico(page, payload = {}) {
   }, code);
 
   // Aguardar que a API apiv2.justica.gov.pt preencha os campos (só funciona com IP residencial)
-  await page.waitForTimeout(Number(payload?.settleMs || 4000));
+  // Esperar que o campo NIPC (Textbox_1477_11) fique preenchido
+  await page.waitForFunction(
+    () => {
+      const nipc = document.getElementById('dnn_ctr1477_View_Textbox_1477_11');
+      return nipc && nipc.value && nipc.value.length > 3;
+    },
+    { timeout: 15000 }
+  ).catch(() => null);
 
-  // Clicar Seguinte / Obter Dados (step 2 → 3)
+  // Extrair os dados dos campos do formulário (mais fiável que innerText)
+  const formFields = await page.evaluate(() => {
+    const get = id => (document.getElementById(id) || {}).value || '';
+    const getText = id => {
+      const el = document.getElementById(id);
+      return el ? (el.tagName === 'TEXTAREA' ? el.value : el.value) : '';
+    };
+    return {
+      nipc:            get('dnn_ctr1477_View_Textbox_1477_11'),
+      naturezaJuridica: get('dnn_ctr1477_View_Textbox_1477_12'),
+      nome:            getText('dnn_ctr1477_View_Textbox_1477_15'),
+      morada:          get('dnn_ctr1477_View_Textbox_1477_16'),
+      codigoPostal:    get('dnn_ctr1477_View_Textbox_1477_18'),
+      localidade:      get('dnn_ctr1477_View_Textbox_1477_19'),
+      pais:            get('dnn_ctr1477_View_Textbox_1477_21'),
+      caePrincipal:    get('dnn_ctr1477_View_Textbox_1477_22'),
+    };
+  });
+
+  // Clicar Seguinte (step 2 → 3) para mostrar página de resultados
   await page.evaluate(() => {
     const btn = document.getElementById('PageBreak_1477_26_next') || document.getElementById('irn_lightbox_search_button');
     if (btn) btn.click();
   });
-  await page.waitForTimeout(3000);
+  await page.waitForTimeout(2000);
 
   const text = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
-  const fields = parseCartaoText(text, code);
+
+  // Usar campos do formulário se preenchidos, senão tentar extrair do texto
+  const fields = (formFields?.nipc)
+    ? {
+        cartaoEletronicoNumero: code,
+        nif:              formFields.nipc,
+        company:          formFields.nome || formFields.nipc,
+        naturezaJuridica: formFields.naturezaJuridica,
+        morada:           formFields.morada,
+        codigoPostal:     formFields.codigoPostal,
+        localidade:       formFields.localidade,
+        caePrincipal:     formFields.caePrincipal,
+      }
+    : parseCartaoText(text, code);
 
   let ficheiroPdf = '';
   const documentsFolder = String(payload?.documentsFolder || '').trim();
