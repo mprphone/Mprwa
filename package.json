@@ -1,6 +1,6 @@
 {
   "name": "whatsapp-manager-local",
-  "version": "1.0.87",
+  "version": "1.0.88",
   "description": "WhatsApp Manager Minimalista",
   "main": "electron/main.js",
   "scripts": {
