@@ -48,4 +48,16 @@ function applyCertidaoPermanente(current, code, result) {
     });
 }
 
-module.exports = { applyDomicilioFiscal, applyBancoPortugal, applyPme, applyCertidaoPermanente };
+function applyCartaoEletronico(current, code, result) {
+    return updateDocumento(current, 'cartao_eletronico', {
+        tipo: 'cartao_eletronico',
+        label: 'Cartão Eletrónico da Empresa',
+        codigo: code,
+        dataValidade: result?.fields?.dataRegisto || '',
+        valida: true,
+        ficheiroPdf: result?.ficheiroPdf || '',
+        detalhes: result?.fields || {},
+    });
+}
+
+module.exports = { applyDomicilioFiscal, applyBancoPortugal, applyPme, applyCertidaoPermanente, applyCartaoEletronico };

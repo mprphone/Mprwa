@@ -11,7 +11,7 @@ import {
   CustomerHouseholdRelation,
   CustomerRelatedRecord,
 } from '../types';
-import { Plus, Search, Edit2, Trash2, FolderOpen, Eye, RefreshCw, Upload, User, Building2, Shield, Users } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, FolderOpen, Eye, RefreshCw, Upload, User, Building2, Shield, Users, ArrowDownToLine } from 'lucide-react';
 import { CustomerAccessTab, type CustomerCredentialPreset } from './customers/CustomerAccessTab';
 import { CustomerFiscalSummaryTab } from './customers/CustomerFiscalSummaryTab';
 import { CustomerDocumentBrowser } from './customers/CustomerDocumentBrowser';
@@ -45,6 +45,9 @@ const LOCAL_FINANCAS_AUTOMATION_BRIDGE_URL = String(
 ).trim();
 const LOCAL_FINANCAS_AT_PROFILE_BRIDGE_URL = String(
   import.meta.env?.VITE_LOCAL_AT_PROFILE_BRIDGE_URL || LOCAL_FINANCAS_AUTOMATION_BRIDGE_URL.replace(/\/financas-autologin\/?$/, '/financas-at-profile')
+).trim();
+const LOCAL_CARTAO_ELETRONICO_BRIDGE_URL = String(
+  import.meta.env?.VITE_LOCAL_CARTAO_ELETRONICO_BRIDGE_URL || LOCAL_FINANCAS_AUTOMATION_BRIDGE_URL.replace(/\/financas-autologin\/?$/, '/cartao-eletronico')
 ).trim();
 const SEG_SOCIAL_LOGIN_URL = 'https://www.seg-social.pt/sso/login?service=https%3A%2F%2Fwww.seg-social.pt%2Fptss%2Fcaslogin';
 const SEG_SOCIAL_ACTIVATE_URL = 'https://www.seg-social.pt/ptss/gus/atribuir-palavra-chave/codigo-verificacao';
@@ -536,6 +539,7 @@ function dedupeCustomersForListing(items: Customer[]): Customer[] {
 }
 
 type CustomerIngestDocumentType =
+  | 'cartao_eletronico'
   | 'certidao_permanente'
   | 'pacto_social'
   | 'inicio_atividade'
@@ -544,6 +548,7 @@ type CustomerIngestDocumentType =
   | 'outros';
 
 const CUSTOMER_INGEST_TYPES: Array<{ value: CustomerIngestDocumentType; label: string }> = [
+  { value: 'cartao_eletronico', label: 'Cartão Eletrónico da Empresa' },
   { value: 'certidao_permanente', label: 'Certidão Permanente' },
   { value: 'pacto_social', label: 'Pacto Social' },
   { value: 'inicio_atividade', label: 'Início de Atividade' },
@@ -653,6 +658,8 @@ type CustomerFormState = {
   inicioAtividade: string;
   caePrincipal: string;
   caeDescricao: string;
+  caeSecundarios: string; // legacy
+  infoAtividades: string; // JSON: [{codigo, descricao}] para CAEs secundários
   codigoReparticaoFinancas: string;
   tipoContabilidade: string;
   estadoCliente: string;
@@ -694,6 +701,8 @@ const emptyFormState = (): CustomerFormState => ({
   inicioAtividade: '',
   caePrincipal: '',
   caeDescricao: '',
+  caeSecundarios: '',
+  infoAtividades: '',
   codigoReparticaoFinancas: '',
   tipoContabilidade: '',
   estadoCliente: '',
@@ -728,6 +737,7 @@ const Customers: React.FC = () => {
   const [formData, setFormData] = useState<CustomerFormState>(emptyFormState());
   const [savedFormSnapshot, setSavedFormSnapshot] = useState('');
   const [formSavedNotice, setFormSavedNotice] = useState('');
+  const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
 
   const modalFileInputRef = useRef<HTMLInputElement | null>(null);
   const sociedadeFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -759,6 +769,7 @@ const Customers: React.FC = () => {
   const [sociedadeCategoryKey, setSociedadeCategoryKey] = useState(SOCIEDADE_DOCUMENT_CATEGORIES[0].key);
   const [ingestDocumentType, setIngestDocumentType] = useState<CustomerIngestDocumentType>('certidao_permanente');
   const [ingestSelectedFile, setIngestSelectedFile] = useState<File | null>(null);
+  const [ingestCodigo, setIngestCodigo] = useState('');
   const [ingestLoading, setIngestLoading] = useState(false);
   const [ingestStatus, setIngestStatus] = useState<string>('');
   const [ingestWarnings, setIngestWarnings] = useState<string[]>([]);
@@ -767,6 +778,8 @@ const Customers: React.FC = () => {
   const [headerIngestDocumentType, setHeaderIngestDocumentType] = useState<CustomerIngestDocumentType>('certidao_permanente');
   const [headerIngestSelectedFile, setHeaderIngestSelectedFile] = useState<File | null>(null);
   const [headerIngestPhoneInput, setHeaderIngestPhoneInput] = useState('');
+  const [headerIngestCodigo, setHeaderIngestCodigo] = useState('');
+  const [headerIngestPendingCreate, setHeaderIngestPendingCreate] = React.useState<{nif: string; name: string; fields: Record<string,any>} | null>(null);
   const [headerIngestLoading, setHeaderIngestLoading] = useState(false);
   const [headerIngestStatus, setHeaderIngestStatus] = useState('');
   const [headerIngestWarnings, setHeaderIngestWarnings] = useState<string[]>([]);
@@ -925,6 +938,8 @@ const Customers: React.FC = () => {
     setHeaderIngestDocumentType('certidao_permanente');
     setHeaderIngestSelectedFile(null);
     setHeaderIngestPhoneInput('');
+    setHeaderIngestCodigo('');
+    setHeaderIngestPendingCreate(null);
     setHeaderIngestLoading(false);
     setHeaderIngestStatus('');
     setHeaderIngestWarnings([]);
@@ -960,6 +975,8 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     inicioAtividade: customer.inicioAtividade || '',
     caePrincipal: customer.caePrincipal || '',
     caeDescricao: customer.caeDescricao || '',
+    caeSecundarios: (customer as any).caeSecundarios || '',
+    infoAtividades: (customer as any).infoAtividades || '',
     codigoReparticaoFinancas: customer.codigoReparticaoFinancas || '',
     tipoContabilidade: customer.tipoContabilidade || '',
     estadoCliente: customer.estadoCliente || '',
@@ -1193,6 +1210,135 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
   };
 
   const runHeaderDocumentIngest = async () => {
+    const codigoCertidao = String(headerIngestCodigo || '').trim();
+
+    const headerIsCodigoType = headerIngestDocumentType === 'certidao_permanente' || headerIngestDocumentType === 'cartao_eletronico';
+    const headerIsCartao = headerIngestDocumentType === 'cartao_eletronico';
+    const headerApiEndpoint = headerIsCartao ? LOCAL_CARTAO_ELETRONICO_BRIDGE_URL : '/api/certidao-permanente/consultar';
+
+    // Fluxo por código — sem ficheiro (Certidão ou Cartão Eletrónico)
+    if (!headerIngestSelectedFile && codigoCertidao && headerIsCodigoType) {
+      setHeaderIngestLoading(true);
+      setHeaderIngestStatus(`A consultar ${headerIsCartao ? 'cartão eletrónico (PC local)' : 'certidão'} online...`);
+      setHeaderIngestWarnings([]);
+      try {
+        const res = await fetch(headerApiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: codigoCertidao, codigo: codigoCertidao, customerId: headerIngestCustomerId || undefined }),
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Erro na consulta');
+
+        const f = data.fields || {};
+        const nifFromCert = String(f.nif || '').trim();
+        const nameFromCert = String(f.company || f.name || '').trim();
+
+        // Determinar o cliente alvo (seleccionado, existente por NIF, ou criar novo)
+        let targetId = headerIngestCustomerId;
+
+        if (!targetId && nifFromCert) {
+          const existingCustomer = customers.find(c => String(c.nif || '').trim() === nifFromCert);
+          if (existingCustomer) {
+            targetId = existingCustomer.id;
+            setHeaderIngestStatus(`A actualizar cliente existente: ${existingCustomer.company || existingCustomer.name}...`);
+          }
+        }
+
+        if (!targetId && nifFromCert && nameFromCert) {
+          // Mostrar confirmação inline — não usar window.confirm (perde foco no Electron)
+          setHeaderIngestPendingCreate({ nif: nifFromCert, name: nameFromCert, fields: f });
+          setHeaderIngestLoading(false);
+          return; // esperar confirmação do utilizador
+        }
+
+        if (!targetId && nifFromCert && nameFromCert) {
+          // Mostrar confirmação inline (o botão "Sim" trata da criação)
+          setHeaderIngestStatus('');
+          const phone = String(headerIngestPhoneInput || '').trim() || '+351000000000';
+          const managers = Array.isArray(f.managers) ? f.managers : [];
+          const newCustomer = await mockService.createCustomer({
+            name: nameFromCert,
+            company: nameFromCert,
+            phone,
+            nif: nifFromCert,
+            niss: '',
+            type: 'Empresa',
+            allowAutoResponses: true,
+            morada: f.morada || '',
+            codigoPostal: f.codigoPostal || '',
+            caePrincipal: f.caePrincipal || '',
+            dataConstituicao: f.dataConstituicao || '',
+            inicioAtividade: f.inicioAtividade || '',
+            certidaoPermanenteNumero: codigoCertidao,
+            certidaoPermanenteValidade: f.certidaoPermanenteValidade || '',
+            managers,
+            contacts: [],
+            accessCredentials: [],
+            agregadoFamiliar: [],
+            fichasRelacionadas: [],
+          } as any, { syncToSupabase: false });
+          targetId = newCustomer.id;
+          const refreshed = await loadCustomers();
+          setHeaderIngestStatus(`✓ Cliente criado: ${nameFromCert}`);
+        }
+
+        // Re-consultar com o cliente agora definido para guardar PDF e actualizar resumo
+        if (targetId && targetId !== headerIngestCustomerId) {
+          if (headerIsCartao) {
+            await fetch('/api/cartao-eletronico/finalizar', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ codigo: codigoCertidao, customerId: targetId, ficheiroPdf: data.ficheiroPdf || '', fields: f }),
+            }).catch(() => null);
+            setHeaderIngestStatus(
+              `✓ Cartão eletrónico gravado para ${nameFromCert} (${nifFromCert}).${data.ficheiroPdf ? ' PDF guardado.' : ''} Resumo fiscal actualizado.`
+            );
+            await mockService.updateCustomer(targetId, { cartaoEletronicoNumero: codigoCertidao } as any, { syncToSupabase: false });
+          } else {
+            const res2 = await fetch('/api/certidao-permanente/consultar', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ codigo: codigoCertidao, customerId: targetId }),
+            });
+            const data2 = await res2.json();
+            setHeaderIngestStatus(
+              `✓ Certidão gravada para ${nameFromCert} (${nifFromCert}).${data2.ficheiroPdf ? ' PDF guardado.' : ''} Resumo fiscal actualizado.`
+            );
+            await mockService.updateCustomer(targetId, {
+              certidaoPermanenteNumero: codigoCertidao,
+              certidaoPermanenteValidade: f.certidaoPermanenteValidade || '',
+            } as any, { syncToSupabase: false });
+          }
+          await loadCustomers();
+        } else if (targetId) {
+          if (headerIsCartao) {
+            await fetch('/api/cartao-eletronico/finalizar', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ codigo: codigoCertidao, customerId: targetId, ficheiroPdf: data.ficheiroPdf || '', fields: f }),
+            }).catch(() => null);
+            setHeaderIngestStatus(`✓ Cartão eletrónico actualizado.${data.ficheiroPdf ? ' PDF guardado.' : ''}`);
+            await mockService.updateCustomer(targetId, { cartaoEletronicoNumero: codigoCertidao } as any, { syncToSupabase: false });
+          } else {
+            setHeaderIngestStatus(`✓ Certidão actualizada.${data.ficheiroPdf ? ' PDF guardado.' : ''}`);
+            await mockService.updateCustomer(targetId, {
+              certidaoPermanenteNumero: codigoCertidao,
+              certidaoPermanenteValidade: f.certidaoPermanenteValidade || '',
+            } as any, { syncToSupabase: false });
+          }
+          await loadCustomers();
+        } else {
+          setHeaderIngestStatus(`✓ ${headerIsCartao ? 'Cartão eletrónico' : 'Certidão'} consultado mas NIF não encontrado.`);
+        }
+      } catch (err) {
+        setHeaderIngestStatus(`Erro: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        setHeaderIngestLoading(false);
+      }
+      return;
+    }
+
     if (!headerIngestSelectedFile) {
       triggerHeaderIngestPicker();
       return;
@@ -1354,6 +1500,64 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
 
   const runDocumentIngest = async () => {
     if (!editingCustomer?.id) return;
+    const codigoCert = String(ingestCodigo || '').trim();
+    const isCodigoType = ingestDocumentType === 'certidao_permanente' || ingestDocumentType === 'cartao_eletronico';
+    const isCartao = ingestDocumentType === 'cartao_eletronico';
+    const apiEndpoint = isCartao ? LOCAL_CARTAO_ELETRONICO_BRIDGE_URL : '/api/certidao-permanente/consultar';
+
+    // Fluxo por código — sem ficheiro, Certidão ou Cartão Eletrónico
+    if (!ingestSelectedFile && codigoCert && isCodigoType) {
+      setIngestLoading(true);
+      setIngestStatus(isCartao ? 'A consultar cartão eletrónico (PC local)...' : 'A consultar certidão online...');
+      setIngestWarnings([]);
+      try {
+        const bridgeBody: Record<string, unknown> = { code: codigoCert, codigo: codigoCert, customerId: editingCustomer.id };
+        if (isCartao && editingCustomer.documentsFolder) {
+          bridgeBody.documentsFolder = editingCustomer.documentsFolder;
+        }
+        const res = await fetch(apiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bridgeBody),
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Erro na consulta');
+        const f = data.fields || {};
+
+        if (isCartao) {
+          // Registar no resumo fiscal via servidor
+          await fetch('/api/cartao-eletronico/finalizar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ codigo: codigoCert, customerId: editingCustomer.id, ficheiroPdf: data.ficheiroPdf || '', fields: f }),
+          }).catch(() => null);
+        }
+
+        // Actualizar campos do cliente
+        const updates: Partial<Customer> = isCartao
+          ? { cartaoEletronicoNumero: codigoCert } as any
+          : { certidaoPermanenteNumero: codigoCert, certidaoPermanenteValidade: f.certidaoPermanenteValidade || '' } as any;
+        if (f.morada && !formData.morada) (updates as any).morada = f.morada;
+        if (f.caePrincipal && !formData.caePrincipal) (updates as any).caePrincipal = f.caePrincipal;
+        await mockService.updateCustomer(editingCustomer.id, updates, { syncToSupabase: false });
+        const refreshed = await loadCustomers();
+        const updated = refreshed.find(c => c.id === editingCustomer.id);
+        if (updated) {
+          const next = formStateFromCustomer(updated);
+          setEditingCustomer(updated);
+          setFormData(next);
+          setSavedFormSnapshot(serializeCustomerFormState(next));
+        }
+        const docLabel = isCartao ? 'Cartão eletrónico' : `Certidão ${codigoCert}`;
+        setIngestStatus(`✓ ${docLabel} consultado.${data.ficheiroPdf ? ' PDF guardado em Resumo Fiscal.' : ''} Resumo fiscal actualizado.`);
+      } catch (err) {
+        setIngestStatus(`Erro: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        setIngestLoading(false);
+      }
+      return;
+    }
+
     if (!ingestSelectedFile) {
       triggerIngestPicker();
       return;
@@ -1725,6 +1929,8 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       assignIfFilled('tipoIva');
       assignIfFilled('caePrincipal');
       assignIfFilled('caeDescricao');
+      assignIfFilled('caeSecundarios');
+      assignIfFilled('infoAtividades');
       assignIfFilled('codigoReparticaoFinancas');
       assignIfFilled('tipoContabilidade');
       if (Array.isArray(fields.managers) && fields.managers.length > 0) {
@@ -2666,6 +2872,23 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     setShowModal(true);
   };
 
+  const doCloseCustomerModal = () => {
+    customerActivityRequestRef.current += 1;
+    setShowModal(false);
+    setShowUnsavedConfirm(false);
+    setEditingCustomer(null);
+    setFormData(emptyFormState());
+    setSavedFormSnapshot('');
+    setFormSavedNotice('');
+    setSaftSSBusy(false);
+    setSupabasePushBusy(false);
+    setAgregadoSearchTerms({});
+    setFichasSearchTerms({});
+    resetModalDocsState();
+    resetSociedadeDocsState();
+    resetIngestState();
+  };
+
   const closeCustomerModal = (confirmUnsaved = true): boolean => {
     const hasUnsavedChanges = Boolean(
       showModal &&
@@ -2673,21 +2896,11 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       serializeCustomerFormState(formData) !== savedFormSnapshot
     );
     if (confirmUnsaved && hasUnsavedChanges) {
-      const canExit = window.confirm('Existem alterações não gravadas. Quer mesmo sair sem gravar?');
-      if (!canExit) return false;
+      // Usar diálogo React em vez de window.confirm (que no Electron perde o foco)
+      setShowUnsavedConfirm(true);
+      return false;
     }
-
-    customerActivityRequestRef.current += 1;
-    setShowModal(false);
-    setEditingCustomer(null);
-    setFormData(emptyFormState());
-    setSavedFormSnapshot('');
-    setFormSavedNotice('');
-    setAgregadoSearchTerms({});
-    setFichasSearchTerms({});
-    resetModalDocsState();
-    resetSociedadeDocsState();
-    resetIngestState();
+    doCloseCustomerModal();
     return true;
   };
 
@@ -2702,6 +2915,84 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       openModal(target);
     }
   }, [customers, showModal]);
+
+  const [supabasePushBusy, setSupabasePushBusy] = React.useState(false);
+  const [supabasePushMsg, setSupabasePushMsg] = React.useState('');
+  const [saftSSBusy, setSaftSSBusy] = React.useState(false);
+  const [saftSSMsg, setSaftSSMsg] = React.useState('');
+  const [saftReadBusy, setSaftReadBusy] = React.useState(false);
+  const [saftReadMsg, setSaftReadMsg] = React.useState('');
+  const [folderEditMode, setFolderEditMode] = React.useState(false);
+
+  const handleReadCredsFromSaft = async () => {
+    if (!editingCustomer?.id) return;
+    setSaftReadBusy(true);
+    setSaftReadMsg('');
+    try {
+      const res = await fetch(`/api/customers/${encodeURIComponent(editingCustomer.id)}/saftonline/read-credentials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Erro');
+      setSaftReadMsg(`✓ ${data.savedCount} importadas`);
+      // Forçar reload da BD (bypass cache) para mostrar as novas credenciais
+      const refreshed = await mockService.refreshCustomersFromServer();
+      setCustomers(dedupeCustomersForListing(refreshed));
+      const updated = refreshed.find((c) => String(c.id) === String(editingCustomer.id));
+      if (updated) {
+        const nextState = formStateFromCustomer(updated);
+        setEditingCustomer(updated);
+        setFormData(nextState);
+        setSavedFormSnapshot(serializeCustomerFormState(nextState));
+      }
+      setTimeout(() => setSaftReadMsg(''), 4000);
+    } catch (err) {
+      setSaftReadMsg(err instanceof Error ? err.message.slice(0, 60) : 'Erro');
+    } finally {
+      setSaftReadBusy(false);
+    }
+  };
+
+  const handleWriteSSToSaft = async () => {
+    if (!editingCustomer?.id) return;
+    setSaftSSBusy(true);
+    setSaftSSMsg('');
+    try {
+      const res = await fetch(`/api/customers/${encodeURIComponent(editingCustomer.id)}/saftonline/write-ss`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Erro');
+      setSaftSSMsg(`✓ ${data.ssUser}`);
+      setTimeout(() => setSaftSSMsg(''), 4000);
+    } catch (err) {
+      setSaftSSMsg(err instanceof Error ? err.message.slice(0, 60) : 'Erro');
+    } finally {
+      setSaftSSBusy(false);
+    }
+  };
+
+  // Envia os dados locais para o Supabase — local é master, Supabase só recebe
+  const handlePushToSupabase = async () => {
+    if (!editingCustomer?.id) return;
+    setSupabasePushBusy(true);
+    setSupabasePushMsg('');
+    try {
+      // Usa forceLocalToSupabase=true — envia o que está guardado localmente
+      // sem alterar nada no local com base na resposta do Supabase
+      await mockService.updateCustomer(editingCustomer.id, {
+        ...editingCustomer,
+      }, { syncToSupabase: true });
+      setSupabasePushMsg('Enviado para Supabase.');
+      setTimeout(() => setSupabasePushMsg(''), 3000);
+    } catch (err) {
+      setSupabasePushMsg(err instanceof Error ? err.message : 'Erro ao enviar');
+    } finally {
+      setSupabasePushBusy(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2839,6 +3130,8 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       inicioAtividade: String(formData.inicioAtividade || '').trim(),
       caePrincipal: String(formData.caePrincipal || '').trim(),
       caeDescricao: String(formData.caeDescricao || '').trim(),
+      caeSecundarios: String(formData.caeSecundarios || '').trim(),
+      infoAtividades: String(formData.infoAtividades || '').trim(),
       codigoReparticaoFinancas: String(formData.codigoReparticaoFinancas || '').trim(),
       codigoPostal: String(formData.codigoPostal || '').trim(),
       tipoContabilidade: String(formData.tipoContabilidade || '').trim(),
@@ -3017,6 +3310,12 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     { key: 'viactt', label: 'Via CTT', icon: 'CTT', service: 'ViaCTT', credentialType: '', usernameFallback: '', passwordFallback: '', validity: false },
     { key: 'iapmei', label: 'IAPMEI', icon: 'IP', service: 'IAPMEI', credentialType: '', usernameFallback: formData.nif || '', passwordFallback: '', validity: false },
     { key: 'ss_interop', label: 'Seg. Social Plataforma Interoperabilidade', icon: 'SS', service: 'Segurança Social', credentialType: 'token', usernameFallback: formData.niss ? `${normalizeNissDigits(formData.niss)}-1` : '', passwordFallback: '', validity: true },
+    { key: 'iefp', label: 'IEFP Online', icon: 'IEFP', service: 'IEFP', credentialType: 'principal', usernameFallback: '', passwordFallback: '', validity: false },
+    { key: 'balcao2020', label: 'Balcão 2020', icon: 'B20', service: 'Balcão 2020', credentialType: 'principal', usernameFallback: formData.nif || '', passwordFallback: '', validity: false },
+    { key: 'ine', label: 'INE', icon: 'INE', service: 'INE', credentialType: 'principal', usernameFallback: '', passwordFallback: '', validity: false },
+    { key: 'siliamb', label: 'SILIAMB', icon: 'SLB', service: 'SILIAMB', credentialType: 'principal', usernameFallback: formData.nif || '', passwordFallback: '', validity: false },
+    { key: 'livrorec', label: 'Livro de Reclamações', icon: 'LR', service: 'Livro de Reclamações', credentialType: 'principal', usernameFallback: '', passwordFallback: '', validity: false },
+    { key: 'act', label: 'ACT', icon: 'ACT', service: 'ACT', credentialType: 'principal', usernameFallback: '', passwordFallback: '', validity: false },
   ];
 
   const credentialMatchesPresetService = (
@@ -3487,17 +3786,14 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     return <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600">Sem sub</span>;
   };
 
+  // Botões de acção — ghost style: invisíveis em repouso, revelam-se no hover
   const actionButtonBaseClass =
-    'inline-flex items-center justify-center rounded-lg border transition-all duration-150 hover:-translate-y-[1px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1';
-  const actionButtonAutologinClass =
-    `${actionButtonBaseClass} p-1.5 border-sky-200 bg-sky-100 text-sky-700 hover:bg-sky-200 hover:border-sky-300 focus-visible:ring-sky-300 disabled:opacity-50 disabled:cursor-not-allowed`;
-  const actionButtonSsAutologinClass =
-    `${actionButtonBaseClass} min-w-[34px] px-1.5 py-1.5 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 focus-visible:ring-emerald-300 disabled:opacity-50 disabled:cursor-not-allowed`;
-  const actionButtonAutologinImageClass = 'h-4 w-3.5 object-contain select-none';
-  const actionButtonViewClass =
-    `${actionButtonBaseClass} p-2 border-[#e7dcc9] bg-[#f8f2e8] text-slate-500 hover:text-blue-700 hover:bg-[#efe6d8] hover:border-[#dcc9ab] focus-visible:ring-blue-300`;
-  const actionButtonEditClass =
-    `${actionButtonBaseClass} p-2 border-[#e7dcc9] bg-[#f8f2e8] text-slate-500 hover:text-whatsapp-700 hover:bg-[#efe6d8] hover:border-[#dcc9ab] focus-visible:ring-green-300`;
+    'inline-flex h-7 w-7 items-center justify-center rounded-md transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-1 disabled:opacity-35 disabled:cursor-not-allowed';
+  const actionButtonAutologinClass = `${actionButtonBaseClass} text-slate-400 hover:text-slate-700 hover:bg-slate-100`;
+  const actionButtonSsAutologinClass = `${actionButtonBaseClass} text-slate-400 hover:text-emerald-700 hover:bg-emerald-50`;
+  const actionButtonAutologinImageClass = 'hidden'; // não usado — substituído por texto
+  const actionButtonViewClass = `${actionButtonBaseClass} text-slate-300 hover:text-slate-600 hover:bg-slate-100`;
+  const actionButtonEditClass = `${actionButtonBaseClass} text-slate-300 hover:text-slate-600 hover:bg-slate-100`;
 
   return (
     <div className="p-4 md:p-6 w-full space-y-4">
@@ -3660,61 +3956,34 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                     <td className="px-3 py-3"><SegSocialSubUserBadge state={subUserState} /></td>
                     <td className="px-3 py-3">
                       <div className="flex justify-end items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        {/* AT — Finanças */}
                         <button
-                          onClick={() => {
-                            void triggerFinancasAutologin(customer);
-                          }}
+                          onClick={() => void triggerFinancasAutologin(customer)}
                           disabled={Boolean(autologinBusyCustomerId || segSocialAutologinBusyCustomerId || segSocialSubUserBusyCustomerId)}
                           className={actionButtonAutologinClass}
                           title="Autologin Portal das Finanças"
-                          aria-label="Autologin Portal das Finanças"
                         >
-                          <img
-                            src="/at-symbol.png"
-                            alt="AT"
-                            className={actionButtonAutologinImageClass}
-                          />
+                          {autologinBusyCustomerId === customer.id
+                            ? <RefreshCw size={11} className="animate-spin" />
+                            : <span className="text-[10px] font-bold tracking-wide">AT</span>}
                         </button>
+                        {/* SS — Segurança Social subutilizador */}
                         <button
-                          onClick={() => {
-                            void triggerSegSocialSubUserLogin(customer);
-                          }}
-                          disabled={Boolean(
-                            autologinBusyCustomerId ||
-                            segSocialAutologinBusyCustomerId ||
-                            segSocialSubUserBusyCustomerId ||
-                            segSocialActivationBusyCustomerId ||
-                            !hasSsSubUserLogin
-                          )}
+                          onClick={() => void triggerSegSocialSubUserLogin(customer)}
+                          disabled={Boolean(autologinBusyCustomerId || segSocialAutologinBusyCustomerId || segSocialSubUserBusyCustomerId || segSocialActivationBusyCustomerId || !hasSsSubUserLogin)}
                           className={actionButtonSsAutologinClass}
-                          title={
-                            hasSsSubUserLogin
-                              ? 'Entrar na Segurança Social com o subutilizador guardado'
-                              : 'Este cliente ainda não tem subutilizador SS com utilizador guardado'
-                          }
-                          aria-label="Entrar na Segurança Social com subutilizador"
+                          title={hasSsSubUserLogin ? 'Entrar na Segurança Social (subutilizador)' : 'Sem subutilizador SS configurado'}
                         >
-                          {isThisSsSubUserBusy ? (
-                            <RefreshCw size={14} className="animate-spin" />
-                          ) : (
-                            <span className="text-[11px] font-semibold leading-none">SS</span>
-                          )}
+                          {isThisSsSubUserBusy
+                            ? <RefreshCw size={11} className="animate-spin" />
+                            : <span className="text-[10px] font-bold tracking-wide">SS</span>}
                         </button>
-                        <button
-                          onClick={() => openModal(customer)}
-                          className={actionButtonViewClass}
-                          title="Ver"
-                          aria-label="Ver cliente"
-                        >
-                          <Eye size={15} />
+                        {/* Ver / Editar */}
+                        <button onClick={() => openModal(customer)} className={actionButtonViewClass} title="Ver detalhes">
+                          <Eye size={13} />
                         </button>
-                        <button
-                          onClick={() => openModal(customer)}
-                          className={actionButtonEditClass}
-                          title="Editar"
-                          aria-label="Editar cliente"
-                        >
-                          <Edit2 size={15} />
+                        <button onClick={() => openModal(customer)} className={actionButtonEditClass} title="Editar cliente">
+                          <Edit2 size={13} />
                         </button>
                       </div>
                     </td>
@@ -3784,8 +4053,29 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
               </div>
             </div>
 
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <div className="mb-2">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+              {/* Código — Certidão Permanente ou Cartão Eletrónico */}
+              {(headerIngestDocumentType === 'certidao_permanente' || headerIngestDocumentType === 'cartao_eletronico') && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Código da Certidão Permanente
+                    <span className="ml-1 font-normal text-slate-400">(alternativa ao ficheiro)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={headerIngestCodigo}
+                    onChange={(e) => setHeaderIngestCodigo(e.target.value)}
+                    placeholder={headerIngestDocumentType === 'cartao_eletronico' ? 'Código do cartão: XXXX-XXXX-XXXX' : 'XXXX-XXXX-XXXX'}
+                    className="w-full border border-slate-200 rounded-md p-2 text-sm bg-white font-mono"
+                  />
+                  {headerIngestCodigo.trim() && (
+                    <p className="text-[10px] text-emerald-600 mt-0.5">
+                      ✓ Com código: consulta online, extrai dados, guarda PDF e actualiza resumo fiscal
+                    </p>
+                  )}
+                </div>
+              )}
+              <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Telefone para novo cliente (quando a IA não deteta)</label>
                 <input
                   type="text"
@@ -3806,18 +4096,80 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    void runHeaderDocumentIngest();
-                  }}
+                  onClick={() => { void runHeaderDocumentIngest(); }}
                   disabled={headerIngestLoading}
                   className="px-2 py-1.5 text-xs rounded-md bg-whatsapp-600 text-white hover:bg-whatsapp-700 disabled:opacity-50"
                 >
-                  {headerIngestLoading ? 'A analisar...' : 'Analisar + Guardar'}
+                  {headerIngestLoading ? 'A consultar...' : (headerIngestCodigo.trim() && headerIngestDocumentType === 'certidao_permanente' && !headerIngestSelectedFile ? 'Consultar + Guardar' : 'Analisar + Guardar')}
                 </button>
               </div>
-              <div className="text-xs text-slate-600 mt-2">
+              <div className="text-xs text-slate-600">
                 Ficheiro: {headerIngestSelectedFile ? <span className="font-medium">{headerIngestSelectedFile.name}</span> : 'Nenhum ficheiro selecionado.'}
               </div>
+              {/* Confirmação de criação de novo cliente */}
+              {headerIngestPendingCreate && (
+                <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2">
+                  <p className="text-sm font-semibold text-blue-800">Criar novo cliente?</p>
+                  <p className="text-xs text-blue-700">
+                    <strong>{headerIngestPendingCreate.name}</strong> · NIF: {headerIngestPendingCreate.nif}
+                    {headerIngestPendingCreate.fields.morada ? <><br/>{headerIngestPendingCreate.fields.morada}</> : ''}
+                  </p>
+                  <div className="flex gap-2">
+                    <button type="button"
+                      className="px-3 py-1.5 text-xs rounded-md bg-blue-600 text-white font-semibold hover:bg-blue-500"
+                      onClick={async () => {
+                        const pending = headerIngestPendingCreate;
+                        if (!pending) return;
+                        setHeaderIngestPendingCreate(null);
+                        setHeaderIngestLoading(true);
+                        const codigoCert = String(headerIngestCodigo || '').trim();
+                        setHeaderIngestStatus(`A criar cliente: ${pending.name}...`);
+                        try {
+                          const phone = String(headerIngestPhoneInput || '').trim() || '+351000000000';
+                          const managers = Array.isArray(pending.fields.managers) ? pending.fields.managers : [];
+                          const suggestedFolder = buildSuggestedCustomerFolderPath(pending.name);
+                          const newCustomer = await mockService.createCustomer({
+                            name: pending.name, company: pending.name, phone, nif: pending.nif, niss: '',
+                            type: 'Empresa', allowAutoResponses: true,
+                            documentsFolder: suggestedFolder,
+                            morada: pending.fields.morada || '', codigoPostal: pending.fields.codigoPostal || '',
+                            caePrincipal: pending.fields.caePrincipal || '', dataConstituicao: pending.fields.dataConstituicao || '',
+                            inicioAtividade: pending.fields.inicioAtividade || '',
+                            certidaoPermanenteNumero: codigoCert, certidaoPermanenteValidade: pending.fields.certidaoPermanenteValidade || '',
+                            managers, contacts: [], accessCredentials: [], agregadoFamiliar: [], fichasRelacionadas: [],
+                          } as any, { syncToSupabase: false });
+                          await loadCustomers();
+                          setHeaderIngestStatus(`✓ Cliente criado. A guardar certidão...`);
+                          // Re-consultar com ID real para PDF + resumo fiscal
+                          const res2 = await fetch('/api/certidao-permanente/consultar', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ codigo: codigoCert, customerId: newCustomer.id }),
+                          });
+                          const d2 = await res2.json();
+                          await mockService.updateCustomer(newCustomer.id, {
+                            certidaoPermanenteNumero: codigoCert,
+                            certidaoPermanenteValidade: pending.fields.certidaoPermanenteValidade || '',
+                          } as any, { syncToSupabase: false });
+                          await loadCustomers();
+                          setHeaderIngestStatus(`✓ Cliente criado e certidão guardada: ${pending.name} (${pending.nif}).${d2.ficheiroPdf ? ' PDF guardado.' : ''}`);
+                        } catch(e) {
+                          setHeaderIngestStatus(`Erro: ${e instanceof Error ? e.message : String(e)}`);
+                        } finally {
+                          setHeaderIngestLoading(false);
+                        }
+                      }}
+                    >
+                      Sim, criar cliente
+                    </button>
+                    <button type="button"
+                      className="px-3 py-1.5 text-xs rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      onClick={() => { setHeaderIngestPendingCreate(null); setHeaderIngestStatus('Criação cancelada.'); }}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
               {headerIngestStatus && (
                 <div className="mt-2 text-xs text-slate-700 rounded-md border border-slate-200 bg-white px-2 py-1.5">
                   {headerIngestStatus}
@@ -3844,6 +4196,22 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       {showModal && (
         <div className="fixed inset-0 z-50 overflow-auto bg-black/45 p-2 md:p-3">
           <div className="mx-auto w-[min(98vw,1900px)] rounded-2xl border border-slate-200 bg-[#f3f6fb] shadow-2xl">
+            {/* Confirmação de saída sem gravar — inline para não perder foco no Electron */}
+            {showUnsavedConfirm && (
+              <div className="mx-3 mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold text-amber-800">⚠️ Alterações não gravadas. Sair mesmo assim?</span>
+                <div className="flex gap-2 shrink-0">
+                  <button type="button" onClick={() => setShowUnsavedConfirm(false)}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                    Cancelar
+                  </button>
+                  <button type="button" onClick={doCloseCustomerModal}
+                    className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-amber-500">
+                    Sair sem gravar
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="mx-3 mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <button
@@ -3883,6 +4251,57 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                       <RefreshCw size={15} className={atProfileBusy ? 'animate-spin' : ''} />
                       {atProfileBusy ? 'A consultar AT...' : 'Atualizar pela AT'}
                     </button>
+                  )}
+                  {editingCustomer && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handlePushToSupabase}
+                        disabled={supabasePushBusy}
+                        title="Forçar envio dos dados locais para o Supabase — local é sempre a fonte de verdade"
+                        className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700 shadow-sm hover:bg-violet-100 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        <ArrowDownToLine size={15} className={`rotate-180 ${supabasePushBusy ? 'animate-bounce' : ''}`} />
+                        {supabasePushBusy ? 'A enviar...' : '→ Supabase'}
+                      </button>
+                      {supabasePushMsg && (
+                        <span className={`text-xs font-medium ${supabasePushMsg.includes('Erro') ? 'text-red-500' : 'text-violet-600'}`}>
+                          {supabasePushMsg}
+                        </span>
+                      )}
+                      {/* Importar credenciais do SAFTonline */}
+                      <button
+                        type="button"
+                        onClick={handleReadCredsFromSaft}
+                        disabled={saftReadBusy}
+                        title="Importar todas as credenciais do SAFTonline para esta ficha"
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-semibold text-cyan-700 shadow-sm hover:bg-cyan-100 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        <ArrowDownToLine size={13} className={saftReadBusy ? 'animate-bounce' : ''} />
+                        {saftReadBusy ? 'SAFT...' : '← SAFT'}
+                      </button>
+                      {saftReadMsg && (
+                        <span className={`text-xs font-medium ${saftReadMsg.startsWith('✓') ? 'text-cyan-600' : 'text-red-500'}`}>
+                          {saftReadMsg}
+                        </span>
+                      )}
+                      {/* Enviar credenciais SS para SAFTonline (útil na renovação do token) */}
+                      <button
+                        type="button"
+                        onClick={handleWriteSSToSaft}
+                        disabled={saftSSBusy}
+                        title="Gravar subutilizador SS + chave + token no SAFTonline (renovação)"
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 shadow-sm hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        <RefreshCw size={13} className={saftSSBusy ? 'animate-spin' : ''} />
+                        {saftSSBusy ? 'SAFT...' : 'SS → SAFT'}
+                      </button>
+                      {saftSSMsg && (
+                        <span className={`text-xs font-medium ${saftSSMsg.startsWith('✓') ? 'text-emerald-600' : 'text-red-500'}`}>
+                          {saftSSMsg}
+                        </span>
+                      )}
+                    </div>
                   )}
                   <button
                     type="submit"
@@ -4103,25 +4522,88 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         <input type="date" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.inicioAtividade} onChange={(e) => setFormData({ ...formData, inicioAtividade: e.target.value })} />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">CAE Principal</label>
-                        <div className="flex gap-2">
-                          <input type="text" placeholder="Código" className="w-24 shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.caePrincipal} onChange={(e) => setFormData({ ...formData, caePrincipal: e.target.value })} />
-                          <input type="text" placeholder="Descrição" className="flex-1 min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.caeDescricao} onChange={(e) => setFormData({ ...formData, caeDescricao: e.target.value })} />
-                        </div>
-                      </div>
-                      <div>
                         <label className="block text-xs font-medium text-slate-500 mb-1">Código Repartição Finanças</label>
                         <input type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.codigoReparticaoFinancas} onChange={(e) => setFormData({ ...formData, codigoReparticaoFinancas: e.target.value })} />
                       </div>
+                      {/* Lista unificada de CAEs — Principal + Secundários */}
                       <div className="md:col-span-4">
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Pasta de documentos (caminho)</label>
-                        <div className="relative">
-                          <FolderOpen size={14} className="absolute left-3 top-2.5 text-slate-400" />
-                          <input type="text" className="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.documentsFolder} onChange={(e) => setFormData({ ...formData, documentsFolder: e.target.value })} placeholder="\\10.0.0.6\OneDrive - MPR\Documentos\Contabilidades\Empresas\Cliente" />
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Atividades Exercidas (CAEs)</label>
+                        {(() => {
+                          let secCaes: {codigo: string; descricao: string}[] = [];
+                          try {
+                            const raw = formData.infoAtividades;
+                            if (raw && raw.startsWith('[')) secCaes = JSON.parse(raw);
+                            else if (raw) {
+                              secCaes = raw.split('\n').filter(l => /secund/i.test(l))
+                                .map(l => { const m = l.match(/:\s*(\d{5})\s*[—-]\s*(.*)/); return m ? { codigo: m[1], descricao: m[2].trim() } : null; })
+                                .filter(Boolean) as {codigo: string; descricao: string}[];
+                            }
+                          } catch {}
+                          const saveSecCaes = (next: {codigo: string; descricao: string}[]) =>
+                            setFormData(p => ({ ...p, infoAtividades: JSON.stringify(next), caeSecundarios: next.map(c => c.codigo).join(', ') }));
+                          return (
+                            <div className="rounded-lg border border-slate-200 overflow-hidden">
+                              {/* Cabeçalho tabela */}
+                              <div className="grid bg-slate-800 text-white text-[10px] font-bold uppercase tracking-wide px-3 py-1.5" style={{gridTemplateColumns:'80px 72px 1fr 24px'}}>
+                                <span>Tipo</span><span>Código</span><span>Descrição</span><span></span>
+                              </div>
+                              {/* CAE Principal */}
+                              <div className="grid items-center gap-2 px-2 py-1.5 border-b border-slate-100 bg-emerald-50" style={{gridTemplateColumns:'80px 72px 1fr 24px'}}>
+                                <span className="text-[10px] font-bold text-emerald-700">Principal</span>
+                                <input type="text" placeholder="Código" className="rounded border border-slate-200 px-1.5 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white"
+                                  value={formData.caePrincipal} onChange={e => setFormData(p => ({ ...p, caePrincipal: e.target.value }))} />
+                                <input type="text" placeholder="Descrição" className="rounded border border-slate-200 px-1.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white"
+                                  value={formData.caeDescricao} onChange={e => setFormData(p => ({ ...p, caeDescricao: e.target.value }))} />
+                                <span></span>
+                              </div>
+                              {/* CAEs Secundários */}
+                              {secCaes.map((cae, idx) => (
+                                <div key={idx} className="grid items-center gap-2 px-2 py-1.5 border-b border-slate-100 hover:bg-slate-50" style={{gridTemplateColumns:'80px 72px 1fr 24px'}}>
+                                  <span className="text-[10px] text-slate-500">Sec. {idx + 1}</span>
+                                  <input type="text" placeholder="Código" className="rounded border border-slate-200 px-1.5 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-slate-400"
+                                    value={cae.codigo} onChange={e => { const n=[...secCaes]; n[idx]={...n[idx],codigo:e.target.value}; saveSecCaes(n); }} />
+                                  <input type="text" placeholder="Descrição" className="rounded border border-slate-200 px-1.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400"
+                                    value={cae.descricao} onChange={e => { const n=[...secCaes]; n[idx]={...n[idx],descricao:e.target.value}; saveSecCaes(n); }} />
+                                  <button type="button" className="text-slate-300 hover:text-red-400 text-base leading-none"
+                                    onClick={() => saveSecCaes(secCaes.filter((_, i) => i !== idx))}>×</button>
+                                </div>
+                              ))}
+                              {/* Linha adicionar */}
+                              <div className="px-3 py-1.5">
+                                <button type="button"
+                                  className="text-xs font-medium text-slate-400 hover:text-emerald-600 transition-colors"
+                                  onClick={() => saveSecCaes([...secCaes, { codigo: '', descricao: '' }])}>
+                                  + Adicionar CAE secundário
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      <div className="md:col-span-4">
+                        {/* Pasta de documentos — bloqueada por defeito, botão Editar para desbloquear */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-xs font-medium text-slate-500">Pasta de documentos (caminho)</label>
+                            <button type="button"
+                              onClick={() => setFolderEditMode(m => !m)}
+                              className={`text-xs font-semibold px-2 py-0.5 rounded transition-colors ${folderEditMode ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'text-slate-400 hover:text-slate-600 border border-slate-200 hover:border-slate-300'}`}>
+                              {folderEditMode ? 'Bloquear' : '✎ Editar'}
+                            </button>
+                          </div>
+                          <div className="relative">
+                            <FolderOpen size={14} className="absolute left-3 top-2.5 text-slate-400" />
+                            <input type="text"
+                              readOnly={!folderEditMode}
+                              className={`w-full rounded-lg border pl-9 pr-3 py-2 text-sm font-mono focus:outline-none ${folderEditMode ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-200' : 'border-slate-200 bg-slate-50 text-slate-600 cursor-default select-all'}`}
+                              value={formData.documentsFolder}
+                              onChange={(e) => folderEditMode && setFormData({ ...formData, documentsFolder: e.target.value })}
+                              placeholder="\\10.0.0.6\OneDrive - MPR\Documentos\Contabilidades\Empresas\Cliente" />
+                          </div>
+                          {!formData.documentsFolder && pickImportedValue(importedLookup, ['pasta_documentos', 'documents_folder']) && (
+                            <p className="mt-1 text-xs text-blue-600 break-all">Pasta importada: {pickImportedValue(importedLookup, ['pasta_documentos', 'documents_folder'])}</p>
+                          )}
                         </div>
-                        {!formData.documentsFolder && pickImportedValue(importedLookup, ['pasta_documentos', 'documents_folder']) && (
-                          <p className="mt-1 text-xs text-blue-600 break-all">Pasta importada: {pickImportedValue(importedLookup, ['pasta_documentos', 'documents_folder'])}</p>
-                        )}
                       </div>
                       <div className="md:col-span-4">
                         <label className="block text-xs font-medium text-slate-500 mb-1">Notas</label>
@@ -4747,7 +5229,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                           <div className="flex items-center gap-2">
                             <select
                               value={ingestDocumentType}
-                              onChange={(e) => setIngestDocumentType(e.target.value as CustomerIngestDocumentType)}
+                              onChange={(e) => { setIngestDocumentType(e.target.value as CustomerIngestDocumentType); setIngestCodigo(''); }}
                               className="text-xs border border-slate-300 rounded-md px-2 py-1.5 bg-white"
                             >
                               {CUSTOMER_INGEST_TYPES.map((option) => (
@@ -4764,16 +5246,27 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                             </button>
                             <button
                               type="button"
-                              onClick={() => {
-                                void runDocumentIngest();
-                              }}
+                              onClick={() => { void runDocumentIngest(); }}
                               disabled={ingestLoading}
                               className="px-2 py-1.5 text-xs rounded-md bg-whatsapp-600 text-white hover:bg-whatsapp-700 disabled:opacity-50"
                             >
-                              {ingestLoading ? 'A analisar...' : 'Analisar + Guardar'}
+                              {ingestLoading ? 'A consultar...' : (ingestCodigo.trim() && ingestDocumentType === 'certidao_permanente' && !ingestSelectedFile ? 'Consultar + Guardar' : 'Analisar + Guardar')}
                             </button>
                           </div>
                         </div>
+                        {/* Campo código — Certidão Permanente ou Cartão Eletrónico */}
+                        {(ingestDocumentType === 'certidao_permanente' || ingestDocumentType === 'cartao_eletronico') && (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={ingestCodigo}
+                              onChange={(e) => setIngestCodigo(e.target.value)}
+                              placeholder={ingestDocumentType === 'cartao_eletronico' ? 'Código do cartão: XXXX-XXXX-XXXX' : 'Código da certidão: XXXX-XXXX-XXXX'}
+                              className="flex-1 border border-slate-200 rounded-md px-2 py-1.5 text-xs font-mono bg-white focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                            />
+                            {ingestCodigo.trim() && <span className="text-[10px] text-emerald-600 shrink-0">Sem ficheiro → consulta online</span>}
+                          </div>
+                        )}
                         <div className="text-xs text-slate-600">
                           Ficheiro: {ingestSelectedFile ? <span className="font-medium">{ingestSelectedFile.name}</span> : 'Nenhum ficheiro selecionado.'}
                         </div>

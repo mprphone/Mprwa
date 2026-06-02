@@ -29,6 +29,7 @@ const {
   runDesktopAutologinPostSubmitFlow,
 } = require('./seg-social-login-flow');
 const { collectFinancasAtProfile } = require('./financas-at-profile');
+const { collectDesktopCartaoEletronico } = require('./cartaoEletronico');
 
 
 const APP_ID = 'pt.mpr.wapro.desktop';
@@ -834,6 +835,36 @@ async function performDesktopFinancasAtProfile(payload = {}) {
   }
 }
 
+async function performDesktopCartaoEletronico(payload = {}) {
+  const playwright = requirePlaywrightForDesktopAutologin();
+  const { browser, launcherLabel } = await launchDesktopAutomationBrowser(playwright, {
+    ...payload,
+    browserExecutablePath: payload.browserExecutablePath,
+    browserChannel: payload.browserChannel,
+  });
+
+  try {
+    const context = await browser.newContext({ viewport: { width: 1365, height: 1600 } });
+    const page = await context.newPage();
+    const collected = await collectDesktopCartaoEletronico(page, payload);
+    if (payload?.closeAfterCollect !== false) {
+      await browser.close().catch(() => null);
+    }
+    return {
+      success: true,
+      fields: collected.fields || {},
+      ficheiroPdf: collected.ficheiroPdf || '',
+      sourceUrl: collected.sourceUrl || '',
+      message: collected.ficheiroPdf
+        ? `Cartão eletrónico consultado e PDF guardado (${launcherLabel}).`
+        : `Cartão eletrónico consultado (${launcherLabel}).`,
+    };
+  } catch (error) {
+    await browser.close().catch(() => null);
+    throw error;
+  }
+}
+
 function startLocalAutomationBridge() {
   if (localAutomationBridgeServer) return;
   const bridgePort = Number(process.env.ELECTRON_LOCAL_AUTOMATION_PORT || 30777) || 30777;
@@ -856,7 +887,8 @@ function startLocalAutomationBridge() {
     const pathname = String(req.url || '').split('?')[0].trim();
     const isFinancasAutologin = pathname === '/financas-autologin';
     const isFinancasAtProfile = pathname === '/financas-at-profile';
-    if (req.method !== 'POST' || (!isFinancasAutologin && !isFinancasAtProfile)) {
+    const isCartaoEletronico = pathname === '/cartao-eletronico';
+    if (req.method !== 'POST' || (!isFinancasAutologin && !isFinancasAtProfile && !isCartaoEletronico)) {
       res.statusCode = 404;
       res.end(JSON.stringify({ success: false, error: 'Endpoint local não encontrado.' }));
       return;
@@ -872,9 +904,14 @@ function startLocalAutomationBridge() {
 
       desktopFinancasAutologinRunning = true;
       try {
-        const result = isFinancasAtProfile
-          ? await performDesktopFinancasAtProfile(payload || {})
-          : await performDesktopFinancasAutologin(payload || {});
+        let result;
+        if (isCartaoEletronico) {
+          result = await performDesktopCartaoEletronico(payload || {});
+        } else if (isFinancasAtProfile) {
+          result = await performDesktopFinancasAtProfile(payload || {});
+        } else {
+          result = await performDesktopFinancasAutologin(payload || {});
+        }
         res.statusCode = 200;
         res.end(JSON.stringify({ success: true, ...result }));
       } catch (error) {

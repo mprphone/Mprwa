@@ -1,4 +1,15 @@
-﻿﻿const { createApp } = require('./src/app');
+﻿﻿'use strict';
+
+// ── Handlers globais para evitar crash silencioso do processo ──────────────────
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] uncaughtException:', err?.message || err);
+  // Não sair — o processo continua; apenas regista para diagnóstico
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[WARN] unhandledRejection:', reason?.message || reason);
+});
+
+const { createApp } = require('./src/app');
 const { loadEnvConfig } = require('./src/config/env');
 const { openDatabase, createDbHelpers } = require('./src/db');
 const { initializeSchema } = require('./src/db/schema');
@@ -29,11 +40,13 @@ const { registerAgendaRoutes } = require('./backend/routes/agendaRoutes');
 const { registerImportRoutes } = require('./backend/routes/importRoutes');
 const { registerImportObrigacoesRoutes } = require('./backend/routes/importObrigacoesRoutes');
 const { registerLocalSyncSaftRoutes } = require('./backend/routes/localSyncSaftRoutes');
+const { registerSaftonlineWriteRoutes } = require('./backend/routes/saftonlineWriteRoutes');
 const { registerObrigacoesAutoRoutes } = require('./backend/routes/obrigacoesAutoRoutes');
 const { registerMobileRoutes } = require('./backend/routes/mobileRoutes');
 const { registerDesktopRoutes } = require('./backend/routes/desktopRoutes');
 const { registerFrontendRoutes } = require('./backend/routes/frontendRoutes');
 const { registerSimulatorRoutes } = require('./backend/routes/simulatorRoutes');
+const { registerEuriborRoutes } = require('./backend/routes/euriborRoutes');
 const { registerFiscalSummaryRoutes } = require('./backend/routes/fiscalSummaryRoutes');
 const { createMobilePushService } = require('./backend/services/mobilePushService');
 const { startServerLifecycle } = require('./backend/jobs/startServerLifecycle');
@@ -1049,24 +1062,45 @@ function buildCalendarIcs({ uid, title, description, startsAt, endsAt, location,
     const now = toIcsDateTime(new Date().toISOString());
     const organizer = String(organizerEmail || AGENDA_SMTP_FROM_EMAIL || AGENDA_SMTP_USERNAME || SMTP_FROM_EMAIL || SMTP_USERNAME || 'agenda@mpr.pt').trim();
     const attendee = String(attendeeEmail || '').trim();
+    // Propriedades Microsoft-specific para forçar botão Aceitar/Recusar no Outlook
     return [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
-        'PRODID:-//MPR//WA PRO//PT',
+        'PRODID:-//Microsoft Corporation//Outlook 16.0 MIMEDIR//EN',
         'CALSCALE:GREGORIAN',
         'METHOD:REQUEST',
+        'X-MS-OLK-FORCEINSPECTOROPEN:TRUE',
         'BEGIN:VEVENT',
         `UID:${escapeIcsText(uid || `wa-pro-${Date.now()}@mpr.pt`)}`,
         `DTSTAMP:${now}`,
         `DTSTART:${dtStart}`,
         `DTEND:${dtEnd}`,
         `SUMMARY:${escapeIcsText(title)}`,
+        'CLASS:PUBLIC',
+        'PRIORITY:5',
         'STATUS:CONFIRMED',
+        'TRANSP:OPAQUE',
         'SEQUENCE:0',
-        organizer ? `ORGANIZER;CN=Agenda MPR:mailto:${organizer}` : '',
-        attendee ? `ATTENDEE;CN=${escapeIcsText(attendee)};ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:${attendee}` : '',
+        // Microsoft CDO properties — activam o modo de convite no Outlook
+        'X-MICROSOFT-CDO-APPT-SEQUENCE:0',
+        'X-MICROSOFT-CDO-OWNERAPPTID:-1',
+        'X-MICROSOFT-CDO-BUSYSTATUS:BUSY',
+        'X-MICROSOFT-CDO-INTENDEDSTATUS:BUSY',
+        'X-MICROSOFT-CDO-ALLDAYEVENT:FALSE',
+        'X-MICROSOFT-CDO-IMPORTANCE:1',
+        'X-MICROSOFT-CDO-INSTTYPE:0',
+        'X-MICROSOFT-DONOTFORWARDMEETING:FALSE',
+        'X-MICROSOFT-DISALLOW-COUNTER:FALSE',
+        organizer ? `ORGANIZER;CN="Agenda MPR":mailto:${organizer}` : '',
+        attendee ? `ATTENDEE;CN="${escapeIcsText(attendee)}";ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:${attendee}` : '',
         location ? `LOCATION:${escapeIcsText(location)}` : '',
         description ? `DESCRIPTION:${escapeIcsText(description)}` : '',
+        // Lembrete 15 minutos antes
+        'BEGIN:VALARM',
+        'TRIGGER:-PT15M',
+        'ACTION:DISPLAY',
+        `DESCRIPTION:${escapeIcsText(title)}`,
+        'END:VALARM',
         'END:VEVENT',
         'END:VCALENDAR',
         '',
@@ -1092,14 +1126,15 @@ async function sendResponsibleNotification({
 
     const safeTitle = String(title || 'Novo registo').trim();
     const entityLabel = String(entityType || 'registo').trim();
-    const subject = `[WA PRO] ${entityLabel}: ${safeTitle}`;
+    // Subject fixo "Agenda MPR" — reconhecível na caixa de entrada, detalhe no corpo do email
+    const subject = 'Agenda MPR';
     const details = [
         customerName ? `<p><strong>Cliente:</strong> ${escapeHtml(customerName)}</p>` : '',
         startsAt ? `<p><strong>Data/Hora:</strong> ${escapeHtml(new Date(startsAt).toLocaleString('pt-PT'))}</p>` : '',
         location ? `<p><strong>Local:</strong> ${escapeHtml(location)}</p>` : '',
         description ? `<p><strong>Notas:</strong><br>${escapeHtml(description).replace(/\n/g, '<br>')}</p>` : '',
     ].filter(Boolean).join('');
-    const html = `<p>Foi gravado um novo ${escapeHtml(entityLabel)} atribuído a si.</p><p><strong>${escapeHtml(safeTitle)}</strong></p>${details}<p>Pode abrir o anexo no Outlook para adicionar ao calendário.</p>`;
+    const html = `<p>Foi gravado um novo ${escapeHtml(entityLabel)} atribuído a si.</p><p><strong>${escapeHtml(safeTitle)}</strong></p>${details}`;
     const ics = buildCalendarIcs({
         uid: `${entityType || 'record'}-${entityId || Date.now()}@wa-pro.mpr.pt`,
         title: safeTitle,
@@ -2114,6 +2149,8 @@ registerImportObrigacoesRoutes({
     materializeLocalCustomerFromSupabase,
 });
 
+registerSaftonlineWriteRoutes({ app, dbGetAsync, dbAllAsync, dbRunAsync });
+
 registerLocalSyncSaftRoutes({
     app,
     db,
@@ -2171,6 +2208,8 @@ registerLocalDataRoutes({
     dbGetAsync,
     dbAllAsync,
     writeAuditLog,
+    sendResponsibleNotification,
+    nowIso,
     getLocalTasks,
     upsertLocalTask,
     getLocalCalls,
@@ -2439,6 +2478,145 @@ registerDesktopRoutes({
 });
 
 registerFiscalSummaryRoutes({ app, dbRunAsync, dbGetAsync, dbAllAsync, port: PORT, sendEmailWithAttachment, hasEmailProvider });
+registerEuriborRoutes({ app });
+
+// ── Consultar Cartão Eletrónico da Empresa por código ────────────────────────
+app.post('/api/cartao-eletronico/consultar', async (req, res) => {
+    const { codigo, customerId } = req.body || {};
+    if (!codigo) return res.status(400).json({ success: false, error: 'Código do cartão eletrónico em falta.' });
+    try {
+        const { collectCartaoEletronicoProfile } = require('./backend/services/cartaoEletronicoService');
+        const { applyCartaoEletronico } = require('./backend/services/fiscal/summary/documentosSummaryUpdater');
+        const { mergeFiscalSummaryData } = require('./backend/services/fiscalSummaryDefaults');
+
+        let customer = null;
+        if (customerId) customer = await dbGetAsync('SELECT * FROM customers WHERE id = ? LIMIT 1', [customerId]);
+
+        const result = await collectCartaoEletronicoProfile(codigo, { headless: true, customer: customer || undefined });
+
+        if (customer) {
+            try {
+                const existingRow = await dbGetAsync('SELECT data FROM customer_fiscal_summary WHERE customer_id = ? LIMIT 1', [customer.id]).catch(() => null);
+                let current = {};
+                try { current = JSON.parse(existingRow?.data || '{}'); } catch(_) {}
+                const updated = applyCartaoEletronico(current, codigo, result);
+                const merged = mergeFiscalSummaryData({ ...current, ...updated, updatedAt: new Date().toISOString() });
+                await dbRunAsync(
+                    `INSERT INTO customer_fiscal_summary (customer_id, data, updated_at) VALUES (?, ?, datetime('now'))
+                     ON CONFLICT(customer_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
+                    [customer.id, JSON.stringify(merged)]
+                );
+            } catch (summaryErr) {
+                console.warn('[CartaoEletronico] Não actualizou resumo fiscal:', summaryErr?.message);
+            }
+        }
+
+        return res.json({ success: true, fields: result.fields, ficheiroPdf: result.ficheiroPdf || '', message: result.message || 'Cartão consultado.' });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: String(error?.message || error) });
+    }
+});
+
+// ── Registar resultado do cartão eletrónico vindo do bridge local ─────────────
+app.post('/api/cartao-eletronico/finalizar', async (req, res) => {
+    const { codigo, customerId, ficheiroPdf, fields } = req.body || {};
+    if (!codigo) return res.status(400).json({ success: false, error: 'Código do cartão eletrónico em falta.' });
+    try {
+        const { applyCartaoEletronico } = require('./backend/services/fiscal/summary/documentosSummaryUpdater');
+        const { mergeFiscalSummaryData } = require('./backend/services/fiscalSummaryDefaults');
+
+        if (customerId) {
+            const customer = await dbGetAsync('SELECT * FROM customers WHERE id = ? LIMIT 1', [customerId]).catch(() => null);
+            if (customer) {
+                const existingRow = await dbGetAsync('SELECT data FROM customer_fiscal_summary WHERE customer_id = ? LIMIT 1', [customer.id]).catch(() => null);
+                let current = {};
+                try { current = JSON.parse(existingRow?.data || '{}'); } catch(_) {}
+                const result = { fields: fields || {}, ficheiroPdf: ficheiroPdf || '' };
+                const updated = applyCartaoEletronico(current, codigo, result);
+                const merged = mergeFiscalSummaryData({ ...current, ...updated, updatedAt: new Date().toISOString() });
+                await dbRunAsync(
+                    `INSERT INTO customer_fiscal_summary (customer_id, data, updated_at) VALUES (?, ?, datetime('now'))
+                     ON CONFLICT(customer_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
+                    [customer.id, JSON.stringify(merged)]
+                );
+            }
+        }
+        return res.json({ success: true, message: `Cartão eletrónico ${codigo} registado no resumo fiscal.` });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: String(error?.message || error) });
+    }
+});
+
+// ── Consultar Certidão Permanente por código (sem ficheiro) ──────────────────
+app.post('/api/certidao-permanente/consultar', async (req, res) => {
+    const { codigo, customerId } = req.body || {};
+    if (!codigo) return res.status(400).json({ success: false, error: 'Código da certidão em falta.' });
+    try {
+        const { collectCertidaoPermanenteProfile } = require('./backend/services/certidaoPermanenteService');
+        const { applyCertidaoPermanente } = require('./backend/services/fiscal/summary/documentosSummaryUpdater');
+
+        // Obter customer se fornecido
+        let customer = null;
+        if (customerId) {
+            customer = await dbGetAsync('SELECT * FROM customers WHERE id = ? LIMIT 1', [customerId]);
+        }
+
+        const result = await collectCertidaoPermanenteProfile(codigo, {
+            headless: true,
+            customer: customer || undefined,
+        });
+
+        if (!result || (!result.fields?.nif && !result.fields?.company)) {
+            return res.json({ success: false, error: result?.message || 'Certidão não encontrada ou código inválido.' });
+        }
+
+        // Se temos customer, actualizar resumo fiscal
+        if (customer) {
+            try {
+                const { applyCertidaoPermanente } = require('./backend/services/fiscal/summary/documentosSummaryUpdater');
+                const { mergeFiscalSummaryData } = require('./backend/services/fiscalSummaryDefaults');
+
+                // Ler resumo actual
+                const existingRow = await dbGetAsync(
+                    'SELECT data FROM customer_fiscal_summary WHERE customer_id = ? LIMIT 1',
+                    [customer.id]
+                ).catch(() => null);
+                let current = {};
+                try { current = JSON.parse(existingRow?.data || '{}'); } catch(_) {}
+
+                // Aplicar certidão ao resumo
+                const updated = applyCertidaoPermanente(current, codigo, {
+                    validUntil: result.fields?.certidaoPermanenteValidade || '',
+                    ficheiroPdf: result.ficheiroPdf || '',
+                    fields: result.fields,
+                });
+
+                const merged = mergeFiscalSummaryData({ ...current, ...updated, updatedAt: new Date().toISOString() });
+                await dbRunAsync(
+                    `INSERT INTO customer_fiscal_summary (customer_id, data, updated_at)
+                     VALUES (?, ?, datetime('now'))
+                     ON CONFLICT(customer_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
+                    [customer.id, JSON.stringify(merged)]
+                );
+                console.log(`[Certidão] Resumo fiscal actualizado para ${customer.id}`);
+            } catch (summaryErr) {
+                console.warn('[Certidão] Não actualizou resumo fiscal:', summaryErr?.message);
+            }
+        }
+
+        return res.json({
+            success: true,
+            fields: result.fields,
+            ficheiroPdf: result.ficheiroPdf || '',
+            textPreview: (result.textPreview || '').slice(0, 300),
+            message: result.message || `Certidão ${codigo} consultada com sucesso.`,
+        });
+    } catch (error) {
+        const details = String(error?.message || error);
+        console.error('[Certidão] Erro na consulta:', details);
+        return res.status(500).json({ success: false, error: details });
+    }
+});
 
 if (!IS_BACKOFFICE_ONLY) {
     registerChatCoreRoutes(app, {

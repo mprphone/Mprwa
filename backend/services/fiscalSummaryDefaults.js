@@ -24,6 +24,7 @@ function defaultFiscalSummaryData() {
         documentos: [
             { tipo: 'domicilio_fiscal', label: 'Domicílio Fiscal', valida: false },
             { tipo: 'certidao_permanente', label: 'Certidão Permanente', codigo: '', dataValidade: '', valida: false },
+            { tipo: 'cartao_eletronico', label: 'Cartão Eletrónico da Empresa', codigo: '', dataValidade: '', valida: false },
             { tipo: 'pme', label: 'Certificado PME', dataValidade: '', valida: false },
             { tipo: 'bportugal', label: 'Responsabilidades Banco de Portugal', dataValidade: '', valida: false },
             { tipo: 'rebe', label: 'REBE', dataValidade: '', valida: false },
