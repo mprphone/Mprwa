@@ -1225,26 +1225,30 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
   };
 
   const handleIngestFileSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
+    // Capturar array ANTES de limpar o input (FileList é live — fica vazia após clear)
+    const fileArray = Array.from(event.target.files || []);
     event.target.value = '';
-    if (!files || files.length === 0) return;
-    if (files.length >= 2 && ingestDocumentType === 'cartao_cidadao') {
+    if (fileArray.length === 0) return;
+    setIngestWarnings([]);
+
+    const isImage = (f: File) => f.type.startsWith('image/');
+
+    if (fileArray.length >= 2 && ingestDocumentType === 'cartao_cidadao' && fileArray.every(isImage)) {
       setIngestStatus('A combinar frente e verso...');
       try {
-        const combined = await combineImagesIntoOne(files[0], files[1]);
+        const combined = await combineImagesIntoOne(fileArray[0], fileArray[1]);
         setIngestSelectedFile(combined);
         setIngestSelectedFile2(null);
-        setIngestStatus(`CC frente+verso combinados (${files[0].name} + ${files[1].name})`);
+        setIngestStatus(`CC frente+verso combinados (${fileArray[0].name} + ${fileArray[1].name})`);
       } catch {
-        setIngestSelectedFile(files[0]);
+        setIngestSelectedFile(fileArray[0]);
         setIngestStatus('');
       }
     } else {
-      setIngestSelectedFile(files[0]);
-      setIngestSelectedFile2(files.length >= 2 ? files[1] : null);
+      setIngestSelectedFile(fileArray[0]);
+      setIngestSelectedFile2(null);
       setIngestStatus('');
     }
-    setIngestWarnings([]);
   };
 
   const handleHeaderIngestFileSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -5339,7 +5343,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                           type="file"
                           className="hidden"
                           multiple={ingestDocumentType === 'cartao_cidadao'}
-                          accept={ingestDocumentType === 'cartao_cidadao' ? 'image/*' : undefined}
+                          accept={ingestDocumentType === 'cartao_cidadao' ? 'image/*,application/pdf,.pdf' : undefined}
                           onChange={handleIngestFileSelection}
                         />
                       </div>
