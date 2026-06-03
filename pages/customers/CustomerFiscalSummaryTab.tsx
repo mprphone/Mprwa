@@ -584,6 +584,7 @@ export function CustomerFiscalSummaryTab({ customer, anyAutomationBusy }: Props)
   const [batchBusy, setBatchBusy] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -785,6 +786,12 @@ export function CustomerFiscalSummaryTab({ customer, anyAutomationBusy }: Props)
           <button type="button" onClick={() => setShowEmailModal(true)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-all">
             <Mail size={13} /> Enviar ao cliente
+          </button>
+          {/* WhatsApp */}
+          <button type="button" onClick={() => setShowWhatsAppModal(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-green-200 bg-white px-3.5 py-2 text-sm font-semibold text-green-700 shadow-sm hover:bg-green-50 transition-all">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+            WhatsApp
           </button>
           {/* CRC Bancos */}
           {(() => {
@@ -1042,6 +1049,10 @@ export function CustomerFiscalSummaryTab({ customer, anyAutomationBusy }: Props)
       {showEmailModal && (
         <SendEmailModal customer={customer} data={data} onClose={() => setShowEmailModal(false)} />
       )}
+      {/* Modal: WhatsApp */}
+      {showWhatsAppModal && (
+        <SendWhatsAppModal customer={customer} data={data} onClose={() => setShowWhatsAppModal(false)} />
+      )}
 
     </div>
   );
@@ -1214,6 +1225,117 @@ function SendEmailModal({ customer, data, onClose }: { customer: Customer; data:
             className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-50">
             {sending ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
             Enviar ao cliente
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── SendWhatsAppModal ────────────────────────────────────────────────────────
+
+function buildWhatsAppSummary(company: string, data: FiscalSummaryData): string {
+  const lines: string[] = [];
+  lines.push(`Bom dia,\n\nSegue o resumo fiscal de *${company}*:`);
+
+  const docs = data.documentos || [];
+  const valid = docs.filter((d) => d.valida && d.ficheiroPdf);
+  const invalid = docs.filter((d) => !d.valida && d.ficheiroPdf);
+  const expiring = docs.filter((d) => d.valida && d.dataValidade && new Date(d.dataValidade) < new Date(Date.now() + 60 * 24 * 3600000));
+
+  if (valid.length) {
+    lines.push('\n✅ *Documentos válidos:*');
+    valid.forEach((d) => {
+      const exp = d.dataValidade ? ` (validade: ${formatDate(d.dataValidade)})` : '';
+      lines.push(`• ${d.label}${exp}`);
+    });
+  }
+  if (expiring.length) {
+    lines.push('\n⚠️ *A expirar nos próximos 60 dias:*');
+    expiring.forEach((d) => lines.push(`• ${d.label} — ${formatDate(d.dataValidade)}`));
+  }
+  if (invalid.length) {
+    lines.push('\n❌ *Documentos expirados/inválidos:*');
+    invalid.forEach((d) => lines.push(`• ${d.label}`));
+  }
+
+  const certidoes = (data.certidoes || []).filter((c) => c.valida);
+  if (certidoes.length) {
+    lines.push('\n📋 *Certidões:*');
+    certidoes.forEach((c) => {
+      const exp = c.dataValidade ? ` (${formatDate(c.dataValidade)})` : '';
+      lines.push(`• ${c.tipo}${exp}`);
+    });
+  }
+
+  lines.push('\nQualquer dúvida estamos disponíveis.\n\nCom os melhores cumprimentos,\nMPR Negócios, Lda');
+  return lines.join('\n');
+}
+
+function SendWhatsAppModal({ customer, data, onClose }: { customer: Customer; data: FiscalSummaryData; onClose: () => void }) {
+  const company = (customer as any).company || customer.name;
+  const phone = String((customer as any).phone || '').replace(/\D+/g, '');
+  const [to, setTo] = React.useState(phone);
+  const [message, setMessage] = React.useState(() => buildWhatsAppSummary(company, data));
+  const [sending, setSending] = React.useState(false);
+  const [status, setStatus] = React.useState('');
+
+  const handleSend = async () => {
+    const digits = to.replace(/\D+/g, '');
+    if (!digits) { setStatus('Preencha o número de telefone.'); return; }
+    setSending(true);
+    setStatus('');
+    try {
+      const res = await fetch('/api/chat/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: digits, message, type: 'text', createdBy: null }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'Falha ao enviar.');
+      setStatus('✓ Mensagem enviada via WhatsApp.');
+      setTimeout(onClose, 1500);
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : 'Erro ao enviar.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <div className="flex items-center gap-2 font-semibold text-slate-800">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-green-600"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+            Partilhar via WhatsApp
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"><XCircle size={16} /></button>
+        </div>
+        <div className="space-y-3 px-5 py-4">
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Número de telefone</label>
+            <input value={to} onChange={(e) => setTo(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              placeholder="+351912345678" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Mensagem</label>
+            <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={12}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none font-mono" />
+          </div>
+          {status && (
+            <p className={`text-xs font-medium ${status.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>{status}</p>
+          )}
+        </div>
+        <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-5 py-4">
+          <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">Cancelar</button>
+          <button type="button" onClick={handleSend} disabled={sending}
+            className="inline-flex items-center gap-2 rounded-lg bg-green-500 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600 disabled:opacity-50">
+            {sending ? <Loader2 size={14} className="animate-spin" /> : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+            )}
+            Enviar WhatsApp
           </button>
         </div>
       </div>
