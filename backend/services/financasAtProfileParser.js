@@ -339,9 +339,45 @@ function parseFieldsFromText(text) {
   ]) : '';
   if (caePrincipal) {
     fields.caePrincipal = caePrincipal;
-    const caeDescricaoMatch = activitySource?.match(new RegExp(`CAE\\s+Principal\\s+${caePrincipal}\\s+([^\\n\\r]+)`, 'i'));
-    const caeDescricao = caeDescricaoMatch ? caeDescricaoMatch[1].trim() : '';
+    // Capturar descrição até à data ou ao próximo CAE Secundário
+    const caeDescricaoMatch = activitySource?.match(
+      new RegExp(`CAE\\s+Principal\\s+${caePrincipal}\\s+(.+?)(?=\\s*\\d{4}-\\d{2}-\\d{2}|\\s+CAE\\s+Secund|\\n|\\r|$)`, 'i')
+    );
+    const caeDescricaoRaw = caeDescricaoMatch ? caeDescricaoMatch[1].trim() : '';
+    const caeDescricao = caeDescricaoRaw
+      .replace(/\s*\d{4}-\d{2}-\d{2}.*$/s, '')
+      .replace(/\s+CAE\s+Secund.*/is, '')
+      .trim();
     if (caeDescricao) fields.caeDescricao = caeDescricao;
+
+    // Extrair todos os CAEs secundários — abordagem por split
+    if (activitySource && /CAE\s+Secund/i.test(activitySource)) {
+      const src = activitySource;
+      const secEntries = [];
+      // Usar [^\s]* para apanhar "ário"/"ario" com ou sem acento (evita problema de encoding)
+      const headerReg = /CAE\s+Secund[^\s]*\s*\d*\s+(\d{5})\s+/gi;
+      const positions = [];
+      let hm;
+      while ((hm = headerReg.exec(src)) !== null) {
+        positions.push({ idx: hm.index, end: hm.index + hm[0].length, codigo: hm[1] });
+      }
+      for (let i = 0; i < positions.length; i++) {
+        const start = positions[i].end;
+        const nextStart = i + 1 < positions.length ? positions[i + 1].idx : src.length;
+        let rawDesc = src.slice(start, nextStart).trim();
+        // Remover sempre a partir da primeira data (inclusive) — limpa texto extra após descrição
+        rawDesc = rawDesc.replace(/\s+\d{4}-\d{2}-\d{2}.*$/s, '').trim();
+        if (positions[i].codigo && rawDesc) {
+          secEntries.push({ codigo: positions[i].codigo, descricao: rawDesc });
+        }
+      }
+      console.error('[CAE SEC] positions found:', positions.length, '| entries:', secEntries.length);
+      if (secEntries.length > 0) {
+        fields.caeSecundarios = secEntries.map(e => e.codigo).join(', ');
+        fields.infoAtividades = JSON.stringify(secEntries);
+        console.error('[CAE SEC] set infoAtividades len:', fields.infoAtividades.length, 'caeSecundarios:', fields.caeSecundarios.slice(0,40));
+      }
+    }
   }
 
   const tipoIva = activitySource ? firstRegexValue(activitySource, [
@@ -460,8 +496,25 @@ function mapPairsToFields(pairs) {
   const caeMatch = String(caePrincipalRaw || '').match(/^(\d{5}(?:-[A-Z]\d*)?)\s*(.*)?$/);
   if (caeMatch) {
     fields.caePrincipal = caeMatch[1];
-    const caeDescricao = (caeMatch[2] || '').trim();
+    const caeDescricao = (caeMatch[2] || '').trim()
+      .replace(/\s*\d{4}-\d{2}-\d{2}.*$/s, '')
+      .replace(/\s+CAE\s+Secund.*/is, '')
+      .trim();
     if (caeDescricao) fields.caeDescricao = caeDescricao;
+  }
+  // Secundários via rawMatches (label-value pairs com "cae secundário")
+  if (!fields.infoAtividades) {
+    const secEntries2 = [];
+    for (const { label, value } of rawMatches) {
+      if (/cae\s+secund/i.test(label)) {
+        const m2 = String(value || '').match(/^(\d{5})\s*(.*)?$/);
+        if (m2) secEntries2.push({ codigo: m2[1], descricao: (m2[2] || '').replace(/\s*\d{4}-\d{2}-\d{2}\s*$/, '').trim() });
+      }
+    }
+    if (secEntries2.length > 0) {
+      fields.caeSecundarios = secEntries2.map(e => e.codigo).join(', ');
+      fields.infoAtividades = JSON.stringify(secEntries2);
+    }
   }
 
   const reparticao = findByLabels(['codigo reparticao financas', 'codigo do servico financas', 'servico de financas', 'reparticao de financas']);
@@ -505,6 +558,13 @@ async function tryReadCurrentPage(page) {
   const managers = mergeManagers([...(pairResult.fields?.managers || []), ...(textFields.managers || [])], managersFromDom);
   const fields = { ...pairResult.fields, ...textFields };
   if (managers.length) fields.managers = managers;
+
+  // Na página "Atividade Exercida", a label "Morada" refere-se ao escritório
+  // do contabilista (secção Contabilidade), não à sede da empresa — ignorar.
+  if (/Atividade\s+Exercida|Actividade\s+Exercida|Dados Gerais de Atividade/i.test(text)) {
+    delete fields.morada;
+    delete fields.codigoPostal;
+  }
 
   return {
     fields,
@@ -676,6 +736,12 @@ function mergeCollectedFields(target, incoming) {
     if (key === 'managers') {
       const managers = mergeManagers(target.managers || [], Array.isArray(rawValue) ? rawValue : []);
       if (managers.length) target.managers = managers;
+      return;
+    }
+    // Campos JSON (infoAtividades, caeSecundarios) — preservar sem cleanExtractedValue
+    if (key === 'infoAtividades' || key === 'caeSecundarios') {
+      const raw = String(rawValue || '').trim();
+      if (raw && !target[key]) target[key] = raw;
       return;
     }
     const value = cleanExtractedValue(rawValue);
