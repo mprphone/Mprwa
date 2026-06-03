@@ -419,6 +419,8 @@ async function extractLabelValuePairs(page) {
     });
 
     document.querySelectorAll('label').forEach((label) => {
+      // Ignorar labels em secções escondidas (a AT SPA carrega tudo no DOM)
+      if (label.offsetParent === null) return;
       const labelText = normalize(label.textContent);
       const forId = label.getAttribute('for');
       let value = '';
