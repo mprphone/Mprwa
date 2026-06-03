@@ -769,6 +769,7 @@ const Customers: React.FC = () => {
   const [sociedadeCategoryKey, setSociedadeCategoryKey] = useState(SOCIEDADE_DOCUMENT_CATEGORIES[0].key);
   const [ingestDocumentType, setIngestDocumentType] = useState<CustomerIngestDocumentType>('certidao_permanente');
   const [ingestSelectedFile, setIngestSelectedFile] = useState<File | null>(null);
+  const [ingestSelectedFile2, setIngestSelectedFile2] = useState<File | null>(null);
   const [ingestCodigo, setIngestCodigo] = useState('');
   const [ingestLoading, setIngestLoading] = useState(false);
   const [fiscalSummaryRefreshKey, setFiscalSummaryRefreshKey] = useState(0);
@@ -1194,11 +1195,55 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     headerIngestFileInputRef.current?.click();
   };
 
-  const handleIngestFileSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] || null;
+  const combineImagesIntoOne = async (file1: File, file2: File): Promise<File> => {
+    const loadImg = (f: File): Promise<HTMLImageElement> =>
+      new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = URL.createObjectURL(f);
+      });
+    const [img1, img2] = await Promise.all([loadImg(file1), loadImg(file2)]);
+    const h = Math.max(img1.naturalHeight, img2.naturalHeight);
+    const scale1 = h / img1.naturalHeight;
+    const scale2 = h / img2.naturalHeight;
+    const w1 = Math.round(img1.naturalWidth * scale1);
+    const w2 = Math.round(img2.naturalWidth * scale2);
+    const canvas = document.createElement('canvas');
+    canvas.width = w1 + w2 + 8;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img1, 0, 0, w1, h);
+    ctx.drawImage(img2, w1 + 8, 0, w2, h);
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => {
+        resolve(new File([blob!], 'cc_frente_verso.jpeg', { type: 'image/jpeg' }));
+      }, 'image/jpeg', 0.92);
+    });
+  };
+
+  const handleIngestFileSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
     event.target.value = '';
-    setIngestSelectedFile(file);
-    setIngestStatus('');
+    if (!files || files.length === 0) return;
+    if (files.length >= 2 && ingestDocumentType === 'cartao_cidadao') {
+      setIngestStatus('A combinar frente e verso...');
+      try {
+        const combined = await combineImagesIntoOne(files[0], files[1]);
+        setIngestSelectedFile(combined);
+        setIngestSelectedFile2(null);
+        setIngestStatus(`CC frente+verso combinados (${files[0].name} + ${files[1].name})`);
+      } catch {
+        setIngestSelectedFile(files[0]);
+        setIngestStatus('');
+      }
+    } else {
+      setIngestSelectedFile(files[0]);
+      setIngestSelectedFile2(files.length >= 2 ? files[1] : null);
+      setIngestStatus('');
+    }
     setIngestWarnings([]);
   };
 
@@ -5273,6 +5318,9 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         )}
                         <div className="text-xs text-slate-600">
                           Ficheiro: {ingestSelectedFile ? <span className="font-medium">{ingestSelectedFile.name}</span> : 'Nenhum ficheiro selecionado.'}
+                          {ingestDocumentType === 'cartao_cidadao' && !ingestSelectedFile && (
+                            <span className="ml-1 text-slate-400">— pode selecionar 2 imagens (frente+verso)</span>
+                          )}
                         </div>
                         {ingestStatus && (
                           <div className="text-xs text-slate-700 rounded-md border border-slate-200 bg-white px-2 py-1.5">
@@ -5290,6 +5338,8 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                           ref={ingestFileInputRef}
                           type="file"
                           className="hidden"
+                          multiple={ingestDocumentType === 'cartao_cidadao'}
+                          accept={ingestDocumentType === 'cartao_cidadao' ? 'image/*' : undefined}
                           onChange={handleIngestFileSelection}
                         />
                       </div>
