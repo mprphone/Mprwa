@@ -488,11 +488,17 @@ function registerSaftDocumentRoutes(context, helpers) {
                 cartao_cidadao: 'Cartão de Cidadão',
             };
             // Para CC: usar tipo único por sócio (cc_{nif})
-            const managerNif = String(body.managerNif || '').trim().replace(/\D+/g, '').slice(-9);
+            // Fallback para o NIF extraído pela IA se managerNif não foi enviado
+            const managerNif = String(body.managerNif || (documentType === 'cartao_cidadao' ? extractedNif : '') || '').trim().replace(/\D+/g, '').slice(-9);
             const fiscalDocTipo = (documentType === 'cartao_cidadao' && managerNif)
                 ? `cc_${managerNif}` : documentType;
-            const fiscalDocLabel = (documentType === 'cartao_cidadao' && managerNif)
-                ? `CC — ${managerNif}` : (FISCAL_DOC_LABELS[documentType] || documentType);
+            // Usar nome extraído pela IA se disponível (em vez do NIF)
+            const extractedName = String(
+                extraction.nomePessoa || extraction.raw?.nome_pessoa || extraction.raw?.nome_completo || extraction.raw?.nome || extraction.raw?.titular || ''
+            ).trim().toUpperCase();
+            const fiscalDocLabel = (documentType === 'cartao_cidadao')
+                ? `CC — ${extractedName || managerNif || 'Cidadão'}`
+                : (FISCAL_DOC_LABELS[documentType] || documentType);
 
             if (FISCAL_DOC_LABELS[documentType]) {
                 try {
@@ -501,15 +507,38 @@ function registerSaftDocumentRoutes(context, helpers) {
                     const current = mergeFiscalSummaryData(row?.data ? JSON.parse(row.data) : {});
                     const docs = Array.isArray(current.documentos) ? [...current.documentos] : [];
                     const idx = docs.findIndex((d) => d?.tipo === fiscalDocTipo);
+                    // Extrair validade e notas por tipo de documento
+                    const entryDataValidade = (() => {
+                        if (documentType === 'certidao_permanente')
+                            return parseDateToIso(extraction.certidaoPermanenteValidade || '') || '';
+                        if (documentType === 'cartao_cidadao') {
+                            const raw = extraction.raw || {};
+                            const rawDate = extraction.cartaoCidadaoValidade || raw.cartao_cidadao_validade ||
+                                raw.cc_validade || raw.validade_cc || raw.data_validade ||
+                                raw.data_fim_validade || raw.fim_validade || raw.expiry || '';
+                            // Normalizar formato "28 11 2029" (espaços) → "28/11/2029"
+                            const normalizedDate = String(rawDate).trim().replace(/^(\d{1,2})\s+(\d{1,2})\s+(\d{4})$/, '$1/$2/$3');
+                            return parseDateToIso(normalizedDate) || '';
+                        }
+                        return '';
+                    })();
+                    const entryNotas = (() => {
+                        if (documentType === 'rcbe') return extraction.rcbeNumero || '';
+                        if (documentType === 'certidao_permanente') return extraction.certidaoPermanenteCodigo || '';
+                        if (documentType === 'cartao_cidadao') {
+                            const raw = extraction.raw || {};
+                            // Número CC extraído pela IA, senão NIF do titular como fallback
+                            return String(raw.cartao_cidadao_numero || raw.numero_cc || raw.cc_numero || raw.numero_documento || raw.nif || '').trim();
+                        }
+                        return '';
+                    })();
                     const entry = {
                         tipo: fiscalDocTipo,
                         label: fiscalDocLabel,
                         ficheiroPdf: fullPath,
                         valida: true,
-                        notas: extraction.rcbeNumero || extraction.certidaoPermanenteCodigo || '',
-                        dataValidade: documentType === 'certidao_permanente'
-                            ? (parseDateToIso(extraction.certidaoPermanenteValidade || '') || '')
-                            : '',
+                        notas: entryNotas,
+                        dataValidade: entryDataValidade,
                     };
                     if (idx >= 0) docs[idx] = { ...docs[idx], ...entry };
                     else docs.push(entry);
