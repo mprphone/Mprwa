@@ -561,7 +561,12 @@ async function tryReadCurrentPage(page) {
 
   // Na página "Atividade Exercida", a label "Morada" refere-se ao escritório
   // do contabilista (secção Contabilidade), não à sede da empresa — ignorar.
-  if (/Atividade\s+Exercida|Actividade\s+Exercida|Dados Gerais de Atividade/i.test(text)) {
+  // Usar URL para distinguir páginas (mais fiável que texto — o menu lateral
+  // contém "Atividade Exercida" em todas as páginas).
+  const currentUrl = page.url();
+  const isAtividadePage = /targetScreen(?:%3D|=)(ecra|ecr|decr)Actividade/i.test(currentUrl)
+    || /targetScreen(?:%3D|=)(ecra|ecr|decr)Atividade/i.test(currentUrl);
+  if (isAtividadePage) {
     delete fields.morada;
     delete fields.codigoPostal;
   }
