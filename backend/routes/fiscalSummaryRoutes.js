@@ -561,6 +561,22 @@ function registerFiscalSummaryRoutes({ app, dbRunAsync, dbGetAsync, dbAllAsync, 
         }
     });
 
+    app.post('/api/customers/:id/fiscal-summary/remove-documento', async (req, res) => {
+        try {
+            const customerId = String(req.params.id || '').trim();
+            const tipo = String(req.body?.tipo || '').trim();
+            if (!customerId || !tipo) return res.status(400).json({ success: false, error: 'ID e tipo obrigatórios.' });
+            const current = await readSummary(customerId);
+            const docs = Array.isArray(current.documentos) ? current.documentos : [];
+            current.documentos = docs.filter((d) => d?.tipo !== tipo);
+            current.updatedAt = new Date().toISOString();
+            const merged = await writeSummary(customerId, current);
+            return res.json({ success: true, data: merged });
+        } catch (err) {
+            return res.status(500).json({ success: false, error: String(err?.message || err) });
+        }
+    });
+
     app.post('/api/customers/:id/fiscal-summary', async (req, res) => {
         try {
             const customerId = String(req.params.id || '').trim();
@@ -634,6 +650,10 @@ function registerFiscalSummaryRoutes({ app, dbRunAsync, dbGetAsync, dbAllAsync, 
         }
         const { to, subject, html, attachmentPaths } = req.body || {};
         if (!to || !subject) return res.status(400).json({ success: false, error: 'Destinatário e assunto obrigatórios.' });
+        const toClean = String(to).trim().replace(/[\r\n]/g, '');
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toClean)) {
+            return res.status(400).json({ success: false, error: `Email inválido: ${toClean}` });
+        }
 
         try {
             const fsNode = require('fs');

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Clock3, FileText, Info, Loader2, Mail, RefreshCw, Shield, ThumbsDown, ThumbsUp, Upload, XCircle } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Clock3, FileText, Info, Loader2, Mail, RefreshCw, Shield, ThumbsDown, ThumbsUp, Trash2, Upload, XCircle } from 'lucide-react';
 import { Customer } from '../../types';
 
 // ─── Data model ───────────────────────────────────────────────────────────────
@@ -352,6 +352,26 @@ function OutrosDocumentosTable({
   const pendingTipoRef = React.useRef<string | null>(null);
 
   // pendingTipo pode ser 'rcbe', 'pacto_social', ou 'cc_{nif}' para cartão de cidadão
+  const [deletingTipo, setDeletingTipo] = React.useState<string | null>(null);
+
+  const handleDeleteDocumento = async (tipo: string, label: string) => {
+    if (!window.confirm(`Eliminar "${label}" do resumo fiscal?`)) return;
+    setDeletingTipo(tipo);
+    try {
+      const res = await fetch(`/api/customers/${encodeURIComponent(customer.id)}/fiscal-summary/remove-documento`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo }),
+      });
+      const json = await res.json();
+      if (json.success) await load();
+    } catch (e) {
+      console.error('Erro ao eliminar documento:', e);
+    } finally {
+      setDeletingTipo(null);
+    }
+  };
+
   const handleUploadClick = (tipo: string) => {
     pendingTipoRef.current = tipo;
     if (fileInputRef.current) {
@@ -392,21 +412,30 @@ function OutrosDocumentosTable({
     }
   };
 
-  // Linhas CC por sócio (tipo 'cc_{nif}')
+  // Linhas CC por sócio (tipo 'cc_{nif}') — só adiciona se ainda não existir em rows
   const managers = (customer as any).managers as Array<{ name: string; nif?: string }> | undefined;
   const ccRows: FiscalDocumento[] = (managers || [])
     .filter((m) => m?.name)
-    .map((m) => {
-      const ccTipo = `cc_${(m.nif || m.name).replace(/\s+/g, '_')}`;
-      const existing = rows.find((r) => r.tipo === ccTipo);
-      return existing || {
+    .flatMap((m) => {
+      const nifClean = String(m.nif || '').replace(/\D+/g, '').slice(-9);
+      const ccTipo = `cc_${nifClean || m.name.replace(/\s+/g, '_')}`;
+      const nameUpper = m.name.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+      // Já existe em rows? Verificar por tipo OU por nome (case-insensitive, sem acentos)
+      const alreadyInRows = rows.some((r) => {
+        if (r.tipo === ccTipo) return true;
+        if (!r.label?.startsWith('CC')) return false;
+        const rowName = r.label.replace(/^CC\s*[—-]\s*/i, '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+        return rowName === nameUpper;
+      });
+      if (alreadyInRows) return [];
+      return [{
         tipo: ccTipo,
         label: `CC — ${m.name}`,
         dataValidade: '',
         valida: false,
         ficheiroPdf: '',
-        notas: m.nif || '',
-      };
+        notas: nifClean || '',
+      }];
     });
 
   return (
@@ -463,7 +492,15 @@ function OutrosDocumentosTable({
                         {isUploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
                       </button>
                     )}
-                    {!row.ficheiroPdf && !canUpload && <span className={EMPTY}>—</span>}
+                    {(row.tipo.startsWith('cc_') || (row.ficheiroPdf && row.tipo !== 'domicilio_fiscal')) && (
+                      <button type="button" title="Eliminar entrada"
+                        disabled={deletingTipo === row.tipo}
+                        onClick={() => handleDeleteDocumento(row.tipo, row.label)}
+                        className="rounded-md bg-slate-100 p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors inline-flex disabled:opacity-50">
+                        {deletingTipo === row.tipo ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                      </button>
+                    )}
+                    {!row.ficheiroPdf && !canUpload && !row.tipo.startsWith('cc_') && <span className={EMPTY}>—</span>}
                   </div>
                 </td>
               </tr>
