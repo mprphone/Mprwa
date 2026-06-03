@@ -561,12 +561,14 @@ async function tryReadCurrentPage(page) {
 
   // Na página "Atividade Exercida", a label "Morada" refere-se ao escritório
   // do contabilista (secção Contabilidade), não à sede da empresa — ignorar.
-  // Usar URL para distinguir páginas (mais fiável que texto — o menu lateral
-  // contém "Atividade Exercida" em todas as páginas).
+  // "Dados Gerais de Atividade" é um heading de conteúdo único desta página
+  // (não aparece no menu lateral), mais fiável do que verificar o URL
+  // (quando se navega por click o URL pode não mudar).
   const currentUrl = page.url();
-  const isAtividadePage = /targetScreen(?:%3D|=)(ecra|ecr|decr)Actividade/i.test(currentUrl)
+  const isAtividadeByUrl = /targetScreen(?:%3D|=)(ecra|ecr|decr)Actividade/i.test(currentUrl)
     || /targetScreen(?:%3D|=)(ecra|ecr|decr)Atividade/i.test(currentUrl);
-  if (isAtividadePage) {
+  const isAtividadeByText = /Dados Gerais de Atividade|Dados Gerais de Actividade/i.test(text);
+  if (isAtividadeByUrl || isAtividadeByText) {
     delete fields.morada;
     delete fields.codigoPostal;
   }
