@@ -1195,37 +1195,15 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     headerIngestFileInputRef.current?.click();
   };
 
-  const combineImagesIntoOne = async (file1: File, file2: File): Promise<File> => {
-    const loadImg = (f: File): Promise<HTMLImageElement> =>
-      new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = reject;
-        img.src = URL.createObjectURL(f);
-      });
-    const [img1, img2] = await Promise.all([loadImg(file1), loadImg(file2)]);
-    const h = Math.max(img1.naturalHeight, img2.naturalHeight);
-    const scale1 = h / img1.naturalHeight;
-    const scale2 = h / img2.naturalHeight;
-    const w1 = Math.round(img1.naturalWidth * scale1);
-    const w2 = Math.round(img2.naturalWidth * scale2);
-    const canvas = document.createElement('canvas');
-    canvas.width = w1 + w2 + 8;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img1, 0, 0, w1, h);
-    ctx.drawImage(img2, w1 + 8, 0, w2, h);
-    return new Promise((resolve) => {
-      canvas.toBlob((blob) => {
-        resolve(new File([blob!], 'cc_frente_verso.jpeg', { type: 'image/jpeg' }));
-      }, 'image/jpeg', 0.92);
+  const fileToBase64 = (f: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(f);
     });
-  };
 
   const handleIngestFileSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    // Capturar array ANTES de limpar o input (FileList é live — fica vazia após clear)
     const fileArray = Array.from(event.target.files || []);
     event.target.value = '';
     if (fileArray.length === 0) return;
@@ -1234,15 +1212,24 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     const isImage = (f: File) => f.type.startsWith('image/');
 
     if (fileArray.length >= 2 && ingestDocumentType === 'cartao_cidadao' && fileArray.every(isImage)) {
-      setIngestStatus('A combinar frente e verso...');
+      setIngestStatus('A gerar PDF frente+verso...');
       try {
-        const combined = await combineImagesIntoOne(fileArray[0], fileArray[1]);
-        setIngestSelectedFile(combined);
+        const [b1, b2] = await Promise.all([fileToBase64(fileArray[0]), fileToBase64(fileArray[1])]);
+        const resp = await fetch('/api/cc/images-to-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image1: b1, image2: b2 }),
+        });
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.error);
+        const pdfBytes = Uint8Array.from(atob(data.pdfBase64), c => c.charCodeAt(0));
+        const pdfFile = new File([pdfBytes], 'cc_frente_verso.pdf', { type: 'application/pdf' });
+        setIngestSelectedFile(pdfFile);
         setIngestSelectedFile2(null);
-        setIngestStatus(`CC frente+verso combinados (${fileArray[0].name} + ${fileArray[1].name})`);
-      } catch {
+        setIngestStatus(`PDF gerado: ${fileArray[0].name} + ${fileArray[1].name}`);
+      } catch (e) {
         setIngestSelectedFile(fileArray[0]);
-        setIngestStatus('');
+        setIngestStatus(`Erro ao gerar PDF: ${e instanceof Error ? e.message : String(e)}`);
       }
     } else {
       setIngestSelectedFile(fileArray[0]);

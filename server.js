@@ -2517,6 +2517,40 @@ app.post('/api/cartao-eletronico/consultar', async (req, res) => {
     }
 });
 
+// ── Combinar 2 imagens CC em PDF (uma em cima da outra) ──────────────────────
+app.post('/api/cc/images-to-pdf', async (req, res) => {
+    const { image1, image2 } = req.body || {};
+    if (!image1 || !image2) return res.status(400).json({ success: false, error: 'image1 e image2 obrigatórios.' });
+    try {
+        const playwright = require('playwright');
+        const toDataUrl = (b64) => {
+            const raw = b64.includes(',') ? b64.split(',')[1] : b64;
+            const mime = b64.startsWith('data:') ? b64.split(';')[0].replace('data:','') : 'image/jpeg';
+            return `data:${mime};base64,${raw}`;
+        };
+        const html = `<!DOCTYPE html><html><head><style>
+            *{margin:0;padding:0;box-sizing:border-box;}
+            body{background:#fff;width:210mm;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:297mm;gap:8mm;padding:10mm;}
+            img{max-width:190mm;max-height:130mm;object-fit:contain;display:block;}
+        </style></head><body>
+            <img src="${toDataUrl(image1)}"/>
+            <img src="${toDataUrl(image2)}"/>
+        </body></html>`;
+
+        const browser = await playwright.chromium.launch({ headless: true });
+        const page = await browser.newPage();
+        await page.setContent(html, { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(500);
+        const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
+        await browser.close();
+
+        const pdfBase64 = pdfBuffer.toString('base64');
+        return res.json({ success: true, pdfBase64, mimeType: 'application/pdf' });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: String(error?.message || error) });
+    }
+});
+
 // ── Registar resultado do cartão eletrónico vindo do bridge local ─────────────
 app.post('/api/cartao-eletronico/finalizar', async (req, res) => {
     const { codigo, customerId, ficheiroPdf, fields } = req.body || {};
