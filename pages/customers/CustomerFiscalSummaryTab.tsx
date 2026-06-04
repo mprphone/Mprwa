@@ -1272,6 +1272,8 @@ function buildWhatsAppSummary(company: string, data: FiscalSummaryData): string 
   return lines.join('\n');
 }
 
+const WA_ICON = <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>;
+
 function SendWhatsAppModal({ customer, data, onClose }: { customer: Customer; data: FiscalSummaryData; onClose: () => void }) {
   const company = (customer as any).company || customer.name;
   const phone = String((customer as any).phone || '').replace(/\D+/g, '');
@@ -1281,23 +1283,37 @@ function SendWhatsAppModal({ customer, data, onClose }: { customer: Customer; da
   const [status, setStatus] = React.useState('');
   const [conversationId, setConversationId] = React.useState<string | null>(null);
 
-  // Procurar a conversa do cliente para usar a conta WA correcta
+  // PDFs disponíveis (mesma lógica do email)
+  const availablePdfs = React.useMemo(() => {
+    const pdfs: { label: string; path: string }[] = [];
+    const add = (label: string, path?: string) => { if (path && path.endsWith('.pdf')) pdfs.push({ label, path }); };
+    (data.ies || []).forEach((f) => add(`IES ${f.ano}`, f.comprovativoPath));
+    (data.modelo22 || []).forEach((f) => add(`Modelo 22 — ${f.ano}`, f.comprovativoPath));
+    (data.certidoes || []).forEach((c) => add(c.tipo, c.ficheiroPdf));
+    (data.documentos || []).forEach((d) => add(d.label || d.tipo, d.ficheiroPdf));
+    return pdfs;
+  }, [data]);
+  const [selected, setSelected] = React.useState<Set<string>>(new Set());
+  const togglePdf = (path: string) => setSelected(s => { const n = new Set(s); n.has(path) ? n.delete(path) : n.add(path); return n; });
+  const toggleAll = (v: boolean) => setSelected(v ? new Set(availablePdfs.map(p => p.path)) : new Set());
+
+  // Encontrar conversa existente para usar a conta WA certa
   React.useEffect(() => {
-    const digits = phone || String((customer as any).phone || '').replace(/\D+/g, '');
-    if (!digits) return;
-    fetch(`/api/chat/conversations/local`)
-      .then(r => r.json())
-      .then(j => {
-        if (Array.isArray(j.data)) {
-          const conv = j.data.find((c: any) => {
-            const cPhone = String(c.phone || c.id || '').replace(/\D+/g, '');
-            return cPhone.endsWith(digits.slice(-9)) || digits.endsWith(cPhone.slice(-9));
-          });
-          if (conv?.id) setConversationId(conv.id);
-        }
-      })
-      .catch(() => null);
+    if (!phone) return;
+    fetch('/api/chat/conversations/local').then(r => r.json()).then(j => {
+      if (Array.isArray(j.data)) {
+        const conv = j.data.find((c: any) => {
+          const cp = String(c.phone || c.id || '').replace(/\D+/g, '');
+          return cp.endsWith(phone.slice(-9)) || phone.endsWith(cp.slice(-9));
+        });
+        if (conv?.id) setConversationId(conv.id);
+      }
+    }).catch(() => null);
   }, [phone]);
+
+  const sendOne = (body: object) => fetch('/api/chat/send', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }).then(r => r.json());
 
   const handleSend = async () => {
     const digits = to.replace(/\D+/g, '');
@@ -1305,15 +1321,19 @@ function SendWhatsAppModal({ customer, data, onClose }: { customer: Customer; da
     setSending(true);
     setStatus('');
     try {
-      const res = await fetch('/api/chat/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: digits, message, type: 'text', createdBy: null, conversationId: conversationId || undefined }),
-      });
-      const json = await res.json();
-      if (!json.success) throw new Error(json.error || 'Falha ao enviar.');
-      setStatus('✓ Mensagem enviada via WhatsApp.');
-      setTimeout(onClose, 1500);
+      const base = { to: digits, createdBy: null, conversationId: conversationId || undefined };
+      // 1. Enviar texto
+      const r1 = await sendOne({ ...base, message, type: 'text' });
+      if (!r1.success) throw new Error(r1.error || 'Falha ao enviar texto.');
+      // 2. Enviar cada PDF seleccionado
+      const pdfsToSend = availablePdfs.filter(p => selected.has(p.path));
+      for (const pdf of pdfsToSend) {
+        setStatus(`A enviar ${pdf.label}...`);
+        const r = await sendOne({ ...base, message: pdf.label, type: 'document', mediaPath: pdf.path, mediaMimeType: 'application/pdf', mediaFileName: pdf.label + '.pdf' });
+        if (!r.success) console.warn('PDF não enviado:', pdf.label, r.error);
+      }
+      setStatus(`✓ Enviado${pdfsToSend.length ? ` com ${pdfsToSend.length} PDF(s)` : ''}.`);
+      setTimeout(onClose, 1800);
     } catch (err) {
       setStatus(err instanceof Error ? err.message : 'Erro ao enviar.');
     } finally {
@@ -1323,15 +1343,15 @@ function SendWhatsAppModal({ customer, data, onClose }: { customer: Customer; da
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+      <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 shrink-0">
           <div className="flex items-center gap-2 font-semibold text-slate-800">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-green-600"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
             Partilhar via WhatsApp
           </div>
           <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"><XCircle size={16} /></button>
         </div>
-        <div className="space-y-3 px-5 py-4">
+        <div className="overflow-y-auto flex-1 space-y-3 px-5 py-4">
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Número de telefone</label>
             <input value={to} onChange={(e) => setTo(e.target.value)}
@@ -1340,21 +1360,38 @@ function SendWhatsAppModal({ customer, data, onClose }: { customer: Customer; da
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Mensagem</label>
-            <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={12}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none font-mono" />
+            <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={8}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none" />
           </div>
+          {availablePdfs.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <input type="checkbox" id="wa-select-all" checked={selected.size === availablePdfs.length}
+                  onChange={(e) => toggleAll(e.target.checked)} className="rounded" />
+                <label htmlFor="wa-select-all" className="text-xs font-medium text-slate-700 cursor-pointer">
+                  Selecionar todos os PDFs ({availablePdfs.length})
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-1 max-h-36 overflow-y-auto">
+                {availablePdfs.map((p, i) => (
+                  <label key={i} className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer hover:bg-slate-50 rounded px-1 py-0.5">
+                    <input type="checkbox" checked={selected.has(p.path)} onChange={() => togglePdf(p.path)} className="rounded mt-0.5 shrink-0" />
+                    <span>{p.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           {status && (
-            <p className={`text-xs font-medium ${status.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>{status}</p>
+            <p className={`text-xs font-medium ${status.startsWith('✓') ? 'text-green-600' : status.startsWith('A ') ? 'text-blue-600' : 'text-red-600'}`}>{status}</p>
           )}
         </div>
-        <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-5 py-4">
+        <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-5 py-4 shrink-0">
           <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">Cancelar</button>
           <button type="button" onClick={handleSend} disabled={sending}
             className="inline-flex items-center gap-2 rounded-lg bg-green-500 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600 disabled:opacity-50">
-            {sending ? <Loader2 size={14} className="animate-spin" /> : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-            )}
-            Enviar WhatsApp
+            {sending ? <Loader2 size={14} className="animate-spin" /> : WA_ICON}
+            Enviar{selected.size > 0 ? ` + ${selected.size} PDF(s)` : ''}
           </button>
         </div>
       </div>
