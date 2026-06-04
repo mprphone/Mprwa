@@ -36,13 +36,14 @@ function applyPme(current, fiscalCollection) {
 
 function applyCertidaoPermanente(current, code, result) {
     const validUntil = result?.fields?.certidaoPermanenteValidade || result?.fields?.validade || result?.fields?.dataValidade || '';
-    if (!validUntil) return current;
+    // Actualizar sempre que haja código, mesmo sem data de validade
+    if (!code && !validUntil && !result?.ficheiroPdf) return current;
     return updateDocumento(current, 'certidao_permanente', {
         tipo: 'certidao_permanente',
         label: 'Certidão Permanente',
         codigo: code,
         dataValidade: validUntil,
-        valida: true,
+        valida: !!validUntil,
         ficheiroPdf: result?.ficheiroPdf || '',
         detalhes: result?.fields || {},
     });

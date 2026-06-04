@@ -1588,6 +1588,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
           setFormData(next);
           setSavedFormSnapshot(serializeCustomerFormState(next));
         }
+        setFiscalSummaryRefreshKey(k => k + 1);
         const docLabel = isCartao ? 'Cartão eletrónico' : `Certidão ${codigoCert}`;
         setIngestStatus(`✓ ${docLabel} consultado.${data.ficheiroPdf ? ' PDF guardado em Resumo Fiscal.' : ''} Resumo fiscal actualizado.`);
       } catch (err) {
