@@ -2694,7 +2694,7 @@ if (!IS_BACKOFFICE_ONLY) {
 
 // ── Notificação IMI via WhatsApp (chamado pelo MPR Control) ─────────────────
 app.post('/api/notify/imi', async (req, res) => {
-    const { nif, tranche, valor, dataLimite, ano, apiKey, pdfBase64, pdfFileName } = req.body || {};
+    const { nif, valor, dataLimite, ano, apiKey, pdfBase64, pdfFileName } = req.body || {};
     if (apiKey !== (process.env.NOTIFY_API_KEY || 'mpr-notify-2026')) {
         return res.status(401).json({ success: false, error: 'API key inválida.' });
     }
@@ -2712,8 +2712,7 @@ app.post('/api/notify/imi', async (req, res) => {
         const phone = String(customer.phone).replace(/\D+/g, '');
         const valorFmt = valor ? `${parseFloat(valor).toFixed(2).replace('.', ',')} €` : '';
         const dataFmt = dataLimite ? new Date(dataLimite).toLocaleDateString('pt-PT') : '';
-        const trancheLabel = tranche ? ` — *${tranche}*` : '';
-        const message = `Bom dia ${customer.name},\n\nO IMI${trancheLabel}${ano ? ` de ${ano}` : ''} no valor de *${valorFmt}* tem data limite de pagamento em *${dataFmt}*.\n\nQualquer dúvida estamos disponíveis.\n\nCom os melhores cumprimentos,\nMPR Negócios, Lda`;
+        const message = `Bom dia ${customer.name},\n\nO IMI${ano ? ` de ${ano}` : ''} no valor de *${valorFmt}* tem data limite de pagamento em *${dataFmt}*.\n\nQualquer dúvida estamos disponíveis.\n\nCom os melhores cumprimentos,\nMPR Negócios, Lda`;
 
         const sendBase = { to: phone, type: 'text', createdBy: null };
         const r1 = await fetch(`http://localhost:${PORT}/api/chat/send`, {
