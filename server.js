@@ -2694,8 +2694,7 @@ if (!IS_BACKOFFICE_ONLY) {
 
 // ── Notificação IUC via WhatsApp (chamado pelo MPR Control) ─────────────────
 app.post('/api/notify/iuc', async (req, res) => {
-    const { nif, matricula, valor, dataLimite, categoria, ano, apiKey } = req.body || {};
-    // Chave de API simples para proteger o endpoint
+    const { nif, matricula, valor, dataLimite, categoria, ano, apiKey, pdfBase64, pdfFileName } = req.body || {};
     if (apiKey !== (process.env.NOTIFY_API_KEY || 'mpr-notify-2026')) {
         return res.status(401).json({ success: false, error: 'API key inválida.' });
     }
@@ -2703,7 +2702,6 @@ app.post('/api/notify/iuc', async (req, res) => {
         return res.status(400).json({ success: false, error: 'nif e matricula obrigatórios.' });
     }
     try {
-        // Encontrar cliente pelo NIF
         const nifClean = String(nif).replace(/\D+/g, '');
         const customers = await dbAllAsync(
             `SELECT id, name, phone FROM customers WHERE replace(replace(nif,' ',''),'-','') = ? OR nif LIKE ? LIMIT 5`,
@@ -2717,15 +2715,36 @@ app.post('/api/notify/iuc', async (req, res) => {
         const valorFmt = valor ? `${parseFloat(valor).toFixed(2).replace('.', ',')} €` : '';
         const dataFmt = dataLimite ? new Date(dataLimite).toLocaleDateString('pt-PT') : '';
         const message = `Bom dia ${customer.name},\n\nO IUC do veículo *${matricula}*${categoria ? ` (Cat. ${categoria})` : ''}${ano ? ` referente a ${ano}` : ''} no valor de *${valorFmt}* tem data limite de pagamento em *${dataFmt}*.\n\nQualquer dúvida estamos disponíveis.\n\nCom os melhores cumprimentos,\nMPR Negócios, Lda`;
-        // Enviar via WA PRO
-        const sendRes = await fetch(`http://localhost:${PORT}/api/chat/send`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to: phone, message, type: 'text', createdBy: null }),
-        });
-        const sendJson = await sendRes.json();
-        if (!sendJson.success) throw new Error(sendJson.error || 'Falha ao enviar WA');
-        return res.json({ success: true, message: `Notificação IUC enviada para ${customer.name} (${phone}).`, queueId: sendJson.queueId });
+
+        const sendBase = { to: phone, type: 'text', createdBy: null };
+
+        // 1. Enviar texto
+        const r1 = await fetch(`http://localhost:${PORT}/api/chat/send`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...sendBase, message }),
+        }).then(r => r.json());
+        if (!r1.success) throw new Error(r1.error || 'Falha ao enviar texto WA');
+
+        // 2. Enviar PDF se fornecido em base64
+        let pdfSent = false;
+        if (pdfBase64) {
+            const fs = require('fs');
+            const os = require('os');
+            const path = require('path');
+            const raw = pdfBase64.includes(',') ? pdfBase64.split(',')[1] : pdfBase64;
+            const tmpFile = path.join(os.tmpdir(), `iuc_${matricula.replace(/[^a-z0-9]/gi,'_')}_${Date.now()}.pdf`);
+            fs.writeFileSync(tmpFile, Buffer.from(raw, 'base64'));
+            const fileName = pdfFileName || `IUC_${matricula}_${ano || ''}.pdf`;
+            const r2 = await fetch(`http://localhost:${PORT}/api/chat/send`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...sendBase, message: fileName, type: 'document', mediaPath: tmpFile, mediaMimeType: 'application/pdf', mediaFileName: fileName }),
+            }).then(r => r.json());
+            // Limpar ficheiro temporário após 60s
+            setTimeout(() => fs.unlink(tmpFile, () => {}), 60000);
+            pdfSent = r2.success;
+        }
+
+        return res.json({ success: true, message: `Notificação IUC enviada para ${customer.name} (${phone}).`, pdfSent });
     } catch (error) {
         return res.status(500).json({ success: false, error: String(error?.message || error) });
     }
