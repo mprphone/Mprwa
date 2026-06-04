@@ -1279,6 +1279,25 @@ function SendWhatsAppModal({ customer, data, onClose }: { customer: Customer; da
   const [message, setMessage] = React.useState(() => buildWhatsAppSummary(company, data));
   const [sending, setSending] = React.useState(false);
   const [status, setStatus] = React.useState('');
+  const [conversationId, setConversationId] = React.useState<string | null>(null);
+
+  // Procurar a conversa do cliente para usar a conta WA correcta
+  React.useEffect(() => {
+    const digits = phone || String((customer as any).phone || '').replace(/\D+/g, '');
+    if (!digits) return;
+    fetch(`/api/chat/conversations/local`)
+      .then(r => r.json())
+      .then(j => {
+        if (Array.isArray(j.data)) {
+          const conv = j.data.find((c: any) => {
+            const cPhone = String(c.phone || c.id || '').replace(/\D+/g, '');
+            return cPhone.endsWith(digits.slice(-9)) || digits.endsWith(cPhone.slice(-9));
+          });
+          if (conv?.id) setConversationId(conv.id);
+        }
+      })
+      .catch(() => null);
+  }, [phone]);
 
   const handleSend = async () => {
     const digits = to.replace(/\D+/g, '');
@@ -1289,7 +1308,7 @@ function SendWhatsAppModal({ customer, data, onClose }: { customer: Customer; da
       const res = await fetch('/api/chat/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: digits, message, type: 'text', createdBy: null }),
+        body: JSON.stringify({ to: digits, message, type: 'text', createdBy: null, conversationId: conversationId || undefined }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || 'Falha ao enviar.');
