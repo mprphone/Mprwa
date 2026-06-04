@@ -2721,21 +2721,30 @@ app.post('/api/notify/imi', async (req, res) => {
         }).then(r => r.json());
         if (!r1.success) throw new Error(r1.error || 'Falha ao enviar texto WA');
 
-        let pdfSent = false;
-        if (pdfBase64) {
+        let imageSent = false;
+        // IMI vem em PNG — suporte a imageBase64 ou pdfBase64 (compatibilidade)
+        const imageData = req.body?.imageBase64 || pdfBase64;
+        const imageFile = req.body?.imageFileName || pdfFileName;
+        if (imageData) {
             const fs = require('fs'), os = require('os'), path = require('path');
-            const raw = pdfBase64.includes(',') ? pdfBase64.split(',')[1] : pdfBase64;
-            const tmpFile = path.join(os.tmpdir(), `imi_${nifClean}_${Date.now()}.pdf`);
+            const raw = imageData.includes(',') ? imageData.split(',')[1] : imageData;
+            // Detectar formato pelo header base64 ou pelo nome do ficheiro
+            const isPng = imageData.startsWith('data:image/png') || (imageFile && imageFile.toLowerCase().endsWith('.png')) || !imageData.startsWith('data:application/pdf');
+            const ext = isPng ? 'png' : 'pdf';
+            const mime = isPng ? 'image/png' : 'application/pdf';
+            const tmpFile = path.join(os.tmpdir(), `imi_${nifClean}_${Date.now()}.${ext}`);
             fs.writeFileSync(tmpFile, Buffer.from(raw, 'base64'));
-            const fileName = pdfFileName || `IMI_${nifClean}_${ano || ''}.pdf`;
+            const fileName = imageFile || `IMI_${nifClean}_${ano || ''}.${ext}`;
+            // PNG → type 'image'; PDF → type 'document'
+            const msgType = isPng ? 'image' : 'document';
             const r2 = await fetch(`http://localhost:${PORT}/api/chat/send`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...sendBase, message: fileName, type: 'document', mediaPath: tmpFile, mediaMimeType: 'application/pdf', mediaFileName: fileName }),
+                body: JSON.stringify({ ...sendBase, message: isPng ? fileName : fileName, type: msgType, mediaPath: tmpFile, mediaMimeType: mime, mediaFileName: fileName }),
             }).then(r => r.json());
             setTimeout(() => fs.unlink(tmpFile, () => {}), 60000);
-            pdfSent = r2.success;
+            imageSent = r2.success;
         }
-        return res.json({ success: true, message: `Notificação IMI enviada para ${customer.name} (${phone}).`, pdfSent });
+        return res.json({ success: true, message: `Notificação IMI enviada para ${customer.name} (${phone}).`, imageSent });
     } catch (error) {
         return res.status(500).json({ success: false, error: String(error?.message || error) });
     }
