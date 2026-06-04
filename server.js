@@ -2692,6 +2692,56 @@ if (!IS_BACKOFFICE_ONLY) {
     });
 }
 
+// ── Notificação IMI via WhatsApp (chamado pelo MPR Control) ─────────────────
+app.post('/api/notify/imi', async (req, res) => {
+    const { nif, tranche, valor, dataLimite, ano, apiKey, pdfBase64, pdfFileName } = req.body || {};
+    if (apiKey !== (process.env.NOTIFY_API_KEY || 'mpr-notify-2026')) {
+        return res.status(401).json({ success: false, error: 'API key inválida.' });
+    }
+    if (!nif) return res.status(400).json({ success: false, error: 'nif obrigatório.' });
+    try {
+        const nifClean = String(nif).replace(/\D+/g, '');
+        const customers = await dbAllAsync(
+            `SELECT id, name, phone FROM customers WHERE replace(replace(nif,' ',''),'-','') = ? OR nif LIKE ? LIMIT 5`,
+            [nifClean, `%${nifClean}%`]
+        );
+        const customer = customers?.[0];
+        if (!customer || !customer.phone) {
+            return res.status(404).json({ success: false, error: `Cliente com NIF ${nif} não encontrado ou sem telefone.` });
+        }
+        const phone = String(customer.phone).replace(/\D+/g, '');
+        const valorFmt = valor ? `${parseFloat(valor).toFixed(2).replace('.', ',')} €` : '';
+        const dataFmt = dataLimite ? new Date(dataLimite).toLocaleDateString('pt-PT') : '';
+        const trancheLabel = tranche ? ` — *${tranche}*` : '';
+        const message = `Bom dia ${customer.name},\n\nO IMI${trancheLabel}${ano ? ` de ${ano}` : ''} no valor de *${valorFmt}* tem data limite de pagamento em *${dataFmt}*.\n\nQualquer dúvida estamos disponíveis.\n\nCom os melhores cumprimentos,\nMPR Negócios, Lda`;
+
+        const sendBase = { to: phone, type: 'text', createdBy: null };
+        const r1 = await fetch(`http://localhost:${PORT}/api/chat/send`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...sendBase, message }),
+        }).then(r => r.json());
+        if (!r1.success) throw new Error(r1.error || 'Falha ao enviar texto WA');
+
+        let pdfSent = false;
+        if (pdfBase64) {
+            const fs = require('fs'), os = require('os'), path = require('path');
+            const raw = pdfBase64.includes(',') ? pdfBase64.split(',')[1] : pdfBase64;
+            const tmpFile = path.join(os.tmpdir(), `imi_${nifClean}_${Date.now()}.pdf`);
+            fs.writeFileSync(tmpFile, Buffer.from(raw, 'base64'));
+            const fileName = pdfFileName || `IMI_${nifClean}_${ano || ''}.pdf`;
+            const r2 = await fetch(`http://localhost:${PORT}/api/chat/send`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...sendBase, message: fileName, type: 'document', mediaPath: tmpFile, mediaMimeType: 'application/pdf', mediaFileName: fileName }),
+            }).then(r => r.json());
+            setTimeout(() => fs.unlink(tmpFile, () => {}), 60000);
+            pdfSent = r2.success;
+        }
+        return res.json({ success: true, message: `Notificação IMI enviada para ${customer.name} (${phone}).`, pdfSent });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: String(error?.message || error) });
+    }
+});
+
 // ── Notificação IUC via WhatsApp (chamado pelo MPR Control) ─────────────────
 app.post('/api/notify/iuc', async (req, res) => {
     const { nif, matricula, valor, dataLimite, categoria, ano, apiKey, pdfBase64, pdfFileName } = req.body || {};
