@@ -2692,6 +2692,45 @@ if (!IS_BACKOFFICE_ONLY) {
     });
 }
 
+// ── Notificação IUC via WhatsApp (chamado pelo MPR Control) ─────────────────
+app.post('/api/notify/iuc', async (req, res) => {
+    const { nif, matricula, valor, dataLimite, categoria, ano, apiKey } = req.body || {};
+    // Chave de API simples para proteger o endpoint
+    if (apiKey !== (process.env.NOTIFY_API_KEY || 'mpr-notify-2026')) {
+        return res.status(401).json({ success: false, error: 'API key inválida.' });
+    }
+    if (!nif || !matricula) {
+        return res.status(400).json({ success: false, error: 'nif e matricula obrigatórios.' });
+    }
+    try {
+        // Encontrar cliente pelo NIF
+        const nifClean = String(nif).replace(/\D+/g, '');
+        const customers = await dbAllAsync(
+            `SELECT id, name, phone FROM customers WHERE replace(replace(nif,' ',''),'-','') = ? OR nif LIKE ? LIMIT 5`,
+            [nifClean, `%${nifClean}%`]
+        );
+        const customer = customers?.[0];
+        if (!customer || !customer.phone) {
+            return res.status(404).json({ success: false, error: `Cliente com NIF ${nif} não encontrado ou sem telefone.` });
+        }
+        const phone = String(customer.phone).replace(/\D+/g, '');
+        const valorFmt = valor ? `${parseFloat(valor).toFixed(2).replace('.', ',')} €` : '';
+        const dataFmt = dataLimite ? new Date(dataLimite).toLocaleDateString('pt-PT') : '';
+        const message = `Bom dia ${customer.name},\n\nO IUC do veículo *${matricula}*${categoria ? ` (Cat. ${categoria})` : ''}${ano ? ` referente a ${ano}` : ''} no valor de *${valorFmt}* tem data limite de pagamento em *${dataFmt}*.\n\nQualquer dúvida estamos disponíveis.\n\nCom os melhores cumprimentos,\nMPR Negócios, Lda`;
+        // Enviar via WA PRO
+        const sendRes = await fetch(`http://localhost:${PORT}/api/chat/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: phone, message, type: 'text', createdBy: null }),
+        });
+        const sendJson = await sendRes.json();
+        if (!sendJson.success) throw new Error(sendJson.error || 'Falha ao enviar WA');
+        return res.json({ success: true, message: `Notificação IUC enviada para ${customer.name} (${phone}).`, queueId: sendJson.queueId });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: String(error?.message || error) });
+    }
+});
+
 if (!IS_CHAT_CORE_ONLY) {
     registerFrontendRoutes({
         app,
