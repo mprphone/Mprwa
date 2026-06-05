@@ -1,6 +1,6 @@
 {
   "name": "whatsapp-manager-local",
-  "version": "1.0.89",
+  "version": "1.0.90",
   "description": "WhatsApp Manager Minimalista",
   "main": "electron/main.js",
   "scripts": {
@@ -41,7 +41,7 @@
     "@capacitor/device": "^7.0.4",
     "@capacitor/local-notifications": "^7.0.6",
     "@capacitor/push-notifications": "^7.0.6",
-    "@whiskeysockets/baileys": "^7.0.0-rc.9",
+    "@whiskeysockets/baileys": "^7.0.0-rc13",
     "axios": "^1.6.0",
     "body-parser": "^1.20.2",
     "dotenv": "^16.3.1",
