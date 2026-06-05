@@ -154,9 +154,9 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
     <div className="h-screen bg-gray-100 overflow-hidden flex flex-col">
       <header className="bg-white border-b border-gray-200 shrink-0">
-        <div className="h-16 px-3 md:px-6 flex items-center gap-3 md:gap-6">
-          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-2 py-1 shadow-sm shrink-0">
-            <div className="h-9 w-24 md:w-28 rounded-lg border border-slate-200 bg-white overflow-hidden flex items-center justify-center">
+        <div className="h-14 px-2 md:px-4 flex items-center gap-2 md:gap-4">
+          <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-2 py-1 shadow-sm shrink-0">
+            <div className="h-8 w-20 md:w-24 rounded-lg border border-slate-200 bg-white overflow-hidden flex items-center justify-center">
               {!logoFailed ? (
                 <img
                   src={logoSrc}
@@ -176,11 +176,11 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 </div>
               )}
             </div>
-            <span className="text-whatsapp-700 font-semibold text-lg leading-none">{APP_NAME}</span>
+            <span className="text-whatsapp-700 font-semibold text-base leading-none">{APP_NAME}</span>
           </div>
 
-          <nav className="flex-1 overflow-x-auto">
-            <div className="flex items-center gap-1 min-w-max">
+          <nav className="flex-1 overflow-x-auto scrollbar-hide">
+            <div className="flex items-center gap-0.5 min-w-max">
               {visibleNavItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = location.pathname.startsWith(item.path);
@@ -194,16 +194,16 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   <NavLink
                     key={item.path}
                     to={item.path}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[13px] font-medium transition-colors whitespace-nowrap ${
                       isActive
                         ? 'bg-whatsapp-50 text-whatsapp-700'
                         : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                     }`}
                   >
-                    <Icon size={16} />
+                    <Icon size={14} />
                     {item.label}
                     {badgeValue > 0 && (
-                      <span className="ml-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[11px] leading-[18px] text-center font-semibold">
+                      <span className="ml-0.5 min-w-[17px] h-[17px] px-1 rounded-full bg-rose-600 text-white text-[10px] leading-[17px] text-center font-semibold">
                         {badgeValue > 99 ? '99+' : badgeValue}
                       </span>
                     )}
@@ -213,22 +213,22 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             </div>
           </nav>
 
-          <div className="flex items-center gap-3 min-w-0 shrink-0">
+          <div className="flex items-center gap-2 min-w-0 shrink-0">
             <img
               src={currentUser?.avatarUrl}
               alt={currentUser?.name}
-              className="w-9 h-9 rounded-full bg-gray-200 object-cover"
+              className="w-8 h-8 rounded-full bg-gray-200 object-cover shrink-0"
             />
-            <div className="hidden md:block min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">{currentUser?.name}</p>
-              <p className="text-xs text-gray-500 truncate">{currentUser?.role}</p>
+            <div className="hidden lg:block min-w-0 max-w-[120px]">
+              <p className="text-xs font-medium text-gray-900 truncate">{currentUser?.name}</p>
+              <p className="text-[10px] text-gray-500 truncate">{currentUser?.role}</p>
             </div>
             <button
               onClick={handleLogout}
-              className="text-gray-400 hover:text-gray-600 p-2"
+              className="text-gray-400 hover:text-gray-600 p-1.5"
               title="Terminar sessão"
             >
-              <LogOut size={18} />
+              <LogOut size={16} />
             </button>
           </div>
         </div>
