@@ -78,6 +78,16 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     { path: '/reports', label: 'Relatórios', icon: BarChart2, adminOnly: true },
     { path: '/import', label: 'Importar', icon: UploadCloud, adminOnly: true },
   ];
+  // Versão curta dos labels para ecrãs ≤1600px
+  const shortLabels: Record<string, string> = {
+    'Chat Interno': 'Chat Int.',
+    'Ocorrências': 'Ocorr.',
+    'Funcionários': 'Funcio.',
+    'Simuladores': 'Simul.',
+    'Formulários': 'Forms',
+    'Relatórios': 'Relat.',
+    'Importar': 'Import.',
+  };
 
   const visibleNavItems = navItems.filter((item) => !item.adminOnly || isAdmin);
 
@@ -194,14 +204,16 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   <NavLink
                     key={item.path}
                     to={item.path}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[13px] font-medium transition-colors whitespace-nowrap ${
+                    title={item.label}
+                    className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-[12px] font-medium transition-colors whitespace-nowrap ${
                       isActive
                         ? 'bg-whatsapp-50 text-whatsapp-700'
                         : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                     }`}
                   >
                     <Icon size={14} />
-                    {item.label}
+                    <span className="hidden xl:inline">{item.label}</span>
+                    <span className="xl:hidden">{shortLabels[item.label] ?? item.label}</span>
                     {badgeValue > 0 && (
                       <span className="ml-0.5 min-w-[17px] h-[17px] px-1 rounded-full bg-rose-600 text-white text-[10px] leading-[17px] text-center font-semibold">
                         {badgeValue > 99 ? '99+' : badgeValue}
