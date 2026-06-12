@@ -1,0 +1,32 @@
+URL: https://www.acesso.gov.pt/v2/loginForm?partID=SFIC&path=/integrada/presentation
+
+Saltar para o conteúdo principal
+Bem-vindo
+ao serviço de autenticação da AT.
+Autentique-se para aceder aos serviços.
+
+6.0.19-11126 - 2026-03-17
+
+Entrar
+
+Escolha a opção de autenticação e introduza os seus dados
+
+CC / CMD
+NIF
+
+Faça a sua autenticação com Cartão de Cidadão ou Chave Móvel Digital
+
+Recuperar senha de acesso
+Alterar dados de acesso
+
+Não tem uma conta? Registe-se
+
+Como tratamos os seus dados pessoais?
+Segundo Fator de Autenticação
+Foi enviado um SMS para o número *******63 contendo um código que deve inserir no campo abaixo para provar a sua identidade. Tentativas restantes: 3
+Número de Identificação Fiscal
+Código SMS
+Requerido
+Cancelar
+Reenviar Código
+Autenticar

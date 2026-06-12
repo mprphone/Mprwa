@@ -1,0 +1,38 @@
+URL: https://www.acesso.gov.pt/v2/login
+
+Saltar para o conteúdo principal
+Bem-vindo
+ao serviço de autenticação da AT.
+Autentique-se para aceder aos serviços.
+
+6.0.19-11126 - 2026-03-17
+
+Entrar
+CC / CMD
+NIF
+EORI
+Utilizador
+Password
+Mostrar Password
+Autenticar
+Recuperar senha de acesso
+Alterar dados de acesso
+
+Não tem uma conta? Registe-se
+
+Como tratamos os seus dados pessoais?
+Adira ao Segundo Fator de Autenticação
+
+Reforce a segurança da sua conta ao ativar o Segundo Fator de Autenticação (2FA).
+Com o 2FA, além da sua senha, será necessário confirmar a sua identidade com um código único enviado por SMS.
+O 2FA impede o acesso de terceiros aos seus dados pessoais, incluindo nas situações em que a senha possa ter ficado comprometida.
+
+Como funciona?
+Inicie a autenticação com as suas credenciais (NIF e senha).
+Irá receber um código de segurança via SMS no seu telefone confirmado.
+Insira o código para completar a autenticação.
+
+Clique em "Aderir" para ativar o 2FA.
+
+Continuar Login
+Aderir

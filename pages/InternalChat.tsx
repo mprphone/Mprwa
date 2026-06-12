@@ -5,6 +5,7 @@ import {
   CalendarDays,
   Check,
   CheckSquare,
+  ChevronDown,
   Copy,
   FileText,
   Forward,
@@ -210,6 +211,9 @@ const InternalChat: React.FC = () => {
     dueDate: addDaysIso(1),
     notes: '',
   });
+  const [taskCustomerQuery, setTaskCustomerQuery] = useState('');
+  const [taskCustomerOpen, setTaskCustomerOpen] = useState(false);
+  const taskCustomerRef = React.useRef<HTMLDivElement>(null);
 
   const endRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
@@ -2316,11 +2320,50 @@ const InternalChat: React.FC = () => {
               <button onClick={() => !actionSaving && setActionModal('')} className="rounded p-1 text-slate-500 hover:bg-slate-100" title="Fechar"><X size={20} /></button>
             </div>
             <div className="space-y-4 px-5 py-4">
-              <label className="block text-sm font-semibold text-slate-700">Cliente associado
-                <select value={taskForm.customerId} onChange={(event) => setTaskForm((prev) => ({ ...prev, customerId: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                  <option value="">Escolher cliente...</option>{actionCustomers.map((customer) => <option key={customer.id} value={customer.id}>{customerLabel(customer)}</option>)}
-                </select>
-              </label>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Cliente associado</label>
+                <div ref={taskCustomerRef} className="relative">
+                  {/* Combobox com pesquisa — igual ao de Tarefas */}
+                  <div className={`flex items-center rounded-lg border bg-white transition-all ${taskCustomerOpen ? 'border-emerald-400 ring-2 ring-emerald-100' : 'border-slate-200'}`}>
+                    <input
+                      type="text"
+                      className="flex-1 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none bg-transparent"
+                      value={taskCustomerQuery || (taskForm.customerId ? (customerLabel(actionCustomers.find(c => c.id === taskForm.customerId)!) || taskCustomerQuery) : '')}
+                      onChange={(e) => { setTaskCustomerQuery(e.target.value); setTaskCustomerOpen(true); if (!e.target.value) setTaskForm((prev) => ({ ...prev, customerId: '' })); }}
+                      onFocus={() => setTaskCustomerOpen(true)}
+                      onBlur={() => setTimeout(() => setTaskCustomerOpen(false), 150)}
+                      placeholder="Escreva nome ou NIF para pesquisar..."
+                      autoComplete="off"
+                    />
+                    <button type="button" tabIndex={-1} className="px-2 text-slate-400" onClick={() => setTaskCustomerOpen(v => !v)}>
+                      <ChevronDown size={14} className={`transition-transform ${taskCustomerOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                  </div>
+                  {taskForm.customerId && !taskCustomerOpen && (
+                    <p className="mt-1 text-[11px] text-emerald-600 font-medium">✓ {customerLabel(actionCustomers.find(c => c.id === taskForm.customerId)!)}</p>
+                  )}
+                  {taskCustomerOpen && (() => {
+                    const q = taskCustomerQuery.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+                    const filtered = actionCustomers
+                      .filter(c => !q || customerLabel(c).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes(q) || (c.nif || '').includes(q))
+                      .sort((a, b) => customerLabel(a).localeCompare(customerLabel(b), 'pt'));
+                    return filtered.length > 0 ? (
+                      <div className="absolute z-50 mt-1 w-full max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                        {filtered.map(c => (
+                          <button key={c.id} type="button"
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-emerald-50 transition-colors border-b border-slate-50 last:border-0"
+                            onMouseDown={() => { setTaskForm(prev => ({ ...prev, customerId: c.id })); setTaskCustomerQuery(''); setTaskCustomerOpen(false); }}>
+                            <span className="flex-1 font-medium text-slate-800 truncate">{c.company || c.name}</span>
+                            {c.nif && <span className="shrink-0 text-[11px] font-mono text-slate-400">{c.nif}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    ) : taskCustomerQuery ? (
+                      <div className="absolute z-50 mt-1 w-full rounded-xl border border-slate-200 bg-white shadow-lg px-4 py-3 text-sm text-slate-400">Sem resultados para "{taskCustomerQuery}"</div>
+                    ) : null;
+                  })()}
+                </div>
+              </div>
               <label className="block text-sm font-semibold text-slate-700">Assunto<input value={taskForm.title} onChange={(event) => setTaskForm((prev) => ({ ...prev, title: event.target.value }))} placeholder="Ex: Enviar orçamento retificado" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <label className="block text-sm font-semibold text-slate-700">Responsável<select value={taskForm.assignedUserId} onChange={(event) => setTaskForm((prev) => ({ ...prev, assignedUserId: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">{users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>

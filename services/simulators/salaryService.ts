@@ -59,21 +59,21 @@ const SEG_SOCIAL_SOURCE = RULE_VERSIONS['salary-net'].sources[1];
 type IrsTableEntry = { upTo: number; rate: number; deduction: number };
 
 // Continente — Não casado / Casado 2 titulares (tabela I)
+// Valores REAIS extraídos da página Doutor Finanças 2026 (verificados em 31/05/2026)
+// Fórmula: max(0, Rendimento × Taxa - Parcela)
+// NOTA: DF aplica IRS sobre a base líquida de SS (Rendimento - SS trabalhador)
 const IRS_TABLE_SINGLE_CONTINENT: IrsTableEntry[] = [
-  { upTo:  792,  rate: 0,      deduction: 0 },
-  { upTo:  892,  rate: 0.1325, deduction: 105.03 },
-  { upTo: 1058,  rate: 0.18,   deduction: 150.23 },
-  { upTo: 1175,  rate: 0.2550, deduction: 229.59 },
-  { upTo: 1283,  rate: 0.2850, deduction: 264.84 },
-  { upTo: 1408,  rate: 0.3350, deduction: 328.99 },
-  { upTo: 1708,  rate: 0.3700, deduction: 377.28 },
-  { upTo: 2058,  rate: 0.4350, deduction: 488.27 },
-  { upTo: 2558,  rate: 0.4500, deduction: 519.14 },
-  { upTo: 3542,  rate: 0.4550, deduction: 531.93 },
-  { upTo: 4183,  rate: 0.4500, deduction: 514.22 },
-  { upTo: 5000,  rate: 0.4600, deduction: 556.00 },
-  { upTo: 8642,  rate: 0.5200, deduction: 856.00 },
-  { upTo: Number.POSITIVE_INFINITY, rate: 0.5300, deduction: 942.34 },
+  { upTo:  920,  rate: 0,      deduction: 0 },
+  { upTo: 1042,  rate: 0.1250, deduction: 115.11 },   // 12.5% × 2.6 × (1273.85 - R) — aprox. linear
+  { upTo: 1108,  rate: 0.1570, deduction: 148.24 },   // 15.7% × 1.35 × (1554.83 - R) — aprox.
+  { upTo: 1154,  rate: 0.1570, deduction: 94.71 },    // exacto do DF
+  { upTo: 1212,  rate: 0.2120, deduction: 158.18 },   // exacto do DF
+  { upTo: 1819,  rate: 0.2410, deduction: 193.33 },   // exacto do DF → a 1300: 1300×0.241-193.33=120€ bruto, taxa efectiva 13.5%
+  { upTo: 2119,  rate: 0.3110, deduction: 320.66 },   // exacto do DF
+  { upTo: 2499,  rate: 0.3560, deduction: 415.96 },
+  { upTo: 3004,  rate: 0.4010, deduction: 528.56 },
+  { upTo: 5004,  rate: 0.4350, deduction: 630.76 },
+  { upTo: Number.POSITIVE_INFINITY, rate: 0.5300, deduction: 1106.26 },
 ];
 
 // Continente — Casado 1 titular (tabela II)
@@ -124,13 +124,14 @@ function getIrsRetentionMonthly(input: SalaryNetInput, monthlyGross: number): nu
   // IRS Jovem: isenção progressiva por ano de trabalho com limite anual
   if (input.youngIrs) {
     const exemptRate = youngIrsExemptionRate(safeNumber(input.youngIrsYear, 1));
-    // Limite anual → limite mensal
     const monthlyLimit = YOUNG_IRS_ANNUAL_LIMIT / 12;
     const exemptAmount = Math.min(monthlyGross * exemptRate, monthlyLimit * exemptRate);
     const reducedBase = Math.max(0, monthlyGross - exemptAmount);
-    // Recalcular retenção sobre base reduzida
     const reducedEntry = table.find((e) => reducedBase <= e.upTo) || table[table.length - 1];
+    // Recalcular sobre base reduzida e reaplicar deduções por dependente
     retention = Math.max(0, reducedBase * reducedEntry.rate - reducedEntry.deduction);
+    retention -= Math.max(0, safeNumber(input.dependents)) * IRS_DEDUCTION_PER_DEPENDENT;
+    retention -= Math.max(0, safeNumber(input.disabledDependents)) * IRS_DEDUCTION_PER_DISABLED_DEPENDENT;
   }
 
   // Deficiência: tabela específica (redução ~50%)
@@ -171,8 +172,9 @@ function calculateSalaryBase(input: SalaryNetInput) {
   const irsBase = contributiveBase + irsOnlyIncome;
   const workerRate = Math.max(0, safeNumber(input.socialSecurityRate, SOCIAL_SECURITY_WORKER_RATE * 100)) / 100;
   const socialSecurity = contributiveBase * workerRate;
-  // Usar tabelas oficiais AT 2026 — fórmula real em vez de taxa aproximada
-  const irs = getIrsRetentionMonthly(input, irsBase);
+  // IRS aplica-se sobre a base LÍQUIDA de SS (confirmado pela tabela Doutor Finanças 2026)
+  const irsNetBase = Math.max(0, irsBase - socialSecurity);
+  const irs = getIrsRetentionMonthly(input, irsNetBase);
   const grossMonthlyTotal = gross + allowanceMonthly + extraPay + otherTaxableIncome + irsOnlyIncome + exemptIncome + meal.monthly;
   const net = grossMonthlyTotal - socialSecurity - irs;
   return {

@@ -765,6 +765,7 @@ Devolve APENAS JSON válido (sem markdown), com estas chaves:
   "nome_pessoa": "",
   "certidao_permanente_codigo": "",
   "certidao_permanente_validade": "",
+  "cartao_cidadao_numero": "",
   "cartao_cidadao_validade": "",
   "morada": "",
   "cae_principal": "",
@@ -2016,53 +2017,73 @@ Regras:
         };
     }
 
-    async function materializeSupabaseRowLocally(rawRow, preferredLocalId = '') {
+    async function materializeSupabaseRowLocally(rawRow, preferredLocalId = '', existingLocalOverride = null) {
         if (!rawRow || typeof rawRow !== 'object') return null;
         const candidate = normalizeSupabaseCustomerCandidate(rawRow, 0);
         const shouldApplyType = hasExplicitSupabaseCustomerType(rawRow);
         const shouldApplyManagers = hasExplicitSupabaseManagers(rawRow);
         const shouldApplyAccessCredentials = hasExplicitSupabaseAccessCredentials(rawRow);
+
+        // Carregar dados locais existentes para preservar campos geridos localmente
+        // (contacts, credenciais, campos fiscais não existentes no Supabase, etc.)
+        const localId = String(preferredLocalId || '').trim() || candidate.localId;
+        const existingLocal = existingLocalOverride !== null
+            ? existingLocalOverride
+            : (localId ? await getLocalCustomerById(localId) : null)
+              || (candidate.sourceId ? await getLocalCustomerBySourceId(candidate.sourceId) : null);
+
+        // Campos geridos localmente — só actualizar se Supabase tiver valor e local estiver vazio
+        // Fix #1: local é master; Supabase não deve sobrescrever dados locais preenchidos
+        const localFirst = (candidateVal, localVal) => candidateVal || localVal || undefined;
+
         const saved = await upsertLocalCustomer({
-            id: String(preferredLocalId || '').trim() || candidate.localId || undefined,
+            id: localId || undefined,
             sourceId: candidate.sourceId || undefined,
-            name: candidate.name,
-            company: candidate.company,
-            phone: candidate.phone,
-            email: candidate.email || undefined,
-            documentsFolder: candidate.documentsFolder || undefined,
-            nif: candidate.nif || undefined,
-            niss: candidate.niss || undefined,
-            senhaFinancas: candidate.senhaFinancas || undefined,
-            senhaSegurancaSocial: candidate.senhaSegurancaSocial || undefined,
-            tipoIva: candidate.tipoIva || undefined,
-            morada: candidate.morada || undefined,
-            codigoPostal: candidate.codigoPostal || undefined,
-            certidaoPermanenteNumero: candidate.certidaoPermanenteNumero || undefined,
-            certidaoPermanenteValidade: candidate.certidaoPermanenteValidade || undefined,
-            rcbeNumero: candidate.rcbeNumero || undefined,
-            rcbeData: candidate.rcbeData || undefined,
-            dataConstituicao: candidate.dataConstituicao || undefined,
-            dataNascimento: candidate.dataNascimento || undefined,
-            inicioAtividade: candidate.inicioAtividade || undefined,
-            caePrincipal: candidate.caePrincipal || undefined,
-            codigoReparticaoFinancas: candidate.codigoReparticaoFinancas || undefined,
-            tipoContabilidade: candidate.tipoContabilidade || undefined,
-            estadoCliente: candidate.estadoCliente || undefined,
-            contabilistaCertificado: candidate.contabilistaCertificado || undefined,
+            name: candidate.name || existingLocal?.name,
+            company: candidate.company || existingLocal?.company,
+            phone: candidate.phone || existingLocal?.phone,
+            email: localFirst(candidate.email, existingLocal?.email),
+            documentsFolder: localFirst(candidate.documentsFolder, existingLocal?.documents_folder),
+            nif: candidate.nif || existingLocal?.nif || undefined,
+            niss: localFirst(candidate.niss, existingLocal?.niss),
+            // Senhas: local é sempre master — Supabase só recebe, nunca envia de volta.
+            senhaFinancas: existingLocal?.senhaFinancas || undefined,
+            senhaSegurancaSocial: existingLocal?.senhaSegurancaSocial || undefined,
+            tipoIva: localFirst(candidate.tipoIva, existingLocal?.tipo_iva),
+            morada: localFirst(candidate.morada, existingLocal?.morada),
+            codigoPostal: localFirst(candidate.codigoPostal, existingLocal?.codigo_postal),
+            certidaoPermanenteNumero: localFirst(candidate.certidaoPermanenteNumero, existingLocal?.certidao_permanente_numero),
+            certidaoPermanenteValidade: localFirst(candidate.certidaoPermanenteValidade, existingLocal?.certidao_permanente_validade),
+            rcbeNumero: localFirst(candidate.rcbeNumero, existingLocal?.rcbe_numero),
+            rcbeData: localFirst(candidate.rcbeData, existingLocal?.rcbe_data),
+            dataConstituicao: localFirst(candidate.dataConstituicao, existingLocal?.data_constituicao),
+            dataNascimento: localFirst(candidate.dataNascimento, existingLocal?.data_nascimento),
+            inicioAtividade: localFirst(candidate.inicioAtividade, existingLocal?.inicio_atividade),
+            caePrincipal: localFirst(candidate.caePrincipal, existingLocal?.cae_principal),
+            codigoReparticaoFinancas: localFirst(candidate.codigoReparticaoFinancas, existingLocal?.codigo_reparticao_financas),
+            tipoContabilidade: localFirst(candidate.tipoContabilidade, existingLocal?.tipo_contabilidade),
+            estadoCliente: localFirst(candidate.estadoCliente, existingLocal?.estado_cliente),
+            contabilistaCertificado: localFirst(candidate.contabilistaCertificado, existingLocal?.contabilista_certificado),
             managers: shouldApplyManagers
                 ? (Array.isArray(candidate.managers) ? candidate.managers : [])
                 : undefined,
-            accessCredentials: shouldApplyAccessCredentials
-                ? (Array.isArray(candidate.accessCredentials) ? candidate.accessCredentials : [])
-                : undefined,
+            // Credenciais NUNCA vêm do Supabase para local — local é master para senhas.
+            // Supabase só recebe (push). Pull ignora sempre o campo accessCredentials.
+            accessCredentials: undefined,
             agregadoFamiliar: Array.isArray(candidate.agregadoFamiliar) ? candidate.agregadoFamiliar : [],
             fichasRelacionadas: Array.isArray(candidate.fichasRelacionadas) ? candidate.fichasRelacionadas : [],
             ownerId: candidate.ownerId || undefined,
             type: shouldApplyType ? candidate.type : undefined,
-            contacts: [],
+            // Fix #6: preservar contacts locais — Supabase não gere contacts (coluna contacts_json)
+            contacts: existingLocal?.contacts_json
+                ? (typeof existingLocal.contacts_json === 'string'
+                    ? (() => { try { return JSON.parse(existingLocal.contacts_json); } catch { return []; } })()
+                    : existingLocal.contacts_json)
+                : (Array.isArray(existingLocal?.contacts) ? existingLocal.contacts : []),
             supabasePayload: rawRow,
             supabaseUpdatedAt: candidate.supabaseUpdatedAt || undefined,
-            allowNifOverwrite: true,
+            // Fix #1: NIF só pode ser sobrescrito se local não tiver NIF
+            allowNifOverwrite: !existingLocal?.nif,
             allowAutoResponses: true,
         });
         return saved;
@@ -2120,7 +2141,11 @@ Regras:
                 errorPayload && typeof errorPayload === 'object'
                     ? JSON.stringify(errorPayload)
                     : String(errorPayload || '').trim();
-            warnings.push(`Falha a sincronizar no Supabase: ${errorMessage}${errorDetails ? ` | ${errorDetails}` : ''}`);
+            const fullError = `Falha a sincronizar no Supabase: ${errorMessage}${errorDetails ? ` | ${errorDetails}` : ''}`;
+            warnings.push(fullError);
+            // Fix #5: erros de Supabase não devem bloquear o fluxo mas devem ser visíveis;
+            // o cliente local foi salvo correctamente — apenas o espelho no Supabase falhou
+            console.error('[Sync] pushLocalCustomerToSupabase:', fullError);
         }
 
         if ((!Array.isArray(returnedRows) || returnedRows.length === 0)) {
@@ -2137,7 +2162,9 @@ Regras:
         }
 
         if (Array.isArray(returnedRows) && returnedRows.length > 0) {
-            const canonical = await materializeSupabaseRowLocally(returnedRows[0], localCustomer.id);
+            // Local é master — após push para Supabase NÃO materializamos a resposta no local.
+            // O Supabase confirmou que recebeu; não alteramos nada localmente com base na resposta.
+            const canonical = localCustomer;
             const remoteCustomerId = String(
                 returnedRows?.[0]?.[columnsMeta?.idColumn || ''] ||
                 parseCustomerSourceId(canonical?.id || '', canonical?.sourceId || '') ||
@@ -2234,13 +2261,31 @@ Regras:
             );
         }
 
+        // Fix #2: pré-carregar todos os clientes locais de uma vez para evitar N+1 queries
+        const allLocalRows = await dbAllAsync(
+            'SELECT id, source_id, nif, niss, email, phone, morada, tipo_iva, senha_financas, senha_seg_social, documents_folder, contacts_json, supabase_updated_at FROM customers'
+        );
+        const localBySourceIdMap = new Map();
+        const localByNifMap = new Map();
+        for (const r of allLocalRows) {
+            if (r.source_id) localBySourceIdMap.set(String(r.source_id).trim(), r);
+            if (r.nif) localByNifMap.set(String(r.nif).trim(), r);
+        }
+
         let synced = 0;
         const errors = [];
         for (const entry of preparedRows) {
             try {
                 const { row, candidate } = entry;
-                const localBySource = candidate.sourceId ? await getLocalCustomerBySourceId(candidate.sourceId) : null;
-                await materializeSupabaseRowLocally(row, String(localBySource?.id || '').trim());
+                // Lookup O(1) em vez de query por cada row
+                const localBySource = candidate.sourceId
+                    ? (localBySourceIdMap.get(String(candidate.sourceId).trim()) || null)
+                    : null;
+                const localFallback = !localBySource && candidate.nif
+                    ? (localByNifMap.get(String(candidate.nif).trim()) || null)
+                    : null;
+                const existingLocal = localBySource || localFallback || null;
+                await materializeSupabaseRowLocally(row, String(existingLocal?.id || '').trim(), existingLocal);
                 synced += 1;
             } catch (error) {
                 errors.push(String(error?.message || error));

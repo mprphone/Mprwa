@@ -81,12 +81,37 @@ function registerAgendaRoutes(context) {
         return normalizeAgendaRow(row);
     }
 
-    app.get('/api/agenda/events', async (_req, res) => {
+    app.get('/api/agenda/events', async (req, res) => {
         try {
-            const rows = await dbAllAsync(
-                `SELECT * FROM agenda_events
-                 ORDER BY datetime(starts_at) ASC, datetime(updated_at) DESC`
-            );
+            const requestingUserId = String(req.query?.userId || '').trim();
+
+            // Verificar se o utilizador é admin (pode ver tudo)
+            let isAdmin = false;
+            if (requestingUserId) {
+                const userRow = await dbGetAsync(
+                    'SELECT role, email FROM users WHERE id = ? LIMIT 1',
+                    [requestingUserId]
+                );
+                isAdmin = userRow?.role === 'ADMIN' || userRow?.role === 'OWNER';
+            }
+
+            let rows;
+            if (!requestingUserId || isAdmin) {
+                // Admin ou sem filtro: devolver tudo
+                rows = await dbAllAsync(
+                    `SELECT * FROM agenda_events
+                     ORDER BY datetime(starts_at) ASC, datetime(updated_at) DESC`
+                );
+            } else {
+                // Funcionário: só os seus eventos
+                rows = await dbAllAsync(
+                    `SELECT * FROM agenda_events
+                     WHERE assigned_user_id = ?
+                     ORDER BY datetime(starts_at) ASC, datetime(updated_at) DESC`,
+                    [requestingUserId]
+                );
+            }
+
             return res.json({ success: true, data: rows.map(normalizeAgendaRow).filter(Boolean) });
         } catch (error) {
             return res.status(500).json({ success: false, error: error?.message || String(error) });

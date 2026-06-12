@@ -237,6 +237,64 @@ function parseManagersFromText(text) {
   return mergeManagers([], managers);
 }
 
+async function extractCaesFromDom(page) {
+  return page.evaluate(() => {
+    const normalize = (v) => String(v || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+    const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v.trim());
+    const result = [];
+
+    // Procurar tabela que tenha "Código" e "Descrição" nos cabeçalhos
+    const tables = Array.from(document.querySelectorAll('table'));
+    let caeTable = null;
+    for (const t of tables) {
+      const headerText = normalize((t.querySelector('thead') || t).textContent).toLowerCase();
+      if ((headerText.includes('código') || headerText.includes('codigo')) &&
+          (headerText.includes('descrição') || headerText.includes('descricao')) &&
+          (headerText.includes('tipo') || headerText.includes('cae'))) {
+        caeTable = t;
+        break;
+      }
+    }
+
+    if (!caeTable) {
+      // Fallback: procurar por linhas que contenham padrão "CAE Principal/Secundário"
+      for (const row of document.querySelectorAll('tr')) {
+        const cells = Array.from(row.querySelectorAll('td,th')).map(c => normalize(c.textContent));
+        if (cells.length < 2) continue;
+        const tipo = cells[0];
+        if (!/cae\s+(principal|secund)/i.test(tipo)) continue;
+        const codigo = cells.find(c => /^\d{5}$/.test(c.trim()));
+        if (!codigo) continue;
+        const desc = cells.find(c => c !== tipo && c !== codigo && !isDate(c) && c.length > 5);
+        result.push({ tipo: normalize(tipo), codigo: codigo.trim(), descricao: desc ? desc.replace(/\b\d{4}-\d{2}-\d{2}\b/g,'').trim() : '' });
+      }
+      return result;
+    }
+
+    // Descobrir índices das colunas
+    const headers = Array.from(caeTable.querySelectorAll('thead th, thead td')).map(c => normalize(c.textContent).toLowerCase());
+    const tipoIdx  = headers.findIndex(h => h.includes('tipo'));
+    const codIdx   = headers.findIndex(h => h.includes('código') || h.includes('codigo'));
+    const descIdx  = headers.findIndex(h => h.includes('descrição') || h.includes('descricao'));
+
+    for (const row of caeTable.querySelectorAll('tbody tr')) {
+      const cells = Array.from(row.querySelectorAll('td')).map(c => normalize(c.textContent));
+      if (cells.length < 2) continue;
+      const tipo   = tipoIdx  >= 0 ? cells[tipoIdx]  : cells[0];
+      const codigo = codIdx   >= 0 ? cells[codIdx]   : cells.find(c => /^\d{5}$/.test(c.trim())) || '';
+      const desc   = descIdx  >= 0 ? cells[descIdx]  : cells.find(c => c !== tipo && c !== codigo && c.length > 5 && !isDate(c)) || '';
+      if (!/cae\s+(principal|secund)/i.test(tipo) && !/principal|secund/i.test(tipo)) continue;
+      if (!/^\d{4,5}$/.test(codigo.trim())) continue;
+      result.push({
+        tipo:      normalize(tipo),
+        codigo:    codigo.trim(),
+        descricao: desc.replace(/\b\d{4}-\d{2}-\d{2}\b/g,'').trim(),
+      });
+    }
+    return result;
+  }).catch(() => []);
+}
+
 async function extractManagersFromDom(page) {
   const rows = await page.evaluate(() => {
     const normalize = (value) => String(value || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
@@ -339,9 +397,43 @@ function parseFieldsFromText(text) {
   ]) : '';
   if (caePrincipal) {
     fields.caePrincipal = caePrincipal;
-    const caeDescricaoMatch = activitySource?.match(new RegExp(`CAE\\s+Principal\\s+${caePrincipal}\\s+([^\\n\\r]+)`, 'i'));
+    // Capturar descrição até à data ou ao próximo "CAE Secundário"
+    const caeDescricaoMatch = activitySource?.match(
+      new RegExp(`CAE\\s+Principal\\s+${caePrincipal}\\s+(.+?)(?=\\s*\\d{4}-\\d{2}-\\d{2}|\\s+CAE\\s+Secund|\\n|\\r|$)`, 'i')
+    );
     const caeDescricao = caeDescricaoMatch ? caeDescricaoMatch[1].trim() : '';
     if (caeDescricao) fields.caeDescricao = caeDescricao;
+  }
+
+  // ── Todos os CAEs (principal + secundários) + atividades exercidas ──────────
+  if (activitySource) {
+    // Extrair todos os pares (código, descrição) da secção de atividade
+    const caeEntries = [];
+    // Formato: "CAE Principal NNNNN Descrição" ou "CAE Secundário NNNNN Descrição"
+    const caeRegex = /CAE\s+(Principal|Secund[aá]ri[oa]\s*\d*)\s+(\d{5})\s+([^\n\r]+?)(?=\s*CAE\s+|$)/gi;
+    let caeMatch;
+    while ((caeMatch = caeRegex.exec(activitySource)) !== null) {
+      const tipo = compactSpaces(caeMatch[1]).toLowerCase().startsWith('principal') ? 'Principal' : 'Secundário';
+      const codigo = caeMatch[2];
+      const descricao = compactSpaces(caeMatch[3]).replace(/\s+(CAE|Atividade|Actividade|Data|Tipo|Enquadramento|Contabilidade)\b.*/i, '').trim();
+      caeEntries.push({ tipo, codigo, descricao });
+    }
+    // Fallback: capturar linhas com apenas código 5 dígitos + descrição
+    if (caeEntries.length === 0) {
+      for (const m of activitySource.matchAll(/\b(\d{5})\s+([A-ZÀ-Ý][^\n\r]{5,80})/g)) {
+        if (m[1] === caePrincipal) continue; // já temos o principal
+        caeEntries.push({ tipo: 'Secundário', codigo: m[1], descricao: compactSpaces(m[2]).trim() });
+      }
+    }
+
+    if (caeEntries.length > 0) {
+      const secundarios = caeEntries.filter(e => e.tipo !== 'Principal');
+      if (secundarios.length > 0) {
+        fields.caeSecundarios = secundarios.map(e => e.codigo).join(', ');
+        // infoAtividades como JSON array [{codigo, descricao}] para os secundários
+        fields.infoAtividades = JSON.stringify(secundarios.map(e => ({ codigo: e.codigo, descricao: e.descricao })));
+      }
+    }
   }
 
   const tipoIva = activitySource ? firstRegexValue(activitySource, [
@@ -460,8 +552,30 @@ function mapPairsToFields(pairs) {
   const caeMatch = String(caePrincipalRaw || '').match(/^(\d{5}(?:-[A-Z]\d*)?)\s*(.*)?$/);
   if (caeMatch) {
     fields.caePrincipal = caeMatch[1];
-    const caeDescricao = (caeMatch[2] || '').trim();
+    // Limpar descrição: remover data e texto de CAEs seguintes
+    const caeDescricaoRaw = (caeMatch[2] || '').trim();
+    const caeDescricao = caeDescricaoRaw
+      .replace(/\s*\d{4}-\d{2}-\d{2}.*$/s, '')
+      .replace(/\s+CAE\s+Secund.*/is, '')
+      .trim();
     if (caeDescricao) fields.caeDescricao = caeDescricao;
+  }
+
+  // Secundários via label-value pairs
+  const caeEntries2 = [];
+  if (fields.caePrincipal) caeEntries2.push({ tipo: 'Principal', codigo: fields.caePrincipal, descricao: fields.caeDescricao || '' });
+  for (const { label, value } of rawMatches) {
+    if (/cae\s+secund/i.test(label)) {
+      const m2 = String(value || '').match(/^(\d{5})\s*(.*)?$/);
+      if (m2) caeEntries2.push({ tipo: 'Secundário', codigo: m2[1], descricao: (m2[2] || '').trim() });
+    }
+  }
+  if (caeEntries2.length > 0) {
+    const secundarios2 = caeEntries2.filter(e => e.tipo !== 'Principal');
+    if (secundarios2.length > 0) {
+      fields.caeSecundarios = secundarios2.map(e => e.codigo).join(', ');
+      fields.infoAtividades = JSON.stringify(secundarios2.map(e => ({ codigo: e.codigo, descricao: e.descricao })));
+    }
   }
 
   const reparticao = findByLabels(['codigo reparticao financas', 'codigo do servico financas', 'servico de financas', 'reparticao de financas']);
@@ -505,6 +619,45 @@ async function tryReadCurrentPage(page) {
   const managers = mergeManagers([...(pairResult.fields?.managers || []), ...(textFields.managers || [])], managersFromDom);
   const fields = { ...pairResult.fields, ...textFields };
   if (managers.length) fields.managers = managers;
+
+  // ── Extracção DOM dedicada para todos os CAEs ────────────────────────────
+  const caesFromDom = await extractCaesFromDom(page).catch(() => []);
+  if (caesFromDom.length > 0) {
+    const principal = caesFromDom.find(c => /principal/i.test(c.tipo));
+    const secundarios = caesFromDom.filter(c => !/principal/i.test(c.tipo));
+    if (principal) {
+      fields.caePrincipal = principal.codigo;
+      fields.caeDescricao = principal.descricao;
+    }
+    fields.caeSecundarios = secundarios.map(c => c.codigo).join(', ');
+    fields.infoAtividades = JSON.stringify(secundarios.map(c => ({ codigo: c.codigo, descricao: c.descricao })));
+  }
+
+  // ── Sempre limpar caeDescricao — pode ter apanhado texto dos secundários ──
+  if (fields.caeDescricao) {
+    const descRaw = String(fields.caeDescricao);
+    // Se a descrição contém "CAE Secundário" ou datas seguidas de "CAE", limpar
+    const cleanDesc = descRaw
+      .replace(/\s*\d{4}-\d{2}-\d{2}\s+CAE\b.*/is, '')  // remove data + "CAE Sec..."
+      .replace(/\s+\d{4}-\d{2}-\d{2}\s*$/, '')           // remove data no final
+      .replace(/\s+CAE\s+Secund.*/is, '')                 // remove "CAE Secundário..."
+      .trim();
+    fields.caeDescricao = cleanDesc;
+
+    // Se a descrição continha secundários, extraí-los do texto
+    if (!fields.infoAtividades && /CAE\s+Secund/i.test(descRaw)) {
+      const secEntries = [];
+      const secReg = /CAE\s+Secund[aá]ri[oa]\s*\d*\s+(\d{5})\s+([^0-9\n\r]{5,100}?)(?=\s*(?:\d{4}-\d{2}-\d{2}|\s*CAE\s+|$))/gi;
+      let m;
+      while ((m = secReg.exec(descRaw)) !== null) {
+        secEntries.push({ codigo: m[1], descricao: m[2].replace(/\s+\d{4}-\d{2}-\d{2}\s*$/, '').trim() });
+      }
+      if (secEntries.length > 0) {
+        fields.caeSecundarios = secEntries.map(e => e.codigo).join(', ');
+        fields.infoAtividades = JSON.stringify(secEntries);
+      }
+    }
+  }
 
   return {
     fields,

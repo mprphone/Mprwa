@@ -27,6 +27,7 @@ import type { OccurrenceRow } from '../services/occurrencesApi';
 const MESSAGE_UI_META_STORAGE_KEY = 'wa_pro_message_ui_meta_v1';
 const OPEN_CUSTOMER_PROFILE_STORAGE_KEY = 'wa_pro_open_customer_id';
 const DEFAULT_CUSTOMER_BY_PHONE_STORAGE_KEY = 'wa_pro_default_customer_by_phone_v1';
+const WHATSAPP_SEND_COOLDOWN_MS = 10_000;
 const LOCAL_FINANCAS_AUTOMATION_BRIDGE_URL = String(
   import.meta.env?.VITE_LOCAL_AUTOMATION_BRIDGE_URL || 'http://127.0.0.1:30777/financas-autologin'
 ).trim();
@@ -326,6 +327,7 @@ const Inbox: React.FC = () => {
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [isSendingAttachment, setIsSendingAttachment] = useState(false);
   const [isSendingImage, setIsSendingImage] = useState(false);
+  const [sendCooldownRemainingSec, setSendCooldownRemainingSec] = useState(0);
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
   const [isCustomerProfileOpen, setIsCustomerProfileOpen] = useState(false);
   const [messageUiMetaByConversation, setMessageUiMetaByConversation] = useState<
@@ -358,9 +360,12 @@ const Inbox: React.FC = () => {
   const messageSnapshotRef = useRef<Record<string, { lastInboundId: string; lastInboundAt: string }>>({});
   const chatContactsRef = useRef<ChatContactRow[]>([]);
   const shouldAutoScrollMessagesRef = useRef(true);
+  const sendCooldownUntilRef = useRef(0);
+  const sendCooldownTimerRef = useRef<number | null>(null);
 
   const selectedConversation = conversations.find(c => c.id === selectedConvId);
   const isChatSendBusy = isSendingMessage || isSendingAttachment || isSendingImage;
+  const isSendCooldownActive = sendCooldownRemainingSec > 0;
   const selectedCustomerId = selectedCustomerIdOverride || selectedConversation?.customerId || null;
   const selectedCustomer = selectedCustomerId
     ? customers.find(c => c.id === selectedCustomerId) || null
@@ -371,6 +376,31 @@ const Inbox: React.FC = () => {
     const defaultAccount = (Array.isArray(whatsAppAccounts) ? whatsAppAccounts : []).find((item) => item.isDefault);
     return String(defaultAccount?.accountId || '').trim() || null;
   }, [selectedConversation?.whatsappAccountId, whatsAppAccounts]);
+
+  const clearSendCooldownTimer = useCallback(() => {
+    if (sendCooldownTimerRef.current !== null) {
+      window.clearInterval(sendCooldownTimerRef.current);
+      sendCooldownTimerRef.current = null;
+    }
+  }, []);
+
+  const startSendCooldown = useCallback(() => {
+    sendCooldownUntilRef.current = Date.now() + WHATSAPP_SEND_COOLDOWN_MS;
+    const updateRemaining = () => {
+      const remainingMs = Math.max(0, sendCooldownUntilRef.current - Date.now());
+      const remainingSec = Math.ceil(remainingMs / 1000);
+      setSendCooldownRemainingSec(remainingSec);
+      if (remainingSec <= 0) {
+        clearSendCooldownTimer();
+      }
+    };
+
+    clearSendCooldownTimer();
+    updateRemaining();
+    sendCooldownTimerRef.current = window.setInterval(updateRemaining, 250);
+  }, [clearSendCooldownTimer]);
+
+  useEffect(() => () => clearSendCooldownTimer(), [clearSendCooldownTimer]);
 
   const getMessageScrollContainer = useCallback(() => {
     return messagesEndRef.current?.parentElement as HTMLDivElement | null;
@@ -1460,12 +1490,14 @@ const Inbox: React.FC = () => {
   const handleDropLocalFilesToConversation = async (files: File[]) => {
     if (!selectedConvId || files.length === 0) return;
     if (isChatSendBusy) return;
+    if (isSendCooldownActive) return;
     if (!isWithin24hWindow) {
       alert('Janela de 24h fechada. Só é permitido template nesta fase.');
       return;
     }
 
     setIsSendingAttachment(true);
+    let sentCount = 0;
     try {
       for (const file of files) {
         try {
@@ -1487,11 +1519,15 @@ const Inbox: React.FC = () => {
               mimeType: uploaded.mimeType || file.type,
             });
           }
+          sentCount += 1;
         } catch (error) {
           alert(error instanceof Error ? error.message : `Falha ao processar ficheiro ${file.name}.`);
         }
       }
 
+      if (sentCount > 0) {
+        startSendCooldown();
+      }
       await loadMessages(selectedConvId);
       await loadData();
     } finally {
@@ -1501,6 +1537,7 @@ const Inbox: React.FC = () => {
 
   const handleDropCustomerDocumentToConversation = async (relativePath: string, fileName: string) => {
     if (!selectedConvId || !selectedCustomer?.id) return;
+    if (isChatSendBusy || isSendCooldownActive) return;
     if (!isWithin24hWindow) {
       alert('Janela de 24h fechada. Só é permitido template nesta fase.');
       return;
@@ -1536,6 +1573,7 @@ const Inbox: React.FC = () => {
           mimeType,
         });
       }
+      startSendCooldown();
       await loadMessages(selectedConvId);
       await loadData();
     } catch (error) {
@@ -1545,7 +1583,7 @@ const Inbox: React.FC = () => {
 
   const triggerChatAttachmentPicker = async () => {
     if (!selectedConvId) return;
-    if (isChatSendBusy) return;
+    if (isChatSendBusy || isSendCooldownActive) return;
     if (!isWithin24hWindow) {
       alert('Janela de 24h fechada. Só é permitido template nesta fase.');
       return;
@@ -1882,6 +1920,7 @@ const Inbox: React.FC = () => {
       }
 
       if (!newMessage.trim()) return;
+      if (!editingMessage && isSendCooldownActive) return;
 
       if (!isWithin24hWindow) {
           // Double check: UI should prevent this, but just in case
@@ -1894,6 +1933,7 @@ const Inbox: React.FC = () => {
   const performSendMessage = async (type: 'text' | 'template', templateId?: string) => {
     if (!selectedConvId) return;
     if (isSendingMessage) return;
+    if (isSendCooldownActive) return;
     shouldAutoScrollMessagesRef.current = true;
     setShowJumpToLatest(false);
     setIsSendingMessage(true);
@@ -1929,6 +1969,7 @@ const Inbox: React.FC = () => {
       setReplyingTo(null);
       setShowTemplateConfirm(false);
       setShowTemplatePicker(false);
+      startSendCooldown();
       await loadData();
       await loadMessages(selectedConvId);
       focusMessageComposer();
@@ -2479,14 +2520,14 @@ const Inbox: React.FC = () => {
   };
 
   const triggerImagePicker = () => {
-    if (isChatSendBusy) return;
+    if (isChatSendBusy || isSendCooldownActive) return;
     if (selectedConversation?.status === ConversationStatus.CLOSED) return;
     imageInputRef.current?.click();
   };
 
   const sendImageFileToChat = async (file: File) => {
     if (!file || !selectedConvId) return;
-    if (isChatSendBusy) return;
+    if (isChatSendBusy || isSendCooldownActive) return;
     if (!String(file.type || '').toLowerCase().startsWith('image/')) {
       alert('Só é possível colar/enviar imagens nesta ação.');
       return;
@@ -2514,6 +2555,7 @@ const Inbox: React.FC = () => {
       setNewMessage('');
       setReplyingTo(null);
       setEditingMessage(null);
+      startSendCooldown();
       window.setTimeout(() => {
         if (selectedConvRef.current === selectedConvId) {
           void loadMessages(selectedConvId);
@@ -3367,18 +3409,18 @@ const Inbox: React.FC = () => {
                    <button
                       type="button"
                       onClick={triggerChatAttachmentPicker}
-                      disabled={!isWithin24hWindow || isChatSendBusy}
+                      disabled={!isWithin24hWindow || isChatSendBusy || isSendCooldownActive}
                       className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
-                      title="Enviar anexo"
+                      title={isSendCooldownActive ? `Aguarde ${sendCooldownRemainingSec}s` : 'Enviar anexo'}
                     >
                       <Paperclip size={20} />
                    </button>
                    <button
                       type="button"
                       onClick={triggerImagePicker}
-                      disabled={!isWithin24hWindow || isChatSendBusy}
+                      disabled={!isWithin24hWindow || isChatSendBusy || isSendCooldownActive}
                       className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
-                      title="Enviar imagem"
+                      title={isSendCooldownActive ? `Aguarde ${sendCooldownRemainingSec}s` : 'Enviar imagem'}
                     >
                       <ImagePlus size={20} />
                    </button>
@@ -3390,7 +3432,11 @@ const Inbox: React.FC = () => {
                         placeholder={
                           !isWithin24hWindow && !editingMessage
                             ? "Janela fechada. Use um Template."
-                            : (editingMessage ? "Edite a mensagem..." : "Escreva uma mensagem... (Ctrl+V para colar imagem)")
+                            : (
+                              editingMessage
+                                ? "Edite a mensagem..."
+                                : (isSendCooldownActive ? `Aguarde ${sendCooldownRemainingSec}s para enviar nova mensagem` : "Escreva uma mensagem... (Ctrl+V para colar imagem)")
+                            )
                         }
                         className={`w-full bg-transparent border-none focus:outline-none resize-none text-sm max-h-32 ${!isWithin24hWindow && !editingMessage ? 'cursor-not-allowed text-gray-400' : ''}`}
                         value={newMessage}
@@ -3399,7 +3445,7 @@ const Inbox: React.FC = () => {
                         onKeyDown={(e) => {
                            if (e.key === 'Enter' && !e.shiftKey) {
                              e.preventDefault();
-                             if ((isWithin24hWindow || editingMessage) && newMessage.trim() && !isChatSendBusy) {
+                             if ((isWithin24hWindow || editingMessage) && newMessage.trim() && !isChatSendBusy && (editingMessage || !isSendCooldownActive)) {
                                void handleSendClick(e as unknown as React.FormEvent);
                              }
                            }
@@ -3411,6 +3457,7 @@ const Inbox: React.FC = () => {
                        <button 
                         type="button"
                         onClick={() => {
+                            if (isSendCooldownActive) return;
                             if (isUnknownCustomer) {
                                 alert("Salve o cliente antes de enviar um template.");
                                 return;
@@ -3421,15 +3468,18 @@ const Inbox: React.FC = () => {
                             }
                             setShowTemplatePicker(true);
                         }}
-                        className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 text-xs font-bold shadow-sm whitespace-nowrap"
+                        disabled={isSendCooldownActive}
+                        className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold shadow-sm whitespace-nowrap"
+                        title={isSendCooldownActive ? `Aguarde ${sendCooldownRemainingSec}s` : 'Escolher Template'}
                        >
                            Escolher Template ($)
                        </button>
                    ) : (
                        <button 
                         type="submit" 
-                        disabled={!newMessage.trim() || isChatSendBusy}
+                        disabled={!newMessage.trim() || isChatSendBusy || (!editingMessage && isSendCooldownActive)}
                         className={`p-2 text-white rounded-full disabled:opacity-50 disabled:cursor-not-allowed ${editingMessage ? 'bg-amber-500 hover:bg-amber-600' : 'bg-whatsapp-600 hover:bg-whatsapp-700'}`}
+                        title={!editingMessage && isSendCooldownActive ? `Aguarde ${sendCooldownRemainingSec}s` : 'Enviar'}
                        >
                           <Send size={20} />
                        </button>

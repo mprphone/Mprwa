@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs ls -lh)",
+      "Bash(node -e ' *)",
+      "Bash(curl -s -X POST http://127.0.0.1:3010/api/simulators/history -H 'Content-Type: application/json' -d '{\"id\":\"test_emp\",\"customerName\":\"Teste\",\"employeeName\":\"João Silva\",\"result\":{\"simulatorId\":\"act-compensation\",\"title\":\"Teste\",\"summary\":[],\"details\":[],\"basis\":[],\"warnings\":[],\"version\":{\"id\":\"test\",\"validFrom\":\"2026-01-01\"},\"computedAt\":\"2026-05-22T00:00:00Z\"}}')",
+      "Bash(curl -s http://127.0.0.1:3010/api/simulators/history)",
+      "Bash(python3 -c \"import sys,json; items=json.load\\(sys.stdin\\)['items']; [print\\(i['id'], '|', i.get\\('employeeName','\\(none\\)'\\)\\) for i in items[:5]]\")",
+      "Bash(curl -s -X POST http://127.0.0.1:3010/api/simulators/salary/validate-official -H 'Content-Type: application/json' -d '{\"input\":{\"grossSalary\":900,\"dependents\":0,\"maritalStatus\":\"single\",\"region\":\"continent\",\"mealType\":\"card\",\"mealAllowanceDaily\":7.5,\"mealDays\":22,\"socialSecurityRate\":11,\"duodecimos\":false}}')",
+      "Bash(awk 'NR>=986 && NR<=1040' /home/ubuntu/programas/mprWA/pages/Simulators.tsx)",
+      "Bash(awk 'NR>=1070 && NR<=1130' /home/ubuntu/programas/mprWA/pages/Simulators.tsx)",
+      "Bash(awk 'NR>=1035 && NR<=1075' /home/ubuntu/programas/mprWA/pages/Simulators.tsx)",
+      "Bash(awk 'NR==1063 || NR==1064 || NR==1065 || NR==1066 || NR==1067 || NR==1068 || NR==1069' /home/ubuntu/programas/mprWA/pages/Simulators.tsx)",
+      "Bash(zip -r wa-pro-autologin-0.5.7.zip chrome-extension/ -x \"chrome-extension/README.md\" -x \"chrome-extension/STORE_SUBMISSION.md\")",
+      "Bash(unzip -p /home/ubuntu/programas/mprWA/wa-pro-autologin-0.5.7.zip chrome-extension/manifest.json)",
+      "Bash(rm -f /home/ubuntu/programas/mprWA/wa-pro-autologin-0.5.7.zip)",
+      "Bash(zip -r ../wa-pro-autologin-0.5.7.zip . --exclude \"README.md\" --exclude \"STORE_SUBMISSION.md\")",
+      "Bash(unzip -p ../wa-pro-autologin-0.5.7.zip manifest.json)",
+      "Bash(echo \"OK: $\\(unzip -p ../wa-pro-autologin-0.5.7.zip manifest.json)",
+      "Bash(unzip -p /home/ubuntu/programas/mprWA/release/WA-PRO-Chrome-Extension-Store-v0.5.7.zip manifest.json)",
+      "Bash(zip -r ../wa-pro-autologin-0.5.8.zip . --exclude \"README.md\" --exclude \"STORE_SUBMISSION.md\")",
+      "Bash(unzip -p ../wa-pro-autologin-0.5.8.zip manifest.json)",
+      "Bash(echo \"OK: $\\(unzip -p ../wa-pro-autologin-0.5.8.zip manifest.json)",
+      "Bash(zip -r ../wa-pro-autologin-0.5.9.zip . --exclude \"README.md\" --exclude \"STORE_SUBMISSION.md\")",
+      "Bash(unzip -p ../wa-pro-autologin-0.5.9.zip manifest.json)",
+      "Bash(echo \"OK v$\\(unzip -p ../wa-pro-autologin-0.5.9.zip manifest.json)",
+      "Bash(zip -r ../wa-pro-autologin-0.5.10.zip . --exclude \"README.md\" --exclude \"STORE_SUBMISSION.md\")",
+      "Bash(unzip -p ../wa-pro-autologin-0.5.10.zip manifest.json)",
+      "Bash(echo \"OK v$\\(unzip -p ../wa-pro-autologin-0.5.10.zip manifest.json)",
+      "Bash(unzip -l release/WA-PRO-Chrome-Extension-v0.5.11.zip)",
+      "Bash(unzip -p release/WA-PRO-Chrome-Extension-v0.5.11.zip manifest.json)",
+      "Bash(rm /home/ubuntu/programas/mprWA/release/WA-PRO-Chrome-Extension-Store-v0.5.11.zip)",
+      "Bash(zip -r ../release/WA-PRO-Chrome-Extension-Store-v0.5.11.zip . -x \"*.DS_Store\")",
+      "Bash(unzip -l ../release/WA-PRO-Chrome-Extension-Store-v0.5.11.zip)",
+      "Bash(pkill -f \"node server.js\")",
+      "Bash(node server.js)",
+      "Bash(curl -s http://localhost:3010/api/customers/test-id/fiscal-summary)",
+      "Bash(kill -HUP 2525603)",
+      "Bash(kill 2525603)",
+      "Bash(sqlite3 /home/ubuntu/programas/mprWA/whatsapp.db \"SELECT job, level, message, substr\\(details,1,800\\) as details FROM fiscal_collection_logs WHERE job IN \\('certidao_at', 'modelo22'\\) ORDER BY id DESC LIMIT 20;\")"
+    ]
+  }
+}

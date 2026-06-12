@@ -21,12 +21,30 @@ function registerTasksCallsRoutes(context, helpers) {
         parseBoolean, normalizeSourceTaskStatus, normalizeSourceTaskPriority,
         toIsoDateTime, buildFallbackTaskSourceId, extractNifCandidates,
         appendLookupIndex, ensureSoftwareLinksSchema,
+        sendResponsibleNotification,
+        nowIso: nowIsoHelper,
     } = helpers;
+    const _nowIso = nowIso || nowIsoHelper || (() => new Date().toISOString());
 
     app.get('/api/tasks/local', async (req, res) => {
         try {
             const conversationId = String(req.query.conversationId || '').trim();
-            const tasks = await getLocalTasks(conversationId || '');
+            const requestingUserId = String(req.query?.userId || '').trim();
+
+            let tasks = await getLocalTasks(conversationId || '');
+
+            // Filtrar por utilizador se não for admin
+            if (requestingUserId) {
+                const userRow = await dbGetAsync(
+                    'SELECT role FROM users WHERE id = ? LIMIT 1',
+                    [requestingUserId]
+                );
+                const isAdmin = userRow?.role === 'ADMIN' || userRow?.role === 'OWNER';
+                if (!isAdmin) {
+                    tasks = tasks.filter(t => t.assignedUserId === requestingUserId);
+                }
+            }
+
             return res.json({ success: true, data: tasks });
         } catch (error) {
             const details = error?.message || error;
@@ -38,6 +56,11 @@ function registerTasksCallsRoutes(context, helpers) {
     app.post('/api/tasks/sync', async (req, res) => {
         const body = req.body || {};
         try {
+            // Verificar se a tarefa já existe ANTES do upsert (para saber se é criação ou update)
+            const preExistingTask = body.id
+                ? await dbGetAsync('SELECT id FROM tasks WHERE id = ? LIMIT 1', [body.id])
+                : null;
+
             const normalized = await upsertLocalTask({
                 id: body.id,
                 conversationId: body.conversationId,
@@ -64,6 +87,89 @@ function registerTasksCallsRoutes(context, helpers) {
                 action: 'upsert',
                 details: normalized,
             });
+
+            // ── Automação: nova tarefa → agenda + notificação email ──────────
+            // O frontend gera ID antes de enviar, por isso verificamos se já existia na BD
+            const isNew = !preExistingTask;
+            if (isNew && normalized.assignedUserId && normalized.dueDate) {
+                try {
+                    // 1. Obter email do funcionário atribuído
+                    const assignee = await dbGetAsync(
+                        'SELECT id, name, email FROM users WHERE id = ? LIMIT 1',
+                        [normalized.assignedUserId]
+                    );
+
+                    // 2. Obter nome do cliente (via conversação → customer)
+                    let customerName = '';
+                    if (normalized.conversationId) {
+                        const conv = await dbGetAsync(
+                            `SELECT c.company, c.name as cname
+                             FROM conversations cv
+                             LEFT JOIN customers c ON c.id = cv.customer_id
+                             WHERE cv.id = ? LIMIT 1`,
+                            [normalized.conversationId]
+                        );
+                        customerName = String(conv?.company || conv?.cname || '').trim();
+                    }
+                    if (!customerName && body.customerId) {
+                        const cust = await dbGetAsync(
+                            'SELECT company, name FROM customers WHERE id = ? LIMIT 1',
+                            [body.customerId]
+                        );
+                        customerName = String(cust?.company || cust?.name || '').trim();
+                    }
+
+                    // 3. Calcular startsAt / endsAt para a agenda
+                    const dueRaw = String(normalized.dueDate || '').trim();
+                    // Se só tem data (sem hora), usar 09:00; se tem hora, usar tal e qual
+                    const hasTime = /T\d{2}:\d{2}/.test(dueRaw);
+                    const startsAt = hasTime ? dueRaw : dueRaw.replace(/T.*/, '') + 'T09:00:00.000Z';
+                    const endsAt   = hasTime
+                        ? new Date(new Date(dueRaw).getTime() + 30 * 60000).toISOString()
+                        : dueRaw.replace(/T.*/, '') + 'T09:30:00.000Z';
+
+                    // 4. Criar evento na agenda
+                    const agendaId = `ag_task_${normalized.id}`;
+                    await dbRunAsync(
+                        `INSERT INTO agenda_events (id, title, type, customer_id, assigned_user_id, starts_at, ends_at, notes, source, created_at, updated_at)
+                         VALUES (?, ?, 'other', ?, ?, ?, ?, ?, 'task', ?, ?)
+                         ON CONFLICT(id) DO NOTHING`,
+                        [
+                            agendaId,
+                            String(normalized.title || 'Tarefa').trim(),
+                            customerName ? (await dbGetAsync('SELECT id FROM customers WHERE company=? OR name=? LIMIT 1', [customerName, customerName]))?.id || null : null,
+                            normalized.assignedUserId,
+                            startsAt,
+                            endsAt,
+                            String(normalized.notes || '').trim() || null,
+                            _nowIso(),
+                            _nowIso(),
+                        ]
+                    );
+
+                    // 5. Enviar email com .ics ao funcionário
+                    if (assignee?.email && sendResponsibleNotification) {
+                        await sendResponsibleNotification({
+                            to: assignee.email,
+                            entityType: 'Tarefa',
+                            entityId: normalized.id,
+                            title: normalized.title,
+                            description: [
+                                customerName ? `Cliente: ${customerName}` : '',
+                                normalized.notes || '',
+                            ].filter(Boolean).join('\n'),
+                            startsAt,
+                            endsAt,
+                            location: '',
+                            customerName,
+                        }).catch((e) => console.error('[Task Auto] Notificação falhou:', e?.message));
+                    }
+                } catch (autoErr) {
+                    // Automação não deve bloquear a resposta
+                    console.error('[Task Auto] Erro na automação agenda/email:', autoErr?.message);
+                }
+            }
+            // ────────────────────────────────────────────────────────────────
 
             return res.json({
                 success: true,

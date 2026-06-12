@@ -101,7 +101,7 @@ function registerSimulatorRoutes(context) {
       );
       const items = rows.map((r) => {
         const parsed = JSON.parse(r.result_json);
-        const { _actInput, ...result } = parsed;
+        const { _actInput, _salaryInput, _imtInput, _ssInput, _loanInput, _carBenefitInput, ...result } = parsed;
         return {
           id: r.id,
           customerName: r.customer_name,
@@ -113,7 +113,12 @@ function registerSimulatorRoutes(context) {
           emailSentAt: r.email_sent_at || undefined,
           emailReadAt: r.email_read_at || undefined,
           result,
-          actInput: _actInput || undefined,
+          actInput:    _actInput    || undefined,
+          salaryInput: _salaryInput || undefined,
+          imtInput:    _imtInput    || undefined,
+          ssInput:     _ssInput     || undefined,
+          loanInput:       _loanInput       || undefined,
+          carBenefitInput: _carBenefitInput || undefined,
         };
       });
       return res.json({ success: true, items });
@@ -124,10 +129,18 @@ function registerSimulatorRoutes(context) {
 
   app.post('/api/simulators/history', async (req, res) => {
     try {
-      const { id, customerName, customerId, customerNif, employeeName, result, actInput } = req.body || {};
+      const { id, customerName, customerId, customerNif, employeeName, result, actInput, salaryInput, imtInput, ssInput, loanInput, carBenefitInput } = req.body || {};
       if (!id || !result) return res.status(400).json({ success: false, error: 'id e result são obrigatórios' });
-      // Guardar actInput dentro do result_json para não precisar de migração da BD
-      const resultToStore = actInput ? { ...result, _actInput: actInput } : result;
+      // Guardar inputs dentro do result_json (evita migração de colunas na BD)
+      const resultToStore = {
+        ...result,
+        ...(actInput    ? { _actInput:    actInput    } : {}),
+        ...(salaryInput ? { _salaryInput: salaryInput } : {}),
+        ...(imtInput    ? { _imtInput:    imtInput    } : {}),
+        ...(ssInput     ? { _ssInput:     ssInput     } : {}),
+        ...(loanInput       ? { _loanInput:       loanInput       } : {}),
+        ...(carBenefitInput ? { _carBenefitInput: carBenefitInput } : {}),
+      };
       await dbRunAsync(
         `INSERT INTO simulator_history (id, customer_name, customer_id, customer_nif, employee_name, simulator_id, result_json, saved_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))

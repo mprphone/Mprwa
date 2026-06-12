@@ -5,7 +5,9 @@ export type SimulatorId =
   | 'employee-cost'
   | 'imt'
   | 'act-compensation'
-  | 'ss-independent';
+  | 'ss-independent'
+  | 'loan'
+  | 'car-benefit';
 
 export type RuleSource = {
   label: string;
@@ -129,6 +131,31 @@ export const RULE_VERSIONS: Record<SimulatorId, RuleVersion> = {
     ],
     notes: [
       'Cálculo indicativo baseado no regime geral de independentes (art.º 168.º CRCSPSS). Confirmar IAS aplicável e eventuais regimes especiais antes de comunicar ao cliente.',
+    ],
+  },
+  loan: {
+    id: 'loan-2026.1',
+    label: 'Simulador de empréstimos',
+    validFrom: '2026-01-01',
+    lastReviewedAt: '2026-05-31',
+    status: 'updated',
+    sources: [
+      { label: 'Método francês de amortização (prestações constantes)', url: 'https://www.bportugal.pt/page/credito-habitacao' },
+    ],
+    notes: ['Cálculo baseado no método francês (prestação constante). Confirmar com banco condições exactas de spread, comissões e seguros.'],
+  },
+  'car-benefit': {
+    id: 'pt-car-benefit-2025.1',
+    label: 'Portugal 2025 — Viatura da empresa',
+    validFrom: '2025-01-01',
+    lastReviewedAt: '2026-05-31',
+    status: 'requires_validation',
+    sources: [
+      { label: 'CIRS art.º 2.º n.º 3 b) — Rendimentos em espécie', url: 'https://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/codigos_tributarios/cirs_rep/Pages/irs-artigo-2.aspx' },
+      { label: 'Portaria n.º 467/2010 — Limites dedução viatura', url: 'https://dre.pt/application/conteudo/281916' },
+    ],
+    notes: [
+      'Cálculo indicativo com base no art.º 2.º do CIRS. Confirmar com contabilista as isenções aplicáveis a viaturas elétricas e híbridas para o ano fiscal corrente.',
     ],
   },
   'act-compensation': {

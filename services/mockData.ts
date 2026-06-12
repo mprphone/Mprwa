@@ -1088,7 +1088,8 @@ class MockService {
         });
 
         const localCustomers = this.customers.filter(customer => customer.id.startsWith('local_'));
-        this.mergeImportedCustomers(remappedCustomers);
+        this.customers = [...localCustomers];
+        this.replaceCustomersFromServer(remappedCustomers);
         if (localCustomers.length > 0) {
           this.mergeImportedCustomers(localCustomers);
         }
@@ -1358,6 +1359,7 @@ class MockService {
   }
 
   async refreshCustomersFromServer(): Promise<Customer[]> {
+    this.customers = this.customers.filter(customer => customer.id.startsWith('local_'));
     this.supabaseImportDone = false;
     this.supabaseImportPromise = null;
     await this.ensureSupabaseImport();
@@ -3270,9 +3272,11 @@ class MockService {
   // --- Tasks ---
   async getTasks(conversationId?: string): Promise<Task[]> {
     if (this.isBrowser()) {
-      const query = conversationId
-        ? `?${new URLSearchParams({ conversationId }).toString()}`
-        : '';
+      const params: Record<string, string> = {};
+      if (conversationId) params.conversationId = conversationId;
+      const uid = String(CURRENT_USER_ID || '').trim();
+      if (uid) params.userId = uid;
+      const query = Object.keys(params).length ? `?${new URLSearchParams(params).toString()}` : '';
       const response = await fetch(`/api/tasks/local${query}`, {
         headers: { Accept: 'application/json' },
       });
@@ -3583,7 +3587,9 @@ class MockService {
   // --- Agenda ---
   async getAgendaEvents(): Promise<AgendaEvent[]> {
     if (this.isBrowser()) {
-      const response = await fetch('/api/agenda/events', {
+      const uid = String(CURRENT_USER_ID || '').trim();
+      const qs = uid ? `?userId=${encodeURIComponent(uid)}` : '';
+      const response = await fetch(`/api/agenda/events${qs}`, {
         headers: { Accept: 'application/json' },
       });
       const payload = await response.json().catch(() => ({})) as {
@@ -4167,6 +4173,31 @@ class MockService {
 
   // --- Helpers ---
   async getCustomerById(id: string): Promise<Customer | undefined> {
+    if (this.isBrowser()) {
+      const targetId = String(id || '').trim();
+      if (!targetId) return undefined;
+      const response = await fetch(`/api/customers/${encodeURIComponent(targetId)}/sync`, {
+        headers: { Accept: 'application/json' },
+      });
+      const payload = await response.json().catch(() => ({})) as {
+        success?: boolean;
+        customer?: Customer;
+        error?: unknown;
+      };
+      if (response.ok && payload.success && payload.customer && this.isValidCustomer(payload.customer)) {
+        this.replaceCustomersFromServer([payload.customer]);
+        return payload.customer;
+      }
+      if (response.status !== 404) {
+        const errorText =
+          typeof payload.error === 'string'
+            ? payload.error
+            : payload.error
+              ? JSON.stringify(payload.error)
+              : `Falha ao obter cliente (${response.status}).`;
+        throw new Error(errorText);
+      }
+    }
     return this.customers.find(c => c.id === id);
   }
 }

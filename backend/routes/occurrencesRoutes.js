@@ -207,9 +207,9 @@ function registerOccurrencesRoutes(context) {
 
         if (!row) return null;
 
-        await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN section_key TEXT').catch(() => {});
-        await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN dossie_model TEXT').catch(() => {});
-        await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN dossie_item_key TEXT').catch(() => {});
+        await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN section_key TEXT').catch((e) => { if (!String(e.message).includes('already exists') && !String(e.message).includes('duplicate column')) console.error('[DB Migration]', e.message); });
+        await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN dossie_model TEXT').catch((e) => { if (!String(e.message).includes('already exists') && !String(e.message).includes('duplicate column')) console.error('[DB Migration]', e.message); });
+        await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN dossie_item_key TEXT').catch((e) => { if (!String(e.message).includes('already exists') && !String(e.message).includes('duplicate column')) console.error('[DB Migration]', e.message); });
 
         const attachments = await dbAllAsync(
             `SELECT
@@ -1198,9 +1198,9 @@ function registerOccurrencesRoutes(context) {
                 return res.status(400).json({ success: false, error: 'ID do anexo inválido.' });
             }
 
-            await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN section_key TEXT').catch(() => {});
-            await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN dossie_model TEXT').catch(() => {});
-            await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN dossie_item_key TEXT').catch(() => {});
+            await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN section_key TEXT').catch((e) => { if (!String(e.message).includes('already exists') && !String(e.message).includes('duplicate column')) console.error('[DB Migration]', e.message); });
+            await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN dossie_model TEXT').catch((e) => { if (!String(e.message).includes('already exists') && !String(e.message).includes('duplicate column')) console.error('[DB Migration]', e.message); });
+            await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN dossie_item_key TEXT').catch((e) => { if (!String(e.message).includes('already exists') && !String(e.message).includes('duplicate column')) console.error('[DB Migration]', e.message); });
 
             const current = await dbGetAsync(
                 `SELECT id, occurrence_id, section_key
@@ -1282,10 +1282,10 @@ function registerOccurrencesRoutes(context) {
                 });
             }
 
-            await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN local_file_path TEXT').catch(() => {});
-            await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN section_key TEXT').catch(() => {});
-            await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN dossie_model TEXT').catch(() => {});
-            await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN dossie_item_key TEXT').catch(() => {});
+            await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN local_file_path TEXT').catch((e) => { if (!String(e.message).includes('already exists') && !String(e.message).includes('duplicate column')) console.error('[DB Migration]', e.message); });
+            await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN section_key TEXT').catch((e) => { if (!String(e.message).includes('already exists') && !String(e.message).includes('duplicate column')) console.error('[DB Migration]', e.message); });
+            await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN dossie_model TEXT').catch((e) => { if (!String(e.message).includes('already exists') && !String(e.message).includes('duplicate column')) console.error('[DB Migration]', e.message); });
+            await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN dossie_item_key TEXT').catch((e) => { if (!String(e.message).includes('already exists') && !String(e.message).includes('duplicate column')) console.error('[DB Migration]', e.message); });
 
             const occurrence = await dbGetAsync(
                 `SELECT
@@ -1630,7 +1630,7 @@ function registerOccurrencesRoutes(context) {
                 return res.status(400).json({ success: false, error: 'Supabase não configurado.' });
             }
 
-            await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN local_file_path TEXT').catch(() => {});
+            await dbRunAsync('ALTER TABLE occurrence_attachments ADD COLUMN local_file_path TEXT').catch((e) => { if (!String(e.message).includes('already exists') && !String(e.message).includes('duplicate column')) console.error('[DB Migration]', e.message); });
 
             const [
                 occurrencesTable,

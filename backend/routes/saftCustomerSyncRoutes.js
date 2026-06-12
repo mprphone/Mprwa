@@ -223,7 +223,8 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
         getLocalCustomerBySourceId, findSupabaseCustomerRow,
         normalizeSupabaseTimestamp, materializeSupabaseRowLocally,
         pushLocalCustomerToSupabase, syncBidirectionalCustomerLinksLocal,
-        pullCustomersFromSupabaseIncremental,
+        pullCustomersFromSupabaseIncremental, resolveSupabaseCustomerColumns,
+        bumpCustomersSyncWatermark,
         syncLocalCustomerCredentialsToSupabase,
     } = helpers;
 
@@ -347,6 +348,32 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
         }
     });
 
+    app.get('/api/customers/:id/sync', async (req, res) => {
+        try {
+            const customerId = String(req.params.id || '').trim();
+            const customer = await getLocalCustomerById(customerId);
+            if (!customer) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Cliente não encontrado.',
+                });
+            }
+
+            return res.json({
+                success: true,
+                storage: 'sqlite_local',
+                customer,
+            });
+        } catch (error) {
+            const details = error?.message || error;
+            console.error('[SQLite] Erro ao obter cliente:', details);
+            return res.status(500).json({
+                success: false,
+                error: details,
+            });
+        }
+    });
+
     app.post('/api/customers/sync', async (req, res) => {
         const body = req.body || {};
         const customerId = String(body.id || '').trim();
@@ -382,6 +409,10 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                 if (supabaseRow && columnsMeta.updatedAtColumn) {
                     const remoteUpdatedAt = normalizeSupabaseTimestamp(supabaseRow[columnsMeta.updatedAtColumn]);
                     const localKnownSupabaseAt = normalizeSupabaseTimestamp(existingLocalRow?.supabase_updated_at);
+                    // Fix #4: só aceitar versão Supabase se:
+                    // 1. temos histórico local (localKnownSupabaseAt não é null) — senão local é master
+                    // 2. E Supabase é genuinamente mais recente
+                    // Se localKnownSupabaseAt é null = nunca sincronizou = local é a fonte de verdade
                     if (
                         !forceLocalToSupabase &&
                         remoteUpdatedAt &&
@@ -390,10 +421,11 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                     ) {
                         const canonical = await materializeSupabaseRowLocally(
                             supabaseRow,
-                            customerId || String(existingLocalRow?.id || '').trim()
+                            customerId || String(existingLocalRow?.id || '').trim(),
+                            existingLocalCustomer
                         );
                         conflictResolvedBySupabase = true;
-                        warnings.push('Conflito detetado: mantida a versão do Supabase.');
+                        warnings.push('Conflito detetado: Supabase mais recente que local conhecido — mesclado.');
                         return res.json({
                             success: true,
                             storage: 'sqlite_local',
@@ -421,6 +453,8 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                 senhaSegurancaSocial: body.senhaSegurancaSocial,
                 tipoIva: body.tipoIva,
                 morada: body.morada,
+                codigoPostal: body.codigoPostal,
+                dataNascimento: body.dataNascimento,
                 notes: body.notes,
                 certidaoPermanenteNumero: body.certidaoPermanenteNumero,
                 certidaoPermanenteValidade: body.certidaoPermanenteValidade,
@@ -761,6 +795,49 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
         }
     });
 
+    // Puxar um cliente específico do Supabase para local (por NIF ou sourceId)
+    app.post('/api/customers/:id/sync-pull', async (req, res) => {
+        const localId = String(req.params.id || '').trim();
+        if (!localId) return res.status(400).json({ success: false, error: 'ID inválido.' });
+        if (!hasSupabaseCustomersSync()) {
+            return res.status(400).json({ success: false, error: 'Supabase não configurado.' });
+        }
+        try {
+            const localRow = await dbGetAsync('SELECT * FROM customers WHERE id = ? LIMIT 1', [localId]);
+            if (!localRow) return res.status(404).json({ success: false, error: 'Cliente não encontrado.' });
+
+            const tableColumns = await fetchSupabaseTableColumns(SUPABASE_CLIENTS_SOURCE);
+            const { idColumn, nifColumn } = resolveSupabaseCustomerColumns(tableColumns);
+            const sourceId = String(parseCustomerSourceId(localRow.id, localRow.source_id) || '').trim();
+
+            const match = await findSupabaseCustomerRow({
+                columns: tableColumns,
+                sourceId,
+                nif: localRow.nif,
+                phone: localRow.phone,
+                email: localRow.email,
+            });
+
+            if (!match?.row) {
+                return res.json({ success: true, found: false, message: 'Cliente não encontrado no Supabase.' });
+            }
+
+            const existingLocal = await getLocalCustomerById(localId);
+            const canonical = await materializeSupabaseRowLocally(match.row, localId, existingLocal);
+            if (idColumn && match.row[idColumn]) {
+                await bumpCustomersSyncWatermark([match.row], 'updated_at');
+            }
+            return res.json({ success: true, found: true, customer: canonical });
+        } catch (error) {
+            const details = String(error?.message || error);
+            console.error('[Sync] sync-pull por cliente:', details);
+            return res.status(500).json({ success: false, error: details });
+        }
+    });
+
+    // Fix #3: lock para evitar race condition entre auto-pull e sync manual simultâneos
+    let _pullSyncRunning = false;
+
     app.post('/api/customers/sync/pull', async (req, res) => {
         const body = req.body || {};
         const full = !!body.full;
@@ -772,18 +849,24 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                     error: 'Supabase não configurado para clientes.',
                 });
             }
-            const result = await pullCustomersFromSupabaseIncremental({ full, limit });
-            return res.json({
-                success: true,
-                ...result,
-            });
+            if (_pullSyncRunning) {
+                return res.status(409).json({
+                    success: false,
+                    error: 'Sincronização já em curso. Aguarde o final antes de iniciar nova sincronização.',
+                });
+            }
+            _pullSyncRunning = true;
+            try {
+                const result = await pullCustomersFromSupabaseIncremental({ full, limit });
+                return res.json({ success: true, ...result });
+            } finally {
+                _pullSyncRunning = false;
+            }
         } catch (error) {
+            _pullSyncRunning = false;
             const details = error?.message || error;
             console.error('[Sync] Erro no pull incremental de clientes:', details);
-            return res.status(500).json({
-                success: false,
-                error: details,
-            });
+            return res.status(500).json({ success: false, error: details });
         }
     });
 }

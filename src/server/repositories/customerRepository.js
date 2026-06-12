@@ -76,13 +76,26 @@ function createCustomerRepository(deps) {
         return Boolean(aEmail && bEmail && aEmail === bEmail);
     }
 
+    function isMaskedSecret(value) {
+        const normalized = String(value || '').trim().replace(/\s+/g, '');
+        if (normalized.length < 3) return false;
+        return /^[*#xX•●·]+$/.test(normalized);
+    }
+
+    function hasUsableSecret(value) {
+        const normalized = String(value || '').trim();
+        return Boolean(normalized && !isMaskedSecret(normalized));
+    }
+
     function preserveStoredCredentialPasswords(incomingCredentials, existingAccessCredentialsJson) {
         const rawExistingCredentials = parseRawAccessCredentialsArray(existingAccessCredentialsJson);
         return (Array.isArray(incomingCredentials) ? incomingCredentials : []).map((credential) => {
-            if (String(credential?.password || '').trim()) return credential;
+            const incomingPassword = String(credential?.password || '').trim();
+            if (hasUsableSecret(incomingPassword)) return credential;
             const previous = rawExistingCredentials.find((candidate) => accessCredentialsMatch(credential, candidate));
             const previousPassword = String(previous?.password || '').trim();
-            return previousPassword ? { ...credential, password: previousPassword } : credential;
+            if (hasUsableSecret(previousPassword)) return { ...credential, password: previousPassword };
+            return incomingPassword ? { ...credential, password: '' } : credential;
         });
     }
 
@@ -163,6 +176,8 @@ function createCustomerRepository(deps) {
             inicioAtividade: profile.inicioAtividade || undefined,
             caePrincipal: profile.caePrincipal || undefined,
             caeDescricao: profile.caeDescricao || undefined,
+            caeSecundarios: profile.caeSecundarios || undefined,
+            infoAtividades: profile.infoAtividades || undefined,
             codigoReparticaoFinancas: profile.codigoReparticaoFinancas || undefined,
             tipoContabilidade: profile.tipoContabilidade || undefined,
             estadoCliente: profile.estadoCliente || undefined,
@@ -300,14 +315,16 @@ function createCustomerRepository(deps) {
             ? incomingNif
             : (normalizeCustomerNif(String(existing?.nif || '').trim()) || String(existing?.nif || '').trim());
         const finalNiss = input.niss !== undefined ? incomingNiss : String(existing?.niss || '').trim();
+        const existingSenhaFinancas = decryptCustomerSecret(String(existing?.senha_financas || '').trim());
+        const existingSenhaSegSocial = decryptCustomerSecret(String(existing?.senha_seg_social || '').trim());
         const finalSenhaFinancas =
             input.senhaFinancas !== undefined
-                ? incomingSenhaFinancas
-                : decryptCustomerSecret(String(existing?.senha_financas || '').trim());
+                ? (isMaskedSecret(incomingSenhaFinancas) ? existingSenhaFinancas : incomingSenhaFinancas)
+                : existingSenhaFinancas;
         const finalSenhaSegSocial =
             input.senhaSegurancaSocial !== undefined
-                ? incomingSenhaSegSocial
-                : decryptCustomerSecret(String(existing?.senha_seg_social || '').trim());
+                ? (isMaskedSecret(incomingSenhaSegSocial) ? existingSenhaSegSocial : incomingSenhaSegSocial)
+                : existingSenhaSegSocial;
         const finalTipoIva =
             input.tipoIva !== undefined
                 ? incomingTipoIva

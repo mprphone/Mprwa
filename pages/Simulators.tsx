@@ -12,6 +12,7 @@ import {
   History,
   Mail,
   Pencil,
+  RefreshCw,
   Search,
   Share2,
   ShieldCheck,
@@ -22,19 +23,19 @@ import { ActOfficialValidationResult, validateActCompensationOfficial } from '..
 import { SalaryOfficialResult, validateSalaryOfficial } from '../services/simulators/salaryOfficialApi';
 import {
   ActCompensationInput,
-  EmployeeCostInput,
   ImtInput,
   RULE_VERSIONS,
   SalaryNetInput,
   SimulationResult,
   SimulatorId,
   calculateActCompensation,
-  calculateEmployeeCost,
   calculateImt,
   calculateSalaryNet,
   getRuleHealth,
 } from '../services/simulators/engine';
-import { SSIndependentInput, calculateSSIndependent } from '../services/simulators/ssIndependentService';
+import { SSActivityLine, SSIndependentInput, calculateSSIndependent, defaultSSActivities } from '../services/simulators/ssIndependentService';
+import { LoanInput, LoanRow, LoanYearSummary, calculateLoan, computeLoanSchedule, defaultLoanInput, groupByYear } from '../services/simulators/loanService';
+import { CarBenefitInput, calculateCarBenefit, defaultCarBenefitInput } from '../services/simulators/carBenefitService';
 import { Customer } from '../types';
 
 type SimulatorDefinition = {
@@ -53,6 +54,11 @@ type StoredSimulation = {
   employeeName?: string;
   result: SimulationResult;
   actInput?: ActCompensationInput;
+  salaryInput?: SalaryNetInput;
+  imtInput?: ImtInput;
+  ssInput?: SSIndependentInput;
+  loanInput?: LoanInput;
+  carBenefitInput?: CarBenefitInput;
   emailSentTo?: string;
   emailSentAt?: string;
   emailReadAt?: string;
@@ -67,13 +73,6 @@ const SIMULATORS: SimulatorDefinition[] = [
     title: 'Salário Líquido',
     description: 'Líquido, IRS, Segurança Social, subsídio de alimentação e duodécimos.',
     category: 'Laboral',
-  },
-  {
-    id: 'employee-cost',
-    phase: 'Fase 1',
-    title: 'Custo Colaborador Empresa',
-    description: 'Custo total mensal com contribuição patronal, seguros e benefícios.',
-    category: 'RH',
   },
   {
     id: 'imt',
@@ -96,6 +95,20 @@ const SIMULATORS: SimulatorDefinition[] = [
     description: 'Contribuições trimestrais de Segurança Social para recibos verdes.',
     category: 'Fiscal',
   },
+  {
+    id: 'loan',
+    phase: 'Fase 1',
+    title: 'Empréstimo',
+    description: 'Plano de amortização completo com prestações, juros e pagamentos extra.',
+    category: 'Financeiro',
+  },
+  {
+    id: 'car-benefit',
+    phase: 'Fase 1',
+    title: 'Viatura Empresa',
+    description: 'Imputação no recibo de vencimento pelo uso pessoal de viatura da empresa.',
+    category: 'Laboral',
+  },
 ];
 
 const ROADMAP = [
@@ -109,6 +122,7 @@ const ROADMAP = [
 async function fetchHistory(): Promise<StoredSimulation[]> {
   try {
     const res = await fetch('/api/simulators/history');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     return Array.isArray(data.items) ? data.items : [];
   } catch {
@@ -225,12 +239,6 @@ const defaultSalaryInput: SalaryNetInput = {
   monthsPerYear: 14,
 };
 
-const defaultEmployeeCostInput: EmployeeCostInput = {
-  ...defaultSalaryInput,
-  insuranceMonthly: 18,
-  otherBenefits: 0,
-};
-
 const defaultImtInput: ImtInput = {
   price: 250000,
   propertyType: 'hpp',
@@ -258,9 +266,7 @@ const defaultActInput: ActCompensationInput = {
 };
 
 const defaultSSIndependentInput: SSIndependentInput = {
-  activityType: 'services',
-  annualGrossIncome: 24000,
-  annualSalesIncome: 0,
+  activities: defaultSSActivities(),
   isFirstYear: false,
   adjustmentPercent: 0,
 };
@@ -272,10 +278,14 @@ const Simulators: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [query, setQuery] = useState('');
   const [salaryInput, setSalaryInput] = useState<SalaryNetInput>(defaultSalaryInput);
-  const [costInput, setCostInput] = useState<EmployeeCostInput>(defaultEmployeeCostInput);
   const [imtInput, setImtInput] = useState<ImtInput>(defaultImtInput);
   const [actInput, setActInput] = useState<ActCompensationInput>(defaultActInput);
   const [ssInput, setSsInput] = useState<SSIndependentInput>(defaultSSIndependentInput);
+  const [loanInput, setLoanInput] = useState<LoanInput>(defaultLoanInput);
+  const [loanExpandedYears, setLoanExpandedYears] = useState<Set<number>>(new Set());
+  const [carBenefitInput, setCarBenefitInput] = useState<CarBenefitInput>(defaultCarBenefitInput);
+  const [euriborLoading, setEuriborLoading] = useState(false);
+  const [euriborInfo, setEuriborInfo] = useState<{ period: string; fetchedAt: number } | null>(null);
   const [actEmployeeName, setActEmployeeName] = useState('');
   const [history, setHistory] = useState<StoredSimulation[]>([]);
   const [currentSimId, setCurrentSimId] = useState<string | null>(null);
@@ -344,12 +354,22 @@ const Simulators: React.FC = () => {
   }, [customerSearchTerm, customers]);
 
   const result = useMemo<SimulationResult>(() => {
-    if (activeId === 'employee-cost') return calculateEmployeeCost(costInput);
     if (activeId === 'imt') return calculateImt(imtInput);
     if (activeId === 'act-compensation') return calculateActCompensation(actInput);
     if (activeId === 'ss-independent') return calculateSSIndependent(ssInput);
+    if (activeId === 'loan') return calculateLoan(loanInput);
+    if (activeId === 'car-benefit') return calculateCarBenefit(carBenefitInput);
     return calculateSalaryNet(salaryInput);
-  }, [activeId, actInput, costInput, imtInput, salaryInput, ssInput]);
+  }, [activeId, actInput, carBenefitInput, imtInput, loanInput, salaryInput, ssInput]);
+
+  const loanSchedule = useMemo(
+    () => activeId === 'loan' ? computeLoanSchedule(loanInput) : null,
+    [activeId, loanInput]
+  );
+  const loanYears = useMemo(
+    () => loanSchedule ? groupByYear(loanSchedule.rows) : [],
+    [loanSchedule]
+  );
 
   const filteredHistory = history.filter((item) => {
     const term = query.trim().toLowerCase();
@@ -373,7 +393,12 @@ const Simulators: React.FC = () => {
       customerNif: selectedCustomer?.nif,
       employeeName: actEmployeeName || undefined,
       result,
-      actInput: activeId === 'act-compensation' ? actInput : undefined,
+      actInput:    activeId === 'act-compensation' ? actInput    : undefined,
+      salaryInput: activeId === 'salary-net'       ? salaryInput : undefined,
+      imtInput:    activeId === 'imt'              ? imtInput    : undefined,
+      ssInput:     activeId === 'ss-independent'   ? ssInput     : undefined,
+      loanInput:       activeId === 'loan'         ? loanInput       : undefined,
+      carBenefitInput: activeId === 'car-benefit'  ? carBenefitInput : undefined,
     };
     try {
       await persistSimulation(item);
@@ -402,7 +427,12 @@ const Simulators: React.FC = () => {
     setSelectedCustomerId(item.customerId || '');
     setActEmployeeName(item.employeeName || '');
     setCurrentSimId(item.id);
-    if (item.actInput) setActInput(item.actInput);
+    if (item.actInput)    setActInput(item.actInput);
+    if (item.salaryInput) setSalaryInput({ ...defaultSalaryInput, ...item.salaryInput });
+    if (item.imtInput)    setImtInput({ ...defaultImtInput, ...item.imtInput });
+    if (item.ssInput)     setSsInput({ ...defaultSSIndependentInput, ...item.ssInput, activities: item.ssInput.activities ?? defaultSSActivities() });
+    if (item.loanInput)       setLoanInput({ ...defaultLoanInput, ...item.loanInput });
+    if (item.carBenefitInput) setCarBenefitInput({ ...defaultCarBenefitInput, ...item.carBenefitInput });
     setSaveStatus('idle');
     setSaveError('');
   };
@@ -423,6 +453,8 @@ const Simulators: React.FC = () => {
         actInput: activeId === 'act-compensation' ? actInput : null,
         employeeName: actEmployeeName || null,
         generatedAt: new Date().toISOString(),
+        loanSchedule: activeId === 'loan' ? loanSchedule : null,
+        loanInput: activeId === 'loan' ? loanInput : null,
       };
       const res = await fetch('/api/simulators/export-pdf', {
         method: 'POST',
@@ -439,6 +471,25 @@ const Simulators: React.FC = () => {
       URL.revokeObjectURL(url);
     } catch (err) {
       alert('Erro ao gerar PDF: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const fetchEuribor = async (tenor?: '3M' | '6M' | '12M') => {
+    setEuriborLoading(true);
+    try {
+      const res = await fetch('/api/euribor');
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Erro ao obter Euribor');
+      const t = tenor ?? (loanInput.euriborReviewMonths === 3 ? '3M' : loanInput.euriborReviewMonths === 6 ? '6M' : '12M');
+      const entry = data.rates?.[t];
+      if (entry?.rate != null) {
+        setLoanInput((p: LoanInput) => ({ ...p, euribor: entry.rate }));
+        setEuriborInfo({ period: entry.period, fetchedAt: data.fetchedAt });
+      }
+    } catch (err) {
+      alert('Não foi possível obter a Euribor: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setEuriborLoading(false);
     }
   };
 
@@ -541,26 +592,17 @@ const Simulators: React.FC = () => {
     />
   );
 
-  const renderSalaryFields = (mode: 'salary' | 'cost') => {
-    const state = mode === 'salary' ? salaryInput : costInput;
+  const renderSalaryFields = () => {
+    const state = salaryInput;
     const householdAdults = getHouseholdAdults(state.maritalStatus);
     const householdMembers = householdAdults + Math.max(0, Number(state.dependents) || 0);
-    const update = (patch: Partial<EmployeeCostInput>) => {
-      if (mode === 'salary') {
-        setSalaryInput((prev) => {
+    const update = (patch: Partial<SalaryNetInput>) => {
+      setSalaryInput((prev) => {
           const next = { ...prev, ...patch };
           next.dependents = Math.max(0, Math.round(toNumber(next.dependents)));
           next.disabledDependents = Math.min(next.dependents, Math.max(0, Math.round(toNumber(next.disabledDependents))));
           return next;
         });
-      } else {
-        setCostInput((prev) => {
-          const next = { ...prev, ...patch };
-          next.dependents = Math.max(0, Math.round(toNumber(next.dependents)));
-          next.disabledDependents = Math.min(next.dependents, Math.max(0, Math.round(toNumber(next.disabledDependents))));
-          return next;
-        });
-      }
     };
 
     return (
@@ -678,33 +720,23 @@ const Simulators: React.FC = () => {
             </tbody>
           </table>
         </div>
-        {mode === 'cost' && (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Field label="Seguro mensal">
-              <input className={inputClass} type="number" value={costInput.insuranceMonthly} onChange={(event) => update({ insuranceMonthly: Number(event.target.value) })} />
-            </Field>
-            <Field label="Outros benefícios">
-              <input className={inputClass} type="number" value={costInput.otherBenefits} onChange={(event) => update({ otherBenefits: Number(event.target.value) })} />
-            </Field>
-          </div>
-        )}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
             <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 cursor-pointer">
               <input
                 type="checkbox"
-                checked={Boolean((state as any).youngIrs)}
-                onChange={(event) => update({ youngIrs: event.target.checked } as Partial<EmployeeCostInput>)}
+                checked={Boolean(state.youngIrs)}
+                onChange={(event) => update({ youngIrs: event.target.checked })}
               />
               IRS Jovem
             </label>
-            {(state as any).youngIrs && (
+            {state.youngIrs && (
               <div className="mt-2">
                 <label className="block text-xs font-medium text-slate-500 mb-1">Ano de trabalho (1-10)</label>
                 <select
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  value={(state as any).youngIrsYear ?? 1}
-                  onChange={(e) => update({ youngIrsYear: Number(e.target.value) } as Partial<EmployeeCostInput>)}
+                  value={state.youngIrsYear ?? 1}
+                  onChange={(e) => update({ youngIrsYear: Number(e.target.value) })}
                 >
                   {[1,2,3,4,5,6,7,8,9,10].map((y) => (
                     <option key={y} value={y}>
@@ -718,18 +750,18 @@ const Simulators: React.FC = () => {
           <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 cursor-pointer">
             <input
               type="checkbox"
-              checked={Boolean((state as any).disability)}
-              onChange={(event) => update({ disability: event.target.checked } as Partial<EmployeeCostInput>)}
+              checked={Boolean(state.disability)}
+              onChange={(event) => update({ disability: event.target.checked })}
             />
             Deficiência
           </label>
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <Field label="Taxa SS Trabalhador (%)">
-            <input className={inputClass} type="number" step="0.01" value={(state as any).socialSecurityRate ?? 11} onChange={(e) => update({ socialSecurityRate: Number(e.target.value) } as Partial<EmployeeCostInput>)} />
+            <input className={inputClass} type="number" step="0.01" value={state.socialSecurityRate ?? 11} onChange={(e) => update({ socialSecurityRate: Number(e.target.value) })} />
           </Field>
           <Field label="Seguro Acidentes Trabalho (%)">
-            <input className={inputClass} type="number" step="0.01" min="0" max="10" value={(state as any).workAccidentInsuranceRate ?? 1.75} onChange={(e) => update({ workAccidentInsuranceRate: Number(e.target.value) } as Partial<EmployeeCostInput>)} />
+            <input className={inputClass} type="number" step="0.01" min="0" max="10" value={state.workAccidentInsuranceRate ?? 1.75} onChange={(e) => update({ workAccidentInsuranceRate: Number(e.target.value) })} />
           </Field>
         </div>
       </div>
@@ -847,12 +879,12 @@ const Simulators: React.FC = () => {
                 )}
                 {(activeId === 'salary-net' || activeId === 'employee-cost') && (
                   <button
-                    onClick={validateSalaryOfficialFn}
-                    disabled={salaryOfficialLoading}
-                    className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 shadow-sm hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled
+                    title="Validacao automatica temporariamente indisponivel"
+                    className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-400 shadow-sm cursor-not-allowed opacity-50"
                   >
                     <ShieldCheck size={16} />
-                    {salaryOfficialLoading ? 'A validar...' : 'Validar no Doutor Finanças'}
+                    Validar no Doutor Finanças
                   </button>
                 )}
                 <button onClick={exportPdf} className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" title="Exportar PDF">
@@ -937,8 +969,7 @@ const Simulators: React.FC = () => {
             )}
 
             <div className="mt-5">
-              {activeId === 'salary-net' && renderSalaryFields('salary')}
-              {activeId === 'employee-cost' && renderSalaryFields('cost')}
+              {activeId === 'salary-net' && renderSalaryFields()}
               {activeId === 'imt' && (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                   <Field label="Valor aquisição">
@@ -961,52 +992,351 @@ const Simulators: React.FC = () => {
                 </div>
               )}
               {activeId === 'ss-independent' && (
-                <div className="space-y-4">
+                <div className="space-y-3">
+                  {/* Linhas de rendimento */}
                   <div className="overflow-x-auto rounded-lg border border-slate-200">
                     <table className="w-full text-sm">
                       <thead className="bg-slate-900 text-left text-xs uppercase tracking-wide text-white">
                         <tr>
-                          <th className="px-3 py-2">Tipo de atividade</th>
+                          <th className="px-3 py-2">Descrição</th>
+                          <th className="px-3 py-2">Tipo</th>
                           <th className="px-3 py-2">Rendimento bruto anual</th>
-                          <th className="px-3 py-2">Rendimento bruto vendas</th>
-                          <th className="px-3 py-2">Ajuste voluntário (%)</th>
-                          <th className="px-3 py-2">Primeiro ano</th>
+                          <th className="px-3 py-2 text-right">Coeficiente</th>
+                          <th className="px-3 py-2 text-right">Relevante</th>
+                          <th className="px-3 py-2 w-8"></th>
                         </tr>
                       </thead>
                       <tbody>
-                        <tr className="border-t border-slate-200">
-                          <td className="px-3 py-3">
-                            <select className={compactInputClass} value={ssInput.activityType} onChange={(e) => setSsInput((p) => ({ ...p, activityType: e.target.value as SSIndependentInput['activityType'] }))}>
-                              <option value="services">Prestação de serviços (70%)</option>
-                              <option value="sales">Venda de produtos (20%)</option>
-                              <option value="mixed">Mista (serviços + vendas)</option>
-                            </select>
-                          </td>
-                          <td className="px-3 py-3">
-                            <input className={compactInputClass} type="number" min={0} value={ssInput.annualGrossIncome}
-                              onChange={(e) => setSsInput((p) => ({ ...p, annualGrossIncome: Math.max(0, Number(e.target.value)) }))} />
-                          </td>
-                          <td className="px-3 py-3">
-                            <input className={compactInputClass} type="number" min={0} value={ssInput.annualSalesIncome}
-                              disabled={ssInput.activityType !== 'mixed'}
-                              onChange={(e) => setSsInput((p) => ({ ...p, annualSalesIncome: Math.max(0, Number(e.target.value)) }))} />
-                          </td>
-                          <td className="px-3 py-3">
-                            <input className={compactInputClass} type="number" min={-25} max={25} value={ssInput.adjustmentPercent}
-                              onChange={(e) => setSsInput((p) => ({ ...p, adjustmentPercent: Math.max(-25, Math.min(25, Number(e.target.value))) }))} />
-                          </td>
-                          <td className="px-3 py-3">
-                            <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                              <input type="checkbox" checked={ssInput.isFirstYear} onChange={(e) => setSsInput((p) => ({ ...p, isFirstYear: e.target.checked }))} />
-                              Isento (1.º ano)
-                            </label>
-                          </td>
-                        </tr>
+                        {(ssInput.activities ?? []).map((act, idx) => {
+                          const rate = act.type === 'sales' ? 0.20 : 0.70;
+                          const relevant = Math.round(act.annualAmount * rate * 100) / 100;
+                          return (
+                            <tr key={act.id} className="border-t border-slate-100">
+                              <td className="px-3 py-2">
+                                <input
+                                  className={compactInputClass}
+                                  type="text"
+                                  placeholder="Ex: Consultoria, Vendas..."
+                                  value={act.label ?? ''}
+                                  onChange={(e) => setSsInput((p) => ({ ...p, activities: p.activities.map((a, i) => i === idx ? { ...a, label: e.target.value } : a) }))}
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <select className={compactInputClass} value={act.type}
+                                  onChange={(e) => setSsInput((p) => ({ ...p, activities: p.activities.map((a, i) => i === idx ? { ...a, type: e.target.value as SSActivityLine['type'] } : a) }))}>
+                                  <option value="services">Serviços (70%)</option>
+                                  <option value="sales">Vendas (20%)</option>
+                                </select>
+                              </td>
+                              <td className="px-3 py-2">
+                                <input className={compactInputClass} type="number" min={0} value={act.annualAmount}
+                                  onChange={(e) => setSsInput((p) => ({ ...p, activities: p.activities.map((a, i) => i === idx ? { ...a, annualAmount: Math.max(0, Number(e.target.value)) } : a) }))} />
+                              </td>
+                              <td className="px-3 py-2 text-right text-slate-500 font-mono text-xs">{(rate * 100).toFixed(0)}%</td>
+                              <td className="px-3 py-2 text-right font-semibold text-slate-700">{relevant.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} €</td>
+                              <td className="px-3 py-2 text-center">
+                                {(ssInput.activities ?? []).length > 1 && (
+                                  <button type="button" className="text-slate-300 hover:text-red-400 transition-colors text-base leading-none"
+                                    onClick={() => setSsInput((p) => ({ ...p, activities: p.activities.filter((_, i) => i !== idx) }))}>×</button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
+
+                  {/* Adicionar linha + opções globais */}
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <button type="button"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors"
+                      onClick={() => setSsInput((p) => ({ ...p, activities: [...(p.activities ?? []), { id: `act_${Date.now()}`, type: 'services', label: '', annualAmount: 0 }] }))}>
+                      + Adicionar fonte de rendimento
+                    </button>
+                    <div className="flex items-center gap-4 flex-wrap">
+                      <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+                        <input type="checkbox" checked={ssInput.isFirstYear}
+                          onChange={(e) => setSsInput((p) => ({ ...p, isFirstYear: e.target.checked }))} />
+                        Isento — 1.º ano de atividade
+                      </label>
+                      <div className="flex items-center gap-2 text-sm text-slate-600">
+                        <span className="whitespace-nowrap">Ajuste voluntário</span>
+                        <input className="w-20 rounded border border-slate-200 px-2 py-1 text-right text-sm" type="number"
+                          min={-25} max={25} value={ssInput.adjustmentPercent}
+                          onChange={(e) => setSsInput((p) => ({ ...p, adjustmentPercent: Math.max(-25, Math.min(25, Number(e.target.value))) }))} />
+                        <span className="text-slate-400">% (−25 a +25)</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Alerta de escalão inferior (calculado a partir do result) */}
+                  {(() => {
+                    const w = result.warnings?.find((ww) => ww.includes('escalão'));
+                    return w ? (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        <span className="font-semibold">Oportunidade de redução: </span>{w}
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
               )}
+              {activeId === 'loan' && (
+                <div className="space-y-3">
+                  {/* ── Inputs linha 1: montante + taxa ── */}
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-7">
+                    <div className="md:col-span-2">
+                      <Field label="Valor do empréstimo (€)">
+                        <input className={inputClass} type="number" min={0} step={1000}
+                          value={loanInput.loanAmount}
+                          onChange={(e) => setLoanInput((p) => ({ ...p, loanAmount: Math.max(0, Number(e.target.value)) }))} />
+                      </Field>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">
+                        Euribor (%)
+                        {euriborInfo && (
+                          <span className="ml-1.5 text-[10px] font-normal text-slate-400">
+                            {euriborInfo.period} · {new Date(euriborInfo.fetchedAt).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        )}
+                      </label>
+                      <div className="flex gap-1">
+                        <input className={inputClass + ' flex-1'} type="number" min={-5} max={20} step={0.001}
+                          value={loanInput.euribor}
+                          onChange={(e) => setLoanInput((p: LoanInput) => ({ ...p, euribor: Number(e.target.value) }))} />
+                        <button type="button" title="Obter Euribor atual (ECB)"
+                          className="shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-1 text-slate-500 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700 transition-colors disabled:opacity-40"
+                          disabled={euriborLoading}
+                          onClick={() => fetchEuribor()}>
+                          <RefreshCw size={13} className={euriborLoading ? 'animate-spin' : ''} />
+                        </button>
+                      </div>
+                    </div>
+                    <Field label="Spread (%)">
+                      <input className={inputClass} type="number" min={0} max={10} step={0.001}
+                        value={loanInput.spread}
+                        onChange={(e) => setLoanInput((p) => ({ ...p, spread: Math.max(0, Number(e.target.value)) }))} />
+                    </Field>
+                    <Field label={<span className="flex items-center gap-1">TAN <span className="text-emerald-600 font-bold">{((loanInput.euribor || 0) + (loanInput.spread || 0)).toFixed(3)}%</span></span>}>
+                      <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm font-semibold">
+                        {(['fixed', 'variable'] as const).map((t) => (
+                          <button key={t} type="button"
+                            className={`flex-1 py-2 transition-colors ${loanInput.rateType === t ? 'bg-slate-800 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
+                            onClick={() => setLoanInput((p) => ({ ...p, rateType: t }))}>
+                            {t === 'fixed' ? 'Fixa' : 'Variável'}
+                          </button>
+                        ))}
+                      </div>
+                    </Field>
+                    {loanInput.rateType === 'variable' && (
+                      <Field label="Revisão Euribor">
+                        <select className={inputClass} value={loanInput.euriborReviewMonths}
+                          onChange={(e) => setLoanInput((p) => ({ ...p, euriborReviewMonths: Number(e.target.value) as 6 | 12 }))}>
+                          <option value={6}>6 meses</option>
+                          <option value={12}>12 meses</option>
+                        </select>
+                      </Field>
+                    )}
+                    <Field label="Prazo (anos)">
+                      <input className={inputClass} type="number" min={1} max={30} step={1}
+                        value={loanInput.termYears}
+                        onChange={(e) => setLoanInput((p) => ({ ...p, termYears: Math.min(30, Math.max(1, Number(e.target.value))) }))} />
+                    </Field>
+                  </div>
+                  {/* ── Inputs linha 2: data + extra ── */}
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <Field label="Data de início">
+                      <input className={inputClass} type="date"
+                        value={loanInput.startDate}
+                        onChange={(e) => setLoanInput((p) => ({ ...p, startDate: e.target.value }))} />
+                    </Field>
+                    <Field label="Pagamento extra/mês (€)">
+                      <input className={inputClass} type="number" min={0} step={50}
+                        value={loanInput.extraPaymentMonthly}
+                        onChange={(e) => setLoanInput((p) => ({ ...p, extraPaymentMonthly: Math.max(0, Number(e.target.value)) }))} />
+                    </Field>
+                  </div>
+
+                  {/* ── Poupança com extra payments ── */}
+                  {loanSchedule && loanSchedule.interestSaved > 0 && (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 flex items-center gap-3 flex-wrap">
+                      <span className="font-semibold">Com pagamentos extra:</span>
+                      <span>poupa <strong>{loanSchedule.interestSaved.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} €</strong> em juros</span>
+                      <span className="text-emerald-400">·</span>
+                      <span>termina <strong>{loanSchedule.numScheduledPayments - loanSchedule.numActualPayments} meses</strong> mais cedo</span>
+                    </div>
+                  )}
+
+                  {/* ── Tabela de amortização por ano (expansível) ── */}
+                  {loanSchedule && loanSchedule.rows.length > 0 && (
+                    <div className="rounded-lg border border-slate-200 overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-slate-900 text-white text-left uppercase tracking-wide">
+                          <tr>
+                            <th className="px-3 py-2">Ano</th>
+                            <th className="px-3 py-2 text-right">Capital início</th>
+                            <th className="px-3 py-2 text-right">Total pago</th>
+                            <th className="px-3 py-2 text-right">Amortização</th>
+                            <th className="px-3 py-2 text-right">Juros</th>
+                            <th className="px-3 py-2 text-right">Extra</th>
+                            <th className="px-3 py-2 text-right">Saldo final</th>
+                            <th className="px-2 py-2 w-7"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {loanYears.map((yr: LoanYearSummary) => {
+                            const isOpen = loanExpandedYears.has(yr.year);
+                            return (
+                              <React.Fragment key={yr.year}>
+                                <tr
+                                  className="border-t border-slate-200 bg-slate-50 cursor-pointer hover:bg-slate-100 font-semibold"
+                                  onClick={() => setLoanExpandedYears((prev) => {
+                                    const next = new Set(prev);
+                                    isOpen ? next.delete(yr.year) : next.add(yr.year);
+                                    return next;
+                                  })}
+                                >
+                                  <td className="px-3 py-2 text-slate-700">{yr.year}</td>
+                                  <td className="px-3 py-2 text-right text-slate-500">{yr.rows[0].beginBalance.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} €</td>
+                                  <td className="px-3 py-2 text-right">{yr.totalPaid.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} €</td>
+                                  <td className="px-3 py-2 text-right text-emerald-700">{yr.totalPrincipal.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} €</td>
+                                  <td className="px-3 py-2 text-right text-rose-600">{yr.totalInterest.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} €</td>
+                                  <td className="px-3 py-2 text-right text-blue-600">{yr.totalExtra > 0 ? yr.totalExtra.toLocaleString('pt-PT', { minimumFractionDigits: 2 }) + ' €' : '—'}</td>
+                                  <td className="px-3 py-2 text-right font-bold text-slate-800">{yr.endBalance.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} €</td>
+                                  <td className="px-2 py-2 text-center text-slate-400 text-[10px]">{isOpen ? '▲' : '▼'}</td>
+                                </tr>
+                                {isOpen && yr.rows.map((row: LoanRow) => (
+                                  <tr key={row.num} className="border-t border-slate-100 bg-white">
+                                    <td className="pl-7 pr-3 py-1.5 text-slate-400">#{row.num}</td>
+                                    <td className="px-3 py-1.5 text-right text-slate-400">{row.date}</td>
+                                    <td className="px-3 py-1.5 text-right text-slate-600">{row.total.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} €</td>
+                                    <td className="px-3 py-1.5 text-right text-emerald-600">{row.principal.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} €</td>
+                                    <td className="px-3 py-1.5 text-right text-rose-500">{row.interest.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} €</td>
+                                    <td className="px-3 py-1.5 text-right text-blue-500">{row.extra > 0 ? row.extra.toLocaleString('pt-PT', { minimumFractionDigits: 2 }) + ' €' : '—'}</td>
+                                    <td className="px-3 py-1.5 text-right text-slate-700">{row.endBalance.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} €</td>
+                                    <td></td>
+                                  </tr>
+                                ))}
+                              </React.Fragment>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot className="bg-slate-800 text-white font-bold text-xs">
+                          <tr>
+                            <td className="px-3 py-2" colSpan={2}>Total</td>
+                            <td className="px-3 py-2 text-right">{loanSchedule.totalPaid.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} €</td>
+                            <td className="px-3 py-2 text-right text-emerald-300">{loanInput.loanAmount.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} €</td>
+                            <td className="px-3 py-2 text-right text-rose-300">{loanSchedule.totalInterest.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} €</td>
+                            <td className="px-3 py-2 text-right text-blue-300">{loanSchedule.totalExtraPayments > 0 ? loanSchedule.totalExtraPayments.toLocaleString('pt-PT', { minimumFractionDigits: 2 }) + ' €' : '—'}</td>
+                            <td className="px-3 py-2 text-right">0,00 €</td>
+                            <td></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── VIATURA DA EMPRESA ──────────────────────────────────── */}
+              {activeId === 'car-benefit' && (() => {
+                const cb = carBenefitInput;
+                const set = (patch: Partial<CarBenefitInput>) => setCarBenefitInput(p => ({ ...p, ...patch }));
+                return (
+                <div className="space-y-4">
+                  {/* Tipo de viatura */}
+                  <div className="flex gap-2">
+                    {([['ice','Combustão','🔥'],['hybrid','Híbrido Plug-In','⚡🔥'],['electric','Elétrico','⚡']] as const).map(([v,label,icon]) => (
+                      <button key={v} type="button"
+                        className={`flex-1 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${cb.vehicleType === v ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                        onClick={() => set({ vehicleType: v })}>
+                        {icon} {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Linha 1: nome + aquisição */}
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <div className="md:col-span-2">
+                      <Field label="Modelo / Descrição da viatura">
+                        <input className={inputClass} type="text" placeholder="Ex: Volkswagen Passat 2.0 TDI"
+                          value={cb.vehicleName}
+                          onChange={e => set({ vehicleName: e.target.value })} />
+                      </Field>
+                    </div>
+                    <Field label="Forma de aquisição">
+                      <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm font-semibold">
+                        {([['purchase','Compra própria'],['lease','Renting / ALD']] as const).map(([v,label]) => (
+                          <button key={v} type="button"
+                            className={`flex-1 py-2 transition-colors ${cb.acquisitionMode === v ? 'bg-slate-800 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
+                            onClick={() => set({ acquisitionMode: v })}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </Field>
+                    {cb.acquisitionMode === 'purchase' ? (
+                      <Field label="Valor aquisição c/ IVA (€)">
+                        <input className={inputClass} type="number" min={0} step={500}
+                          value={cb.acquisitionValue}
+                          onChange={e => set({ acquisitionValue: Math.max(0, Number(e.target.value)) })} />
+                      </Field>
+                    ) : (
+                      <Field label="Custo mensal locação (€)">
+                        <input className={inputClass} type="number" min={0} step={50}
+                          value={cb.monthlyLeaseCost}
+                          onChange={e => set({ monthlyLeaseCost: Math.max(0, Number(e.target.value)) })} />
+                      </Field>
+                    )}
+                  </div>
+
+                  {/* Linha 2: contribuição + IRS + meses + SS */}
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+                    <Field label="Contribuição mensal trabalhador (€)">
+                      <input className={inputClass} type="number" min={0} step={10}
+                        value={cb.employeeContribution}
+                        onChange={e => set({ employeeContribution: Math.max(0, Number(e.target.value)) })} />
+                    </Field>
+                    <Field label="Taxa retenção IRS (%)">
+                      <input className={inputClass} type="number" min={0} max={60} step={0.5}
+                        value={cb.irsRetentionRate}
+                        onChange={e => set({ irsRetentionRate: Math.max(0, Number(e.target.value)) })} />
+                    </Field>
+                    <Field label="Meses no ano">
+                      <input className={inputClass} type="number" min={1} max={12}
+                        value={cb.monthsAssigned}
+                        onChange={e => set({ monthsAssigned: Math.min(12, Math.max(1, Number(e.target.value))) })} />
+                    </Field>
+                    <Field label="SS trabalhador (%)">
+                      <input className={inputClass} type="number" min={0} max={15} step={0.01}
+                        value={cb.socialSecurityRate}
+                        onChange={e => set({ socialSecurityRate: Math.max(0, Number(e.target.value)) })} />
+                    </Field>
+                    <div className="flex flex-col justify-end">
+                      <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 cursor-pointer select-none h-[38px]">
+                        <input type="checkbox" checked={cb.continuousAssignment}
+                          onChange={e => set({ continuousAssignment: e.target.checked })} />
+                        Atribuição contínua (SS)
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Info box para elétrico isento */}
+                  {cb.vehicleType === 'electric' && cb.acquisitionMode === 'purchase' && cb.acquisitionValue <= 62500 && (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                      <span className="font-semibold">⚡ Viatura elétrica isenta</span> — valor de aquisição ≤ 62.500 € → imputação = 0 € (CIRS art.º 2.º, n.º 3, b))
+                    </div>
+                  )}
+                  {cb.vehicleType === 'electric' && cb.acquisitionMode === 'purchase' && cb.acquisitionValue > 62500 && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      <span className="font-semibold">⚡ Viatura elétrica parcialmente tributada</span> — apenas o valor acima de 62.500 € é sujeito a imputação (taxa reduzida 0,375%/mês)
+                    </div>
+                  )}
+                </div>
+                );
+              })()}
+
               {activeId === 'act-compensation' && (
                 <div className="space-y-4">
                   <div className="overflow-x-auto rounded-lg border border-slate-200">

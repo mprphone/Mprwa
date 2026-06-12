@@ -2,11 +2,78 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { mockService, CURRENT_USER_ID } from '../services/mockData';
 import { Task, TaskAttachment, Customer, Conversation, User, TaskStatus, TaskPriority, ConversationStatus, Role } from '../types';
-import { AlertTriangle, Edit3, Plus, Search, RefreshCw, Paperclip, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Edit3, Plus, Search, RefreshCw, Paperclip, Trash2, X } from 'lucide-react';
 
 interface EnrichedTask extends Task {
   customerName?: string;
   ownerName?: string;
+}
+
+// ─── Combobox de cliente com pesquisa ─────────────────────────────────────────
+
+function CustomerCombobox({ customers, query, onQueryChange, selectedCustomer, customerLabel }: {
+  customers: Customer[];
+  query: string;
+  onQueryChange: (v: string) => void;
+  selectedCustomer: Customer | null;
+  customerLabel: (c: Customer) => string;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const displayValue = selectedCustomer ? customerLabel(selectedCustomer) : query;
+
+  return (
+    <div ref={ref} className="relative">
+      <label className="block text-xs font-medium text-slate-500 mb-1">Cliente associado</label>
+      <div className={`flex items-center rounded-lg border bg-white transition-all ${open ? 'border-emerald-400 ring-2 ring-emerald-100' : 'border-slate-200'}`}>
+        <input
+          required
+          type="text"
+          className="flex-1 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none bg-transparent"
+          value={displayValue}
+          onChange={(e) => { onQueryChange(e.target.value); setOpen(true); }}
+          onFocus={() => { if (query.length > 0) setOpen(true); }}
+          placeholder="Escreva nome ou NIF para pesquisar..."
+          autoComplete="off"
+        />
+        <button type="button" tabIndex={-1} className="px-2 text-slate-400" onClick={() => setOpen((v) => !v)}>
+          <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
+      {selectedCustomer && (
+        <p className="mt-1 text-[11px] text-emerald-600 font-medium">✓ {customerLabel(selectedCustomer)}</p>
+      )}
+      {open && customers.length > 0 && (
+        <div className="absolute z-50 mt-1 w-full max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+          {customers.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-emerald-50 transition-colors border-b border-slate-50 last:border-0"
+              onClick={() => { onQueryChange(customerLabel(c)); setOpen(false); }}
+            >
+              <span className="flex-1 font-medium text-slate-800 truncate">{c.company || c.name}</span>
+              {c.nif && <span className="shrink-0 text-[11px] font-mono text-slate-400">{c.nif}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+      {open && customers.length === 0 && query.length > 0 && (
+        <div className="absolute z-50 mt-1 w-full rounded-xl border border-slate-200 bg-white shadow-lg px-4 py-3 text-sm text-slate-400">
+          Sem resultados para "{query}"
+        </div>
+      )}
+    </div>
+  );
 }
 
 const Tasks: React.FC = () => {
@@ -237,7 +304,7 @@ const Tasks: React.FC = () => {
       if (files.length === 0) return;
 
       try {
-          const nextAttachments = await Promise.all(
+          const results = await Promise.allSettled(
               files.map(async (file) => {
                   const maxSize = 8 * 1024 * 1024;
                   if (Number(file.size || 0) > maxSize) {
@@ -246,6 +313,14 @@ const Tasks: React.FC = () => {
                   return readAttachmentFile(file);
               })
           );
+          const failed = results.filter((r) => r.status === 'rejected');
+          if (failed.length) {
+              const msg = (failed[0] as PromiseRejectedResult).reason?.message || 'Falha ao ler ficheiro.';
+              throw new Error(msg);
+          }
+          const nextAttachments = results
+              .filter((r): r is PromiseFulfilledResult<typeof r extends PromiseFulfilledResult<infer V> ? V : never> => r.status === 'fulfilled')
+              .map((r) => (r as PromiseFulfilledResult<any>).value);
           setEditFormData((prev) => ({
               ...prev,
               attachments: [...prev.attachments, ...nextAttachments].slice(0, 12),
@@ -423,6 +498,13 @@ const Tasks: React.FC = () => {
         (t.ownerName && t.ownerName.toLowerCase().includes(searchTerm.toLowerCase()));
 
     return matchesStatus && matchesPriority && matchesAssignee && matchesVisibility && matchesSearch;
+  }).sort((a, b) => {
+    // Urgentes primeiro, depois ordenar por data de prazo crescente
+    if (a.priority === TaskPriority.URGENT && b.priority !== TaskPriority.URGENT) return -1;
+    if (b.priority === TaskPriority.URGENT && a.priority !== TaskPriority.URGENT) return 1;
+    const da = new Date(a.dueDate || '9999').getTime();
+    const db = new Date(b.dueDate || '9999').getTime();
+    return da - db;
   });
 
   const getCardTone = (taskId: string) => {
@@ -644,29 +726,15 @@ const Tasks: React.FC = () => {
               </h2>
               <form onSubmit={handleSave} className="space-y-4">
                  
-                 {/* Select Customer (Only when creating) */}
+                 {/* Combobox de cliente — ordenado e filtrável */}
                  {!selectedTask && (
-                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Cliente Associado</label>
-                        <input
-                            required
-                            list="task-customer-suggestions"
-                            className="mt-1 w-full border rounded-md p-2 bg-yellow-50 border-yellow-200"
-                            value={selectedCustomerQuery}
-                            onChange={(e) => handleCustomerQueryChange(e.target.value)}
-                            placeholder="Escreva para sugerir cliente por nome..."
-                        />
-                        <datalist id="task-customer-suggestions">
-                            {filteredCustomerSuggestions.map((customer) => (
-                                <option key={customer.id} value={customerLabel(customer)} />
-                            ))}
-                        </datalist>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {selectedCustomerForCreate
-                            ? `Cliente selecionado: ${customerLabel(selectedCustomerForCreate)}`
-                            : 'A tarefa ficará associada à conversa do cliente escolhido na sugestão.'}
-                        </p>
-                     </div>
+                   <CustomerCombobox
+                     customers={filteredCustomerSuggestions}
+                     query={selectedCustomerQuery}
+                     onQueryChange={handleCustomerQueryChange}
+                     selectedCustomer={selectedCustomerForCreate ?? null}
+                     customerLabel={customerLabel}
+                   />
                  )}
 
                  {selectedTask && (

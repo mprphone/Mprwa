@@ -37,6 +37,7 @@ function registerLocalDataRoutes(context) {
         dbGetAsync,
         dbAllAsync,
         writeAuditLog,
+        sendResponsibleNotification,
         getLocalTasks,
         upsertLocalTask,
         getLocalCalls,
@@ -2768,6 +2769,8 @@ function registerLocalDataRoutes(context) {
 
     // ── Sub-module delegation ──────────────────────────────────────
     const helpers = {
+        sendResponsibleNotification: sendResponsibleNotification || null,
+        nowIso: nowIso || (() => new Date().toISOString()),
         parseBoolean,
         normalizeSourceTaskStatus,
         normalizeSourceTaskPriority,

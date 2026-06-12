@@ -1,0 +1,1791 @@
+
+                                     <div class="popup" id="popupConsent">
+									        <section id="contentPopupConsent" class="privacyText">
+									            <h2>Preferências de Privacidade</h2><br>
+									            A ACT utiliza cookies enquanto navega neste website para maximizar a segurança, melhorar o desempenho e dar-lhe uma experiência mais personalizada. Como respeitamos o seu direito à privacidade, através desta janela poderá definir o tipo de cookies que pretende desativar. No entanto, o bloqueio de alguns destes cookies poderá limitar a sua experiência de utilizador.<br>
+									            <a href="#" id="showText" onclick="showPrivacy()">Mostrar mais</a>
+									            <div id="privacy" style="display:none;">Os cookies ficam armazenados nos dipositivos de acesso (computador, telemóvel, smartphone ou tablet ou qualquer outro dispositivo com ligação à internet e navegador) ao nível do navegador de internet (browser) e entram em funcionamento sempre que o utilizador visita novamente qualquer website da act.</div>
+									        </section>
+									        <section id="configureSection">
+									            <div>
+									                <div class="parent-cookie-border">
+									                    <div class="parent-cookie-element">
+									                        <div>
+									                            <a href="#" onclick="showDetails('cookieConsentDetails')" style="font-weight: bold; ">Cookies essenciais</a>
+									                        </div>
+									                        <div class="child-cookie-element1 privacyText">
+									                            Sempre Ativado
+									                        </div>
+									                    </div>
+									                    <div>
+									                        <div class="child-cookie-element2">
+									                            <div id="cookieConsentDetails" style="display:none" class="privacyText">Os cookies essenciais permitem o acesso a áreas específicas dos websites, para a navegação e utilização das suas aplicações, incluindo o acesso a áreas seguras, através de login. Estes cookies são fundamentais para a prestação do serviço, sem os quais não é possível executar tal serviço.</div>
+									                        </div>
+									                    </div>
+									                </div>
+									                <div class="parent-cookie-border">
+									                    <div class="parent-cookie-element">
+									                        <div>
+									                            <a href="#" onclick="showDetails('targetedFunctionalityDetails')" style="font-weight: bold; ">Cookies de funcionalidade</a>
+									                        </div>
+									                        <div class="child-cookie-element1">
+									                            <div class="switch checked" id="targetedFunctionality">
+									                                <div class="circle" id="targetedFunctionalityCircle"></div>
+									                            </div>
+									                        </div>
+									                    </div>
+									                    <div>
+									                        <div class="child-cookie-element2 privacyText">
+									                            <div id="targetedFunctionalityDetails" style="display:none">Estes cookies permitem relembrar as preferências do utilizador, relativamente à navegação no website, para que este não tenha de os reconfigurar e personalizar de cada vez que visita o website.</div>
+									                        </div>
+									                    </div>
+									                </div>
+									            </div>
+									        </section>
+									        <div class="choice-container-buttons">
+									            <button class="c-button" id="accept">
+									                <div class="c-ripple js-ripple"><span class="c-ripple-circle-accept"></span></div>
+									                SALVAR E ACEITAR
+									            </button>
+									        </div>
+									    </div>
+									     <script>
+									        // Cookie Bar initialization
+									        $(function () {
+									            $.cookieBar({
+									                privacy: 'bs_modal',
+									                privacyContent: '#privacyModal'
+									            });
+									        });
+									
+									        $(function () {
+									            $('#reload-cookies').on('click', function () {
+									                if ($.cookieBar('getCookie', 'cookies-state') === 'accepted') {
+									                    $.cookieBar('setCookie', 'cookies-state', '', 0);
+									                    $.cookieBar('displayBar');
+									                }
+									            });
+									
+									            $('#toggle-style').on('click', function () {
+									                $('#cookie-bar').remove();
+									
+									                $.cookieBar({
+									                    style: styles[style],
+									                    privacy: 'bs_modal',
+									                    privacyContent: '#privacyModal'
+									                });
+									
+									                style++;
+									
+									                if (style >= styles.length) {
+									                    style = 0;
+									                }
+									            });
+									        });
+									    </script>
+
+
+                                    	<div id="skip">
+                                            <a href="#s4-workspace">Saltar para o conteúdo principal</a>
+                                        </div>
+                                        <div class="MQTESTER" style="position: absolute; width: 40px; height: 40px; top: 0; left: 0; z-index: 999">
+                                        </div>
+                                        <div id="imgPrefetch" style="display:none">
+<img src="/SiteAssets/favicon.ico?rev=43">
+<img src="/SiteAssets/imgact.png?rev=43">
+<img src="/_layouts/15/images/spcommon.png?rev=43">
+</div>
+
+                                        <noscript><div class='noindex'>Poderá estar a tentar aceder a este site a partir de um browser protegido no servidor. Active os scripts e carregue novamente a página.</div></noscript>
+                                        
+                                        <form method="post" action="/Pages/SimuladorCompensacaoCessacaoContratoTrabalho.aspx" onsubmit="javascript:return WebForm_OnSubmit();" id="aspnetForm" data-gtm-form-interact-id="0">
+<div class="aspNetHidden">
+<input type="hidden" name="_wpcmWpid" id="_wpcmWpid" value="" style="">
+<input type="hidden" name="wpcmVal" id="wpcmVal" value="" style="">
+<input type="hidden" name="MSOWebPartPage_PostbackSource" id="MSOWebPartPage_PostbackSource" value="" style="">
+<input type="hidden" name="MSOTlPn_SelectedWpId" id="MSOTlPn_SelectedWpId" value="" style="">
+<input type="hidden" name="MSOTlPn_View" id="MSOTlPn_View" value="0" style="">
+<input type="hidden" name="MSOTlPn_ShowSettings" id="MSOTlPn_ShowSettings" value="False" style="">
+<input type="hidden" name="MSOGallery_SelectedLibrary" id="MSOGallery_SelectedLibrary" value="" style="">
+<input type="hidden" name="MSOGallery_FilterString" id="MSOGallery_FilterString" value="" style="">
+<input type="hidden" name="MSOTlPn_Button" id="MSOTlPn_Button" value="none" style="">
+<input type="hidden" name="__EVENTTARGET" id="__EVENTTARGET" value="" style="">
+<input type="hidden" name="__EVENTARGUMENT" id="__EVENTARGUMENT" value="" style="">
+<input type="hidden" name="__REQUESTDIGEST" id="__REQUESTDIGEST" value="0xB1C9F0FC4B9B63992BD7E4D8ABAB1DC344ED02EFDF326547361F3A4AFE0F2F146BE69A075EFA4D32A4C6CD343FC10B65DD52DAF4BFA1E5344B6B75ADED3B88B0,22 May 2026 10:03:45 -0000" style="">
+<input type="hidden" name="MSOSPWebPartManager_DisplayModeName" id="MSOSPWebPartManager_DisplayModeName" value="Browse" style="">
+<input type="hidden" name="MSOSPWebPartManager_ExitingDesignMode" id="MSOSPWebPartManager_ExitingDesignMode" value="false" style="">
+<input type="hidden" name="MSOWebPartPage_Shared" id="MSOWebPartPage_Shared" value="" style="">
+<input type="hidden" name="MSOLayout_LayoutChanges" id="MSOLayout_LayoutChanges" value="" style="">
+<input type="hidden" name="MSOLayout_InDesignMode" id="MSOLayout_InDesignMode" value="" style="">
+<input type="hidden" name="_wpSelected" id="_wpSelected" value="" style="">
+<input type="hidden" name="_wzSelected" id="_wzSelected" value="" style="">
+<input type="hidden" name="MSOSPWebPartManager_OldDisplayModeName" id="MSOSPWebPartManager_OldDisplayModeName" value="Browse" style="">
+<input type="hidden" name="MSOSPWebPartManager_StartWebPartEditingName" id="MSOSPWebPartManager_StartWebPartEditingName" value="false" style="">
+<input type="hidden" name="MSOSPWebPartManager_EndWebPartEditing" id="MSOSPWebPartManager_EndWebPartEditing" value="false" style="">
+<input type="hidden" name="_maintainWorkspaceScrollPosition" id="_maintainWorkspaceScrollPosition" value="0" style="">
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="/wEPDwUBMA9kFgJmD2QWAgIBD2QWBAIBD2QWBAIFD2QWAmYPZBYCAgEPFgIeE1ByZXZpb3VzQ29udHJvbE1vZGULKYgBTWljcm9zb2Z0LlNoYXJlUG9pbnQuV2ViQ29udHJvbHMuU1BDb250cm9sTW9kZSwgTWljcm9zb2Z0LlNoYXJlUG9pbnQsIFZlcnNpb249MTYuMC4wLjAsIEN1bHR1cmU9bmV1dHJhbCwgUHVibGljS2V5VG9rZW49NzFlOWJjZTExMWU5NDI5YwFkAh0PZBYCAgMPZBYCZg9kFgJmDzwrAAYAZAIJD2QWBAIBD2QWAgIBD2QWAgUmZ182YjUyYzNlYl8xNjMzXzQxYzZfOWI3ZV85MmZkNTcxYjg5ZDEPZBYCZg9kFgYCBw8QDxYCHgtfIURhdGFCb3VuZGdkEBUCCkVtcHJlZ2Fkb3ILVHJhYmFsaGFkb3IVAgpFbXByZWdhZG9yC1RyYWJhbGhhZG9yFCsDAmdnZGQCCw8QDxYCHwFnZBAVAyBDb250cmF0byBwb3IgdGVtcG8gaW5kZXRlcm1pbmFkbxZDb250cmF0byBhIHRlcm1vIGNlcnRvGENvbnRyYXRvIGEgdGVybW8gaW5jZXJ0bxUDIENvbnRyYXRvIHBvciB0ZW1wbyBpbmRldGVybWluYWRvFkNvbnRyYXRvIGEgdGVybW8gY2VydG8YQ29udHJhdG8gYSB0ZXJtbyBpbmNlcnRvFCsDA2dnZ2RkAj0PDxYCHgRUZXh0BQoyMi8wNS8yMDI2ZGQCCQ9kFggCAQ9kFgICAQ9kFgICAQ9kFgICAw8WAh4HVmlzaWJsZWgWAmYPZBYEAgMPZBYGAgEPFgIfA2hkAgMPFgIfA2hkAgUPFgYeE0NsaWVudE9uQ2xpY2tTY3JpcHQFE0dvVG9DcmVhdGVOZXdQYWdlKCkeGENsaWVudE9uQ2xpY2tOYXZpZ2F0ZVVybGQeKENsaWVudE9uQ2xpY2tTY3JpcHRDb250YWluaW5nUHJlZml4ZWRVcmwFE0dvVG9DcmVhdGVOZXdQYWdlKClkAgQPDxYCHglBY2Nlc3NLZXkFAS9kZAIDD2QWAgIDD2QWAgIBD2QWBAIDD2QWAmYPDxYEHgRfIVNCAgIeCENzc0NsYXNzBRdtcy1wcm9tb3RlZEFjdGlvbkJ1dHRvbmRkAgUPDxYGHwkFF21zLXByb21vdGVkQWN0aW9uQnV0dG9uHwgCAh8DaGRkAg8PZBYCAgEPZBYCAgEPPCsABQEADxYCHhVQYXJlbnRMZXZlbHNEaXNwbGF5ZWRmZGQCFw9kFgICAQ9kFgICDQ8PFgIfA2hkFgICAw9kFgICAw9kFgICAQ88KwAJAQAPFgIeDU5ldmVyRXhwYW5kZWRnZGQYAQUeX19Db250cm9sc1JlcXVpcmVQb3N0QmFja0tleV9fFgEFR2N0bDAwJGN0bDQ5JGdfNmI1MmMzZWJfMTYzM180MWM2XzliN2VfOTJmZDU3MWI4OWQxJGN0bDAwJGNoa2JKdXN0YUNhdXNhtmlyrLh/VX1+x0zRYI5yxdY6iF8a06lO1IeVct5xsxI=" style="">
+</div>
+
+<script type="text/javascript">
+//<![CDATA[
+var theForm = document.forms['aspnetForm'];
+if (!theForm) {
+    theForm = document.aspnetForm;
+}
+function __doPostBack(eventTarget, eventArgument) {
+    if (!theForm.onsubmit || (theForm.onsubmit() != false)) {
+        theForm.__EVENTTARGET.value = eventTarget;
+        theForm.__EVENTARGUMENT.value = eventArgument;
+        theForm.submit();
+    }
+}
+//]]>
+</script>
+
+
+<script src="/WebResource.axd?d=k6SUtQgCHsCpgg7TUrqJ-zsqWeuWesr7KyBXpXW3_f9pT9wgsFlkF5w7-AXbXj5vIBWZXf3Z5g_MHzPJ602IKTfA8RqQT1YEcIQsLQwcx6k1&amp;t=638901807720898773" type="text/javascript"></script>
+
+
+<script type="text/javascript">
+//<![CDATA[
+var MSOWebPartPageFormName = 'aspnetForm';
+var g_presenceEnabled = true;
+var g_wsaEnabled = false;
+
+var g_correlationId = '0e1516a2-02ac-b0d4-b6e6-ac0ef092c13e';
+var g_wsaQoSEnabled = false;
+var g_wsaQoSDataPoints = [];
+var g_wsaRUMEnabled = false;
+var g_wsaLCID = 2070;
+var g_wsaListTemplateId = 850;
+var g_wsaSiteTemplateId = 'STS#0';
+var _spPageContextInfo={"webServerRelativeUrl":"/","webAbsoluteUrl":"https://portal.act.gov.pt","viewId":"","listId":"{7fbc98cd-f18e-48c4-aab8-b8c0610d2f17}","listPermsMask":{"High":16,"Low":196673},"listUrl":"/Pages","listTitle":"Páginas","listBaseTemplate":850,"viewOnlyExperienceEnabled":false,"blockDownloadsExperienceEnabled":false,"idleSessionSignOutEnabled":false,"cdnPrefix":"","siteAbsoluteUrl":"https://portal.act.gov.pt","siteId":"{947c6849-436d-4149-bb60-ebaaa7f7958d}","showNGSCDialogForSyncOnTS":false,"supportPoundStorePath":true,"supportPercentStorePath":true,"siteSubscriptionId":null,"CustomMarkupInCalculatedFieldDisabled":true,"AllowCustomMarkupInCalculatedField":false,"isSPO":false,"farmLabel":null,"serverRequestPath":"/Pages/SimuladorCompensacaoCessacaoContratoTrabalho.aspx","layoutsUrl":"_layouts/15","webId":"{80308545-ae6a-4ec5-a347-bc836d2aba6f}","webTitle":"Portal ACT","webTemplate":"1","webTemplateConfiguration":"STS#0","webDescription":"","tenantAppVersion":"0","isAppWeb":false,"webLogoUrl":"/SiteAssets/imgact.png","webLanguage":1033,"currentLanguage":2070,"currentUICultureName":"pt-PT","currentCultureName":"pt-PT","currentCultureLCID":2070,"env":null,"nid":0,"fid":0,"serverTime":"2026-05-22T10:03:45.1734740Z","siteClientTag":"2386$$16.0.10417.20037","crossDomainPhotosEnabled":false,"openInClient":false,"Has2019Era":true,"webUIVersion":15,"webPermMasks":{"High":16,"Low":196673},"pageListId":"{7fbc98cd-f18e-48c4-aab8-b8c0610d2f17}","pageItemId":67,"pagePermsMask":{"High":16,"Low":196673},"pagePersonalizationScope":1,"userEmail":"","userId":0,"userLoginName":null,"userDisplayName":null,"isAnonymousUser":true,"isAnonymousGuestUser":false,"isEmailAuthenticationGuestUser":false,"isExternalGuestUser":false,"systemUserKey":null,"alertsEnabled":true,"siteServerRelativeUrl":"/","allowSilverlightPrompt":"True","themeCacheToken":"/::9:","themedCssFolderUrl":null,"themedImageFileNames":null,"modernThemingEnabled":true,"isSiteAdmin":false,"ExpFeatures":[480216468,1884350801,1158731092,62197791,538521105,335811073,4194306,34614301,268500996,-1946025984,28445328,-2147475455,134291456,65536,288,950272,1282,808326148,134217873,0,0,-1073217536,545285252,18350656,-467402752,6291457,-2147483644,1074794496,-1728053184,1845537108,622628,4102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"killSwitches":{},"InternalValidAuthorities":["swapportal01:82 ","swapportal01:82","swapportal01:86","portal.act.gov.pt","swapportal01","10.0.1.5"],"CorrelationId":"0e1516a2-02ac-b0d4-b6e6-ac0ef092c13e","hasManageWebPermissions":false,"isNoScriptEnabled":false,"groupId":null,"groupHasHomepage":true,"groupHasQuickLaunchConversationsLink":false,"departmentId":null,"hubSiteId":null,"hasPendingWebTemplateExtension":false,"isHubSite":false,"isWebWelcomePage":false,"siteClassification":"","hideSyncButtonOnODB":false,"showNGSCDialogForSyncOnODB":false,"sitePagesEnabled":true,"sitePagesFeatureVersion":7,"DesignPackageId":"00000000-0000-0000-0000-000000000000","groupType":null,"groupColor":"#da3b01","siteColor":"#da3b01","headerEmphasis":0,"navigationInfo":null,"guestsEnabled":false,"MenuData":{"SignInUrl":"/_layouts/15/Authenticate.aspx?Source=%2FPages%2FSimuladorCompensacaoCessacaoContratoTrabalho%2Easpx"},"RecycleBinItemCount":-1,"PublishingFeatureOn":true,"PreviewFeaturesEnabled":false,"disableAppViews":false,"disableFlows":false,"serverRedirectedUrl":null,"formDigestValue":"0xB1C9F0FC4B9B63992BD7E4D8ABAB1DC344ED02EFDF326547361F3A4AFE0F2F146BE69A075EFA4D32A4C6CD343FC10B65DD52DAF4BFA1E5344B6B75ADED3B88B0,22 May 2026 10:03:45 -0000","maximumFileSize":10240,"formDigestTimeoutSeconds":1800,"canUserCreateMicrosoftForm":false,"canUserCreateVisioDrawing":true,"readOnlyState":null,"isTenantDevSite":false,"preferUserTimeZone":false,"userTimeZoneData":null,"userTime24":false,"userFirstDayOfWeek":null,"webTimeZoneData":null,"webTime24":false,"webFirstDayOfWeek":null,"isSelfServiceSiteCreationEnabled":null,"alternateWebAppHost":"","aadTenantId":"","aadUserId":"","aadInstanceUrl":"","msGraphEndpointUrl":"https://","allowInfectedDownload":true};_spPageContextInfo.updateFormDigestPageLoaded=new Date();_spPageContextInfo.clientServerTimeDelta=new Date(_spPageContextInfo.serverTime)-new Date();if(typeof(define)=='function'){define('SPPageContextInfo',[],function(){return _spPageContextInfo;});}function CallServer_19037576(arg, context) {WebForm_DoCallback('ctl00$ctl28',arg,SP.UI.MyLinksRibbon.MyLinksRibbonPageComponent.ribbonActionCallback,context,null,false); }function _myLinksRibbonLoad2()
+{
+    var fnd = function () {
+        try {
+            mylinks_init.MyLinksInit('CallServer_19037576'); 
+        } 
+        catch (Ex)
+        { }
+    };
+    RegisterSod('mylinks_init', '/_layouts/15/sp.ui.mylinksribbon.js?rev=0StMaEfxj2Emiye6tWPA%2BA%3D%3DTAG0');
+    LoadSodByKey('mylinks_init', fnd);
+}
+
+function _myLinksRibbonLoad1()
+{
+    ExecuteOrDelayUntilScriptLoaded(_myLinksRibbonLoad2, 'SP.Ribbon.js');
+}
+
+_spBodyOnLoadFunctionNames.push('_myLinksRibbonLoad1');
+var L_Menu_BaseUrl="";
+var L_Menu_LCID="2070";
+var L_Menu_SiteTheme="null";
+document.onreadystatechange=fnRemoveAllStatus; function fnRemoveAllStatus(){removeAllStatus(true)};
+function _spNavigateHierarchy(nodeDiv, dataSourceId, dataPath, url, listInContext, type) {
+
+    CoreInvoke('ProcessDefaultNavigateHierarchy', nodeDiv, dataSourceId, dataPath, url, listInContext, type, document.forms.aspnetForm, "", "\u002fPages\u002fSimuladorCompensacaoCessacaoContratoTrabalho.aspx");
+
+}
+Flighting.ExpFeatures = [480216468,1884350801,1158731092,62197791,538521105,335811073,4194306,34614301,268500996,-1946025984,28445328,-2147475455,134291456,65536,288,950272,1282,808326148,134217873,0,0,-1073217536,545285252,18350656,-467402752,6291457,-2147483644,1074794496,-1728053184,1845537108,622628,4102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]; (function()
+{
+    if(typeof(window.SP) == "undefined") window.SP = {};
+    if(typeof(window.SP.YammerSwitch) == "undefined") window.SP.YammerSwitch = {};
+
+    var ysObj = window.SP.YammerSwitch;
+    ysObj.IsEnabled = false;
+    ysObj.TargetYammerHostName = "www.yammer.com";
+} )(); var _spWebPartComponents = new Object();
+                var g_syncButtonUsePopup = true;
+                //]]>
+</script>
+
+<script src="/_layouts/15/blank.js?rev=OqEYlnomw4m5X%2FMg2wSuyA%3D%3DTAG0" type="text/javascript"></script>
+<script type="text/javascript">
+//<![CDATA[
+window.SPThemeUtils && SPThemeUtils.RegisterCssReferences([{"Url":"\u002f_layouts\u002f15\u002f2070\u002fstyles\u002fThemable\u002foslo.css?rev=ffx1Nmn5xVcaXAwMnONTuQ\u00253D\u00253DTAG0","OriginalUrl":"\u002f_layouts\u002f15\u002f2070\u002fstyles\u002fThemable\u002foslo.css?rev=ffx1Nmn5xVcaXAwMnONTuQ\u00253D\u00253DTAG0","Id":"CssLink-9ae840bf520641d9af632162a97eac44","ConditionalExpression":"","After":"","RevealToNonIE":"false"}]);
+(function(){
+
+        if (typeof(_spBodyOnLoadFunctions) === 'undefined' || _spBodyOnLoadFunctions === null) {
+            return;
+        }
+        _spBodyOnLoadFunctions.push(function() {
+            SP.SOD.executeFunc('core.js', 'FollowingDocument', function() { FollowingDocument(); });
+        });
+    })();(function(){
+
+        if (typeof(_spBodyOnLoadFunctions) === 'undefined' || _spBodyOnLoadFunctions === null) {
+            return;
+        }
+        _spBodyOnLoadFunctions.push(function() {
+            SP.SOD.executeFunc('core.js', 'FollowingCallout', function() { FollowingCallout(); });
+        });
+    })();if (typeof(DeferWebFormInitCallback) == 'function') DeferWebFormInitCallback();function WebForm_OnSubmit() {
+UpdateFormDigest('\u002f', 1440000);
+                    var workspaceElem = GetCachedElement("s4-workspace");
+                    if (workspaceElem != null)
+                    {
+                        var scrollElem = GetCachedElement("_maintainWorkspaceScrollPosition");
+                        if (scrollElem != null)
+                        {
+                            scrollElem.value = workspaceElem.scrollTop;
+                        }
+                    };
+                if (typeof(_spFormOnSubmitWrapper) != 'undefined') {return _spFormOnSubmitWrapper();} else {return true;};
+return true;
+}
+//]]>
+</script>
+
+<div class="aspNetHidden">
+
+	<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="BAB98CB3" style="">
+	<input type="hidden" name="__SCROLLPOSITIONX" id="__SCROLLPOSITIONX" value="0" style="">
+	<input type="hidden" name="__SCROLLPOSITIONY" id="__SCROLLPOSITIONY" value="0" style="">
+	<input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="/wEdABdClrgpUgomFhkI47smga8UMTZk9qLGncDjImqxppn1M/4EEviUNIvptboHlwuSrF52F3XIhgIe3ImUYir4WvO/uScqS0qUu/pwF1v8XNWqjjUCvkl7fiMMS916c6XZbJkGWCnQPv1cZ0CNFxai+b6RH6B+NjjnGcZpJjN1b6VY6HqU7GqxUE/LF2WVmbt0ltLXeadDuryk4PiqDS085mbdsOapETm1SChjh16EU/TJDOF/l+gnP+Fabdmg7zoMqKswVJvqHDXeRk+XixlXTVQjW3tjxGYiH565mRrWyF5zcyJWqw1fM059yKsVuE8vr4aWYRWNwgcm/LHadk6whZAbzV3uHR5JxcChnMyahB9gwE2XsH+lyfEPBkY8sNSFGVbrx/V5rrOz5j2GfT93da90u0MiDx5knET/MeuFwkd/pww38wtNCndhLaDWVI22kkchMlB75cxS0hSr5ogNOUB6LpLmpi3HSEYyfXwVU8JvmYGh4DKgXAHQY0U7l6zpUW7bI2huzWrXEXd7RmaMnXpW" style="">
+</div>
+                                            <script>
+                                                var submitHook = function () {
+                                                    return false;
+                                                };
+                                                theForm._spOldSubmit = theForm.submit;
+                                                theForm.submit = function () {
+                                                    if (!submitHook()) {
+                                                        this._spOldSubmit();
+                                                    }
+                                                };
+                                            </script>
+                                            <span id="DeltaSPWebPartManager">
+                                                
+                                            </span>
+
+                                            <script type="text/javascript">
+//<![CDATA[
+Sys.WebForms.PageRequestManager._initialize('ctl00$ScriptManager', 'aspnetForm', ['fctl00$WebPartAdderUpdatePanel',''], [], ['ctl00$WebPartAdder',''], 90, 'ctl00');
+//]]>
+</script>
+
+
+                                            <span id="DeltaDelegateControls">
+                                                
+                                                
+                                            </span>
+
+                                            <div>
+	<div id="TurnOnAccessibility" style="" class="s4-notdlg noindex"><a id="linkTurnOnAcc" title="Ligar mais modos acessiveis" href="#" class="ms-accessible ms-acc-button" onclick="SetIsAccessibilityFeatureEnabled(true);UpdateAccessibilityUI();document.getElementById('linkTurnOffAcc').focus();return false;">Ativar o modo mais acessível</a></div><div id="TurnOffAccessibility" style="display:none" class="s4-notdlg noindex"><a id="linkTurnOffAcc" title="Desligar os modos acessiveis" href="#" class="ms-accessible ms-acc-button" onclick="SetIsAccessibilityFeatureEnabled(false);UpdateAccessibilityUI();document.getElementById('linkTurnOnAcc').focus();return false;">Desativar o modo mais acessível</a></div><div class="s4-notdlg s4-skipribbonshortcut noindex"><a href="javascript:;" title="Ignorar friso" onclick="document.getElementById('startNavigation').focus();" class="ms-accessible ms-acc-button" accesskey="Y">Ignorar Comandos do Friso</a></div><div class="s4-notdlg noindex"><a href="javascript:;" title="Ir para o controlo principal" onclick="document.getElementById('mainContent').focus();" class="ms-accessible ms-acc-button">Saltar para o conteúdo principal</a></div><div id="TurnOffAnimation" style="" class="s4-notdlg noindex"><a id="linkTurnOffAnimation" title="Desligar anima��es" href="#" class="ms-accessible ms-acc-button" onclick="ToggleAnimationStatus();return false;">Desativar Animações</a></div><div id="TurnOnAnimation" style="display:none;" class="s4-notdlg noindex"><a id="linkTurnOnAnimation" title="Ligar anima��es" href="#" class="ms-accessible ms-acc-button" onclick="ToggleAnimationStatus();return false;">Ativar Animações</a></div><a id="HiddenAnchor" href="javascript:;" style="display:none;"></a>
+</div>
+
+                                            <div id="authWrapper" class="">
+                                            
+                                                <div class="ms-belltown-anonShow">
+                                                    <div id="s4-ribbonrow" style="display: none; height: 0px;">
+                                                    
+                                                        <div id="globalNavBox">
+                                                            <div id="ribbonBox">
+                                                                <div id="s4-ribboncont">
+
+                                                                    <div id="DeltaSPRibbon">
+	
+                                                                        
+
+                                                                        <div class="ms-cui-ribbonTopBars"><div class="ms-cui-topBar1"></div><div class="ms-cui-topBar2"><div id="RibbonContainer-TabRowLeft" class="ms-cui-TabRowLeft ms-core-defaultFont ms-dialogHidden">
+                                                                            </div><div id="RibbonContainer-TabRowRight" class="ms-cui-TabRowRight s4-trc-container s4-notdlg ms-core-defaultFont">
+                                                                                
+                                                                                <a onmouseover="this.firstChild.firstChild.style.left='-217px'; this.firstChild.firstChild.style.top='-192px';" onmouseout="this.firstChild.firstChild.style.left='-218px'; this.firstChild.firstChild.style.top='-48px';" onclick="SP.SOD.executeFunc('followingcommon.js', 'FollowSite', function() { FollowSite(); }); return false;" id="site_follow_button" title="Siga este site e regresse ao mesmo facilmente a partir da sua página de sites." class="ms-promotedActionButton" href="javascript:WebForm_DoPostBackWithOptions(new WebForm_PostBackOptions(&quot;ctl00$site_follow_button&quot;, &quot;&quot;, true, &quot;&quot;, &quot;&quot;, false, true))" style="display:inline-block;"><span style="height:16px;width:16px;position:relative;display:inline-block;overflow:hidden;" class="s4-clust ms-promotedActionButton-icon"><img src="/_layouts/15/images/spcommon.png?rev=43#ThemeKey=spcommon" alt="Seguir" style="position:absolute;left:-218px;top:-48px;"></span><span class="ms-promotedActionButton-text">Seguir</span></a>
+                                                                                
+                                                                                
+                                                                                <span id="fullscreenmodebox" class="ms-qatbutton">
+                                                                                    <span id="fullscreenmode">
+                                                                                        <a onmouseover="this.firstChild.firstChild.firstChild.style.left='-125px'; this.firstChild.firstChild.firstChild.style.top='-178px';" onmouseout="this.firstChild.firstChild.firstChild.style.left='-143px'; this.firstChild.firstChild.firstChild.style.top='-178px';" id="ctl00_fullscreenmodeBtn" title="Concentrar-se no Conteúdo" onclick="SetFullScreenMode(true);PreventDefaultNavigation();return false;" href="../_catalogs/masterpage/#" style="display:inline-block;height:30px;width:30px;"><span style="display:inline-block;overflow:hidden;height:16px;width:16px;padding-left:7px;padding-top:7px;padding-right:7px;padding-bottom:7px;"><span style="height:16px;width:16px;position:relative;display:inline-block;overflow:hidden;" class="s4-clust"><img src="/_layouts/15/images/spcommon.png?rev=43#ThemeKey=spcommon" alt="Concentrar-se no Conteúdo" style="border:0;position:absolute;left:-143px;top:-178px;"></span></span></a>
+                                                                                    </span>
+                                                                                    <span id="exitfullscreenmode" style="display: none;">
+                                                                                        <a onmouseover="this.firstChild.firstChild.firstChild.style.left='-179px'; this.firstChild.firstChild.firstChild.style.top='-96px';" onmouseout="this.firstChild.firstChild.firstChild.style.left='-107px'; this.firstChild.firstChild.firstChild.style.top='-178px';" id="ctl00_exitfullscreenmodeBtn" title="Concentrar-se no Conteúdo" onclick="SetFullScreenMode(false);PreventDefaultNavigation();return false;" href="../_catalogs/masterpage/#" style="display:inline-block;height:30px;width:30px;"><span style="display:inline-block;overflow:hidden;height:16px;width:16px;padding-left:7px;padding-top:7px;padding-right:7px;padding-bottom:7px;"><span style="height:16px;width:16px;position:relative;display:inline-block;overflow:hidden;" class="s4-clust"><img src="/_layouts/15/images/spcommon.png?rev=43#ThemeKey=spcommon" alt="Concentrar-se no Conteúdo" style="border:0;position:absolute;left:-107px;top:-178px;"></span></span></a>
+                                                                                    </span>
+                                                                                </span>
+                                                                                
+                                                                                
+                                                                            </div></div></div>
+                                                                    
+</div>
+
+                                                                </div>
+
+                                                    
+													
+													<!--**********************************************************-->   
+
+ <span id="results"></span>
+
+
+
+
+
+<script type="text/javascript">
+
+                                              
+var context;                                            
+var web;                                           
+var isAdmin = false;
+
+context = new SP.ClientContext.get_current();
+web = context.get_web();
+
+                                              
+context.load(web, 'EffectiveBasePermissions');                              
+context.executeQueryAsync(onSuccess, onFailure);
+
+ //}
+
+                               
+
+ function onSuccess() {
+                                       
+if(!web.get_effectiveBasePermissions().has(SP.PermissionKind.manageWeb)) { 
+
+		isAdmin = true;
+	
+		if(document.getElementById('some') !=null){
+			document.getElementById('some').style.display='none'; 
+		}
+		if(document.getElementById('s4-workspace') !=null){
+			document.getElementById('s4-workspace').style.height='auto';
+		}	                                            
+	}
+
+  }
+
+function onFailure(sender, args) {
+
+ alert('request failed ' + args.get_message() + 'n' + args.get_stackTrace());                        
+
+}                              
+
+</script>
+
+<!--**********************************************************-->
+													
+													
+                                                                <span id="DeltaSPNavigation">
+                                                                    
+																		<span id="ctl00_SPNavigation_ctl00_publishingRibbon"></span>
+
+                                                                    
+                                                                </span>
+                                                            </div>
+                                                            <div id="DeltaWebPartAdderUpdatePanelContainer" class="ms-core-webpartadder" style="top: 0px;">
+	
+                                                                <div id="WebPartAdderUpdatePanelContainer">
+                                                                    <div id="ctl00_WebPartAdderUpdatePanel">
+		
+                                                                            <span id="ctl00_WebPartAdder"></span>
+                                                                        
+	</div>
+                                                                </div>
+
+                                                            
+</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+
+                                                <div id="s4-workspace" onscroll="CallGoToTop()" style="height: 900px; width: 1440px;">
+                                                    <div id="contentBox" class="ms-pub-contentLayout ms-verticalAlignTop" aria-live="polite" aria-relevant="all">
+                                                        <a id="mainContent" name="mainContent" tabindex="-1"></a>
+                                                        <h1 id="pageContentTitle" class="ms-belltown-pageName ms-noWrap ms-dialogHidden">
+                                                            <span id="DeltaPlaceHolderPageTitleInTitleArea">
+                                                                
+																	<span><a href="#ctl00_PlaceHolderPageTitleInTitleArea_ctl00_SkipLink"><img alt="Skip Navigation Links" src="/WebResource.axd?d=cVsHT8QivvyEy4YLkOezEdgqw9Bx_9MK45YGJ4YOf0bkKb8JMnmdJODPAQY4tS8FnWnlpvzTh9c2Z6cp99tbgTu994xxMB5bcr1MfLuPtYg1&amp;t=638901807720898773" width="0" height="0" style="border-width:0px;"></a><span><a title="HomePage" href="/Pages/SimuladorCompensacaoCessacaoContratoTrabalho.aspx">SimuladorCompensacaoCessacaoContratoTrabalho</a></span><a id="ctl00_PlaceHolderPageTitleInTitleArea_ctl00_SkipLink"></a></span>
+                                                                
+                                                            </span>
+                                                        </h1>
+                                                        <div id="DeltaPlaceHolderMain">
+	
+                                                            
+		
+			<!--<img class="carousel slide" alt="siteImage" src="/Style Library/customImg/Imagemfundogeral.jpg" />-->
+			<img class="carousel slide" alt="siteImage" src="/CustomImages/azul.jpg">	
+			<img class="comp12" id="compform" src="/CustomImages/componente12.png" alt="componente cizento escuro">
+			<div class="conteinerherotrabalhador" id="heroForm">
+				<div id="ctl00_PlaceHolderMain_indicacoes" class="indicacoes">
+					
+				<a class="hometrabalhador" translate="no" href="/Pages/Home.aspx">Home</a><img class="setaverde" src="/CustomImages/setaverde.png" alt="seta do breadcrumb"><a class="hometrabalhador" href="/Pages/SimuladorCompensacaoCessacaoContratoTrabalho.aspx">Simulador de compensação por cessação de contrato de trabalho</a></div>
+				<span id="ctl00_PlaceHolderMain_TitleDescriptWebpartAdder"></span>
+				<!--<div style="padding-right: 2%; padding-top: 0%;">-->
+				<div class="sp-content--body">
+					<div class="ms-webpart-zone ms-fullWidth">
+		<div id="MSOZoneCell_WebPartctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1" class="s4-wpcell-plain ms-webpartzone-cell ms-webpart-cell-vertical-inline-table ms-webpart-cell-vertical ms-fullWidth ">
+			<div class="ms-webpart-chrome ms-webpart-chrome-vertical ms-webpart-chrome-fullWidth ">
+				<div webpartid="6b52c3eb-1633-41c6-9b7e-92fd571b89d1" haspers="false" id="WebPartctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1" width="100%" class="ms-WPBody " allowdelete="false" allowexport="false" style=""><div id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1">
+					
+<script src="/_layouts/15/SP2019Migrated/js/moment-with-langs.min.js" type="text/javascript"></script>
+<script src="/_layouts/15/SP2019Migrated/js/jquery-1.10.2.min.js" type="text/javascript"></script>
+<script src="/_layouts/15/SP2019Migrated/js/jquery-ui-1.10.3.custom.min.js" type="text/javascript"></script>
+<script src="/_layouts/15/SP2019Migrated/js/jquery.ui.datepicker-pt.js" type="text/javascript"></script>
+<link href="/_layouts/15/SP2019Migrated/css/jquery-ui-1.10.3.custom.css?20210805000" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet" type="text/css" media="all">
+<link href="/_layouts/15/SP2019Migrated/css/Styles.css" rel="stylesheet" type="text/css" media="all">
+<script src="/_layouts/15/SP2019Migrated/js/Script.js" type="text/javascript"></script>
+
+<style type="text/css">
+    .headerrow {
+        text-align: left;
+        font-weight: bold;
+        color: #018088;
+        padding: 3px 0px 4px 0px;
+    }
+
+    .headerrow1 {
+        color: white;
+        text-align: center;
+        font-weight: bold;
+        background-color: #018088 !important;
+        padding: 3px 0px 4px 0px;
+    }
+
+    .ui-datepicker {
+        font-size: small;
+    }
+
+    .greenBold {
+        color: #018088;
+        font-weight: bold;
+    }
+
+    .decimal {
+        width: 70px;
+    }
+
+    .datePicker {
+        width: 70px;
+    }
+
+    .int {
+        width: 30px;
+    }
+
+    .verticalSubAlign input {
+        vertical-align: sub;
+    }
+
+    label {
+        font-weight: 400 !important;
+    }
+
+    .ddl {
+        width: 225px;
+    }
+
+    .btnCalc {
+        /*width: 715px;
+		width: 650px;*/
+        text-align: center;
+    }
+
+    .textCenterAlign {
+        text-align: center;
+    }
+
+    .largura1 {
+        width: 650px !important;
+    }
+
+    #spnChkbJustaCausa input {
+        top: -8px !important;
+        margin-right: 25px
+    }
+
+    .wpcontainer {
+        line-height: 26px
+    }
+
+    .tooltiptext {
+        visibility: hidden;
+        border: 2px solid black;
+        padding: 10px;
+        font-size: 12px;
+        font-weight: 400 !important;
+        max-width: 300px;
+        position: absolute;
+        background: white;
+        line-height: 1.2em;
+        text-align: left;
+        z-index: 1;
+        width: max-content;
+    }
+
+    .tooltipspan {
+        cursor: pointer
+    }
+
+        .tooltipspan:hover > .tooltiptext {
+            visibility: visible
+        }
+
+    input {
+        color: black !important;
+    }
+
+
+    @media print {
+        body * {
+            visibility: hidden;
+        }
+
+        .section-to-print, .section-to-print * {
+            visibility: visible;
+        }
+
+        .section-to-print {
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
+
+        .no-print, .no-print * {
+            display: none !important;
+        }
+    }
+
+    .textaviso {
+        margin-top: 5px !important;
+        margin-left: 15px !important;
+        margin-right: 5px !important;
+    }
+
+    .textaviso1 {
+        margin-top: 15px !important;
+        margin-left: 15px !important;
+        margin-right: 5px !important;
+    }
+
+    .boxsimular {
+        padding-top: 15px !important;
+        padding-bottom: 15px !important;
+        /*padding-left:10px !important;*/
+        margin: 0px !important;
+        width: 100% !important;
+    }
+
+    .btnsimular {
+        color: black !important;
+        background-color: white !important;
+    }
+
+    .alinharsize {
+        width: 100% !important;
+    }
+
+    .divAlinhamento {
+        padding: 15px !important;
+        padding-bottom: 0px !important;
+        margin-bottom: 10px;
+    }
+
+    .ms-webpartzone-cell .ms-WPBody > div {
+        margin: 0 auto;
+        width: 948px;
+    }
+
+    .wptoolbar input:hover {
+        color: #fff !important;
+        background-color: transparent !important;
+    }
+
+    .passarazul {
+        color: black;
+        background-color: rgba(0, 155, 165, 0.15);
+        padding: 5px 80px 4px 5px;
+    }
+
+    .alinhardireita {
+        margin-left: 480px;
+    }
+
+    .bordasredondas {
+        border-radius: 40px 40px 40px 40px;
+    }
+
+    .actlogo {
+        height: 50px !important;
+        border: 0px;
+        margin: 0px;
+        padding: 0px;
+        text-align: left !important;
+    }
+
+    .competelogo {
+        height: 50px !important;
+        border: 0px;
+        margin: 0px;
+        padding: 0px;
+        float: right !important;
+    }
+
+    h4 {
+        color: white !important;
+        font-size: 18px !important;
+    }
+</style>
+
+
+<div class="wptoolbar wptoolbar" style="width: 948px">
+    <input type="submit" name="ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$btnSimular" value="Simular" onclick="return CheckDatas();WebForm_DoPostBackWithOptions(new WebForm_PostBackOptions(&quot;ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$btnSimular&quot;, &quot;&quot;, true, &quot;&quot;, &quot;&quot;, false, false))" id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_btnSimular" class="hidectrl" style="">
+    <input type="submit" name="ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$btnReset" value="Limpar" id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_btnReset" class="hidectrl" style="">
+    <input type="submit" name="ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$btnImprimir" value="Imprimir" onclick="PrintDivOnClick();return false;WebForm_DoPostBackWithOptions(new WebForm_PostBackOptions(&quot;ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$btnImprimir&quot;, &quot;&quot;, true, &quot;&quot;, &quot;&quot;, false, false))" id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_btnImprimir" class="hidectrl" style="">
+</div>
+
+<br>
+<br>
+
+<div id="divMain" class="section-to-print">
+    <div class="logos" style="height: 55px !important;">
+        <img class="actlogo" src="/_layouts/15/SP2019Migrated/images/ACT_logotipo_cores.jpg" alt="ACT">
+        <img class="competelogo" src="/_layouts/15/SP2019Migrated/images/compete.png" alt="COMPETE2020">
+    </div>
+    <div class="formHeader wpcontainer" style="background-color: #018088 !important;">
+        <h4><b>Simulador de compensação por cessação de contrato de trabalho</b></h4>
+    </div>
+    <div class="wpcontainer" style="padding: 0px">
+        <div id="divContrato" class="texto largura divAlinhamento">
+            <div style="margin-top: 10px !important; margin-bottom: 10px !important;">
+                <p>
+                    Vai cessar o seu contrato de trabalho e não sabe aquilo a que tem direito? Este simulador ajuda-o, pois calcula os valores previstos na lei para as situações de cessação de contrato de trabalho, incluindo a compensação (quando haja lugar) e os montantes referentes a férias, subsídio de férias e subsídio de Natal.
+                </p>
+            </div>
+            <table id="tabContratoHeader" class="tbconteudo border largura" headers="teste" cellpadding="5">
+                <tbody><tr style="display:none"><th></th></tr>
+                <tr>
+                    <td>Entidade que fez cessar o contrato
+                    </td>
+                    <td>
+                        <select name="ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$ddlEntidade" id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_ddlEntidade" class="ddlEntidade ddl" data-gtm-form-interact-field-id="0">
+						<option value="Empregador">Empregador</option>
+						<option value="Trabalhador">Trabalhador</option>
+
+					</select>
+                    </td>
+                    <td>
+                        <span id="spnChkbJustaCausa" class="verticalSubAlign">Com Justa Causa?  
+                            <span class="chkbJustaCausa"><input id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_chkbJustaCausa" type="checkbox" name="ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$chkbJustaCausa" style=""></span></span>
+                    </td>
+                    <td>
+                        <sup class="tooltipspan no-print">ⓘ<span class="tooltiptext" style="color: black;">A justa causa só pode ser apreciada por tribunal. Ver os artigos 351.º e 394.º do Código do Trabalho sobre justa causa.</span></sup>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Tipo de contrato
+                    </td>
+                    <td>
+                        <select name="ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$ddlTipoContrato" id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_ddlTipoContrato" class="ddlTipoContrato ddl" data-gtm-form-interact-field-id="1">
+						<option value="Contrato por tempo indeterminado">Contrato por tempo indeterminado</option>
+						<option value="Contrato a termo certo">Contrato a termo certo</option>
+						<option value="Contrato a termo incerto">Contrato a termo incerto</option>
+
+					</select>
+                    </td>
+                    <td>
+                        <sup class="tooltipspan no-print">ⓘ
+                        <span class="tooltiptext" style="color: black;">• Contrato por tempo indeterminado (sem termo) - vulgarmente chamado "efetivo";
+                            <br>
+                            • Contrato a termo certo - tem uma data definida para terminar;
+                            <br>
+                            • Contrato a termo incerto  - tem uma data incerta para terminar.
+                                <br>
+                            • Contrato temporário pode ser a termo certo ou incerto.
+                        </span>
+                        </sup>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Data de inicio</td>
+                    <td>
+                        <input name="ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$txtDataAdmissao" type="text" id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_txtDataAdmissao" class="txtDataAdmissao datePicker hasDatepicker" data-gtm-form-interact-field-id="2" style="">
+                    </td>
+                </tr>
+                <tr id="trHorasSemanais" style="display: none;">
+                    <td>Horas por semana</td>
+                    <td>
+                        <input name="ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$txtHorasSemanais" type="text" maxlength="5" id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_txtHorasSemanais" class="txtHorasSemanais decimal" style=""></td>
+                </tr>
+                <tr id="trDataRenovExtra" style="display: none;">
+                    <td>Data 1º renovação extraordinária
+                    </td>
+                    <td>
+                        <input name="ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$txtDataRenovacao" type="text" id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_txtDataRenovacao" class="txtDataRenovacao datePicker hasDatepicker" style="">
+                    </td>
+                </tr>
+                <tr>
+                    <td>Data de cessação</td>
+                    <td>
+                        <input name="ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$txtDataCessacao" type="text" id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_txtDataCessacao" class="txtDataCessacao datePicker hasDatepicker" data-gtm-form-interact-field-id="3" style="">
+                    </td>
+                </tr>
+                <tr>
+                    <td>Duração</td>
+                    <td>
+                        <span id="spnDuracaoContracto">4 ano(s) 4 mes(es) 22 dia(s)</span></td>
+                </tr>
+            </tbody></table>
+            <table id="tabTextJustaCausa" class="tbconteudo border largura" headers="teste" style="display: none;">
+                <tbody><tr style="display:none"><th></th></tr>
+                <tr>
+                    <td>
+                        <span id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_lblJustaCausa"></span>
+                        <p>Nos casos em que a justa causa consista em:</p>
+<ul>
+	<li>Falta culposa de pagamento pontual da retribuição (falta que se prolongue por mais de 60 dias);</li>
+	<li>Violação culposa de garantias legais ou convencionais do trabalhador;</li>
+	<li>Aplicação de sanção abusiva;</li>
+	<li>Falta culposa de condições de segurança e saúde no trabalho;</li>
+	<li>Lesão culposa de interesses patrimoniais sérios do trabalhador;</li>
+	<li>Ofensa à integridade física ou moral, liberdade, honra ou dignidade do trabalhador, punível por lei, praticada pelo empregador ou seu representante.</li>
+</ul>
+<p></p>O trabalhador terá direito a uma indemnização, a determinar entre 15 e 45 dias de retribuição base e diuturnidades por cada ano completo de antiguidade, atendendo ao valor da retribuição e ao grau da ilicitude do comportamento do empregador, não podendo ser inferior a três meses de retribuição base e diuturnidades.<p></p>
+<p>O valor da indemnização pode ser superior sempre que o trabalhador sofra danos patrimoniais e não patrimoniais de montante mais elevado.</p>
+<p>No caso de contrato a termo, a indemnização não pode ser inferior ao valor das retribuições até ao termo do contrato.</p>
+                    </td>
+                </tr>
+            </tbody></table>
+        </div>
+        <div id="divContratoDetails" class="largura divAlinhamento" style="margin-bottom: 10px">
+            <div class="headerrow1">Retribuição</div>
+            <table id="tabContratoDetails" class="tbconteudob border largura" headers="teste" cellpadding="5">
+               <tbody><tr style="display:none"><th></th></tr>
+                <tr>
+                    <td>Retribuição base
+                    </td>
+                    <td>
+                        <span>
+                            <input name="ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$txtVencimentoBase" type="text" maxlength="10" id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_txtVencimentoBase" class="txtVencimentoBase decimal" style="width: 120px;"></span><span> €</span>
+                    </td>
+                    <td>
+                        <sup class="tooltipspan no-print">ⓘ<span class="tooltiptext" style="color: black;">Retribuição base é a correspondente à atividade do trabalhador no período normal de trabalho</span></sup>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Diuturnidades
+                    </td>
+                    <td>
+                        <input name="ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$txtDiuturnidades" type="text" maxlength="10" id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_txtDiuturnidades" class="txtDiuturnidades decimal" style="width: 120px;">
+                        €
+                    </td>
+                </tr>
+                <tr>
+                    <td>Complementos
+                    </td>
+                    <td>
+                        <input name="ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$txtComplementos" type="text" maxlength="10" id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_txtComplementos" class="txtComplementos decimal" style="width: 120px;">
+                        €
+                    </td>
+                    <td>
+                        <sup class="tooltipspan no-print">ⓘ
+                            <span class="tooltiptext" style="color: black;">São as prestações regulares periódicas. Incluídos, por exemplo, isenção de horário de trabalho, gratificações, subsídios noturno ou de turnos, quando regulares. Excluídos, por exemplo, ajudas de custo, subsídios de refeição, de transporte ou de representação e comissões.
+                            </span>
+                        </sup>
+                    </td>
+                </tr>
+            </tbody></table>
+        </div>
+        <div id="divCompensacao" class="largura divAlinhamento" style="margin-bottom: 10px">
+            <div class="headerrow1">Compensação</div>
+            <table id="tabCompensacaoDetails" class="tbconteudob border largura" headers="teste" cellpadding="5">
+                <tbody><tr>
+                    <td>Compensação </td>
+                    <td><span id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_lblCompensacao" class="lblCompensacao passarazul bordasredondas" style="width: 120px"></span></td>
+                </tr>
+            </tbody></table>
+        </div>
+        <div id="div" class="texto largura divAlinhamento">
+            <div class="headerrow1">Férias</div>
+            <table id="tabFerias" class="tbconteudoc border largura" style="width: 70%" headers="teste">
+                <tbody><tr style="display:none"><th></th></tr>
+                <tr class="textCenterAlign" style="font-weight: bold">
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td style="font-weight: 400 !important">Valor em falta
+                    </td>
+                </tr>
+                <tr>
+                    <td>Férias
+                    </td>
+                    <td>Já gozadas
+                    </td>
+                    <td>
+                        <input name="ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$txtDiasFerias" type="text" maxlength="4" id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_txtDiasFerias" class="txtDiasFerias int" style="width: 120px;">
+                        Dias
+                    </td>
+                    <td class="textCenterAlign">
+                        <span id="spnValorFeriasVencidas">
+                            <span id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_lblValorFeriasVencidas" class="lblValorFeriasVencidas passarazul bordasredondas" style="width: 120px"></span>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Subsídio de férias
+                    </td>
+                    <td>Já recebido
+                    </td>
+                    <td>
+                        <input name="ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$txtSubsidioFerias" type="text" maxlength="10" id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_txtSubsidioFerias" class="txtSubsidioFerias decimal" style="width: 120px;">
+                        €
+                    </td>
+                    <td class="textCenterAlign">
+                        <span id="spnValorSubsidioFerias">
+                            <span id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_lblValorSubsidioFerias" class="lblValorSubsidioFerias passarazul bordasredondas" style="width: 120px"></span>
+                        </span>
+                    </td>
+                </tr>
+            </tbody></table>
+        </div>
+
+
+
+        <div style="padding: 15px !important;">
+            <div id="divProporcionais" class="texto largura">
+                <div class="headerrow1">
+                    Proporcionais no ano de cessação 
+            <sup class="tooltipspan no-print">ⓘ
+            <span class="tooltiptext" style="color: black;">
+             <ul style="list-style:none;">
+                <li>O simulador considera para efeitos de cálculo:</li>
+                <li> • do valor das férias e dos respetivos proporcionais:</li>
+                <li>retribuição base, diuturnidades e prestações retributivas indicadas pelo utilizador como sendo contrapartida do modo específico da prestação do trabalho</li>
+                <li> • do subsídio de férias e dos respetivos proporcionais:</li>
+                <li> retribuição base, diuturnidades e prestações retributivas indicadas pelo utilizador como sendo contrapartida do modo específico da prestação do trabalho</li>
+                <li> • dos proporcionais do subsídio de natal:</li>
+                <li> retribuição base e diuturnidades</li>
+                </ul>
+            </span>
+            </sup>
+                </div>
+                <table id="tabProporcionais" headers="teste" class="tbconteudod border largura">
+                    <tbody><tr style="display:none"><th></th></tr>
+                    <tr>
+                        <td>Férias
+                        </td>
+                        <td>
+                            <span id="spnFeriasPropDias" style="display: none">
+                                <span id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_lblFeriasPropDias" class="lblFeriasPropDias passarazul bordasredondas" style="width: 120px"></span>
+                                Dias
+                            </span>
+                        </td>
+                        <td>
+                            <span id="spnFeriasPropValor">
+                                <span id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_lblFeriasPropValor" class="lblFeriasPropValor passarazul bordasredondas" style="width: 120px"></span>
+                            </span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Subsídio de férias
+                        </td>
+                        <td>
+                            <span id="spnSubsidioFeriasPropDias" style="display: none">
+                                <span id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_lblSubsidioFeriasPropDias" class="lblSubsidioFeriasPropDias passarazul bordasredondas" style="width: 120px"></span>
+                                Dias
+                            </span>
+                        </td>
+                        <td>
+                            <span id="spnSubsidioFeriasPropValor">
+                                <span id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_lblSubsidioFeriasPropValor" class="lblSubsidioFeriasPropValor passarazul bordasredondas" style="width: 120px"></span>
+                            </span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Subsídio de Natal
+                        </td>
+                        <td>
+                            <span id="spnSubsidioNatalPropDias"></span>
+                        </td>
+                        <td>
+                            <span id="spnSubsidioNatalPropValor">
+                                <span id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_lblSubsidioNatalPropValor" class="lblSubsidioNatalPropValor passarazul bordasredondas" style="width: 120px"></span>
+                            </span>
+                        </td>
+                    </tr>
+                </tbody></table>
+            </div>
+        </div>
+        <div style="padding: 15px !important; margin-bottom: 10px;">
+            <div class="headerrow1">Montante global</div>
+            <div id="divTotal" class="texto">
+                <table class="tblmotante" headers="teste">
+                   <tbody><tr style="display:none"><th></th></tr>
+                    <tr>
+
+                        <td style="color: black;">Calculado em
+                    <span id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_lblCalcDate"></span></td>
+                        <td>
+                            <div>
+                                <span id="spnCompensacaoTotal" class="greenBold">
+                                    <span id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_lblCompensacaoTotal" class="lblCompensacaoTotal"></span></span>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody></table>
+            </div>
+        </div>
+
+        <div class="boxsimular">
+            <div class="wptoolbar wptoolbar wptoolbar" style="width: 100% !important;">
+                <input type="submit" name="ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$Button1" value="Simular" onclick="return CheckDatas();WebForm_DoPostBackWithOptions(new WebForm_PostBackOptions(&quot;ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$Button1&quot;, &quot;&quot;, true, &quot;&quot;, &quot;&quot;, false, false))" id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_Button1" class="hidectrl btnsimular btnsimular" style="">
+                <input type="submit" name="ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$Button2" value="Limpar" id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_Button2" class="hidectrl btnsimular btnsimular" style="">
+                <input type="submit" name="ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$Button3" value="Imprimir" onclick="PrintDivOnClick();return false;WebForm_DoPostBackWithOptions(new WebForm_PostBackOptions(&quot;ctl00$ctl49$g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1$ctl00$Button3&quot;, &quot;&quot;, true, &quot;&quot;, &quot;&quot;, false, false))" id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_Button3" class="hidectrl btnsimular btnsimular" style="">
+            </div>
+        </div>
+        <br>
+
+        <div id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_pnlAviso" class="helptext" style="padding: 0px">
+						
+            <div id="divAviso" class="texto largura" style="padding-top: 10px !important; padding-bottom: 10px !important; width: 100% !important; background: none;">
+                <div class="headerrow1">
+                    ⚠ Aviso
+                </div>
+                <span id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_lblAviso"></span>
+                <div>
+                    <p class="textaviso1">
+                        O conteúdo deste simulador é meramente indicativo, sendo a simulação dos valores devidos aquando da cessação do contrato de trabalho geral e abstrata, não tomando em conta todas as variáveis de que depende o cálculo de tais valores.
+                    </p>
+                    <p class="textaviso">
+                        Informa-se que o simulador não contempla, entre outras, as seguintes situações:
+                    </p>
+                    <ul>
+                        <li>cessação do contrato de trabalho durante o período experimental (não há lugar a indemnização);</li>
+                        <li>caducidade de contrato de trabalho a termo de trabalhador reformado por velhice ou com mais de 70 anos de idade (não há direito a qualquer compensação);</li>
+                    </ul>
+                    <p class="textaviso">
+                        Nos cálculos efetuados não é contabilizado o período durante o qual o contrato de trabalho tenha estado suspenso, nomeadamente por doença.
+                    </p>
+                    <p class="textaviso">
+                        Os resultados do simulador e os impactos das normas legais em vigor dependem do caso em concreto. 
+                    </p>
+                    <p class="textaviso">
+                        Os cálculos efetuados têm por base os dados inseridos pelo utilizador, os quais são da sua exclusiva responsabilidade, e não vinculam a ACT.
+                    </p>
+                    <p class="textaviso">
+                        Para simular eventuais créditos de horas para formação utilize o simulador próprio para o efeito, disponível <a href="/Pages/SimuladorDeCreditosDeFormacao.aspx">aqui</a>.
+                    </p>
+                    <p class="textaviso">
+                        Para efeitos do cálculo dos proporcionais de férias e de subsídio de férias o simulador utiliza uma proporcionalidade direta em função do tempo trabalhado, não recorrendo ao valor do dia útil.
+                    </p>
+                    <p class="textaviso">
+                        As situações dos contratos de trabalho que cessam no ano da admissão, no ano civil seguinte ao seu início ou antes de atingirem 6 meses de duração, têm regras especiais de contabilização das férias, subsídio de férias e respetivos proporcionais, razão pela qual estes valores aparecem todos englobados no simulador no montante identificado como «férias» e «subsídio de férias».
+                    </p>
+                    <p class="textaviso">
+                        A informação neste simulador não deve servir de base a qualquer tomada de decisão sem assistência profissional qualificada e dirigida ao caso concreto, nem dispensa a consulta das normas legais em vigor.
+                    </p>
+                    <p class="textaviso">
+                        Os resultados do simulador não contemplam as quantias devidas ao Instituto da Segurança Social e à Autoridade Tributária.
+                    </p>
+                    <p class="textaviso">
+                        Este simulador foi desenvolvido com base na legislação em vigor à data de 01/05/2023.
+                    </p>
+                    <p class="textaviso">
+                        No cálculo do valor da compensação foi considerado o valor atualizado da retribuição mínima mensal garantida para o corrente ano.
+                    </p>
+                </div>
+            </div>
+        
+					</div>
+        <br>
+        <div class="col">
+            <span class="inlinespans" style="margin-left: 15px; font-size: 14px;"><span>Data:</span><span><span id="ctl00_ctl49_g_6b52c3eb_1633_41c6_9b7e_92fd571b89d1_ctl00_datecontrol2" autocompletetype="Disabled" style="display:inline-block;width:120px;">22/05/2026</span></span></span>
+        </div>
+    </div>
+</div>
+
+
+<script type="text/javascript">
+    function ApenasDecimalPositivo(obj) {
+        var numberValue = parseFloat(obj.val().replace(",", "."));
+        if (!isNaN(numberValue) && numberValue >= 0) {
+            obj.val(numberValue.toString().replace(".", ","));
+        } else
+            obj.val("");
+    }
+
+    function ApenasInteiroPositivo(obj) {
+        var numberValue = parseInt(obj.val());
+        if (!isNaN(numberValue) && numberValue >= 0) {
+            obj.val(numberValue);
+        } else
+            obj.val("");
+    }
+
+    function UpdateContratoDuracao() {
+        $("#spnDuracaoContracto").removeAttr("style");
+        var dataAdmissao = moment($(".txtDataAdmissao").datepicker("getDate"));
+        var dataCessacao = moment($(".txtDataCessacao").datepicker("getDate"));
+        if (moment(dataAdmissao).isBefore(dataCessacao)) {
+            var days = CalcDifDias(dataAdmissao, dataCessacao);
+            dataCessacao.add('days', 1);
+            var years = dataCessacao.diff(dataAdmissao, 'years');
+            dataCessacao.subtract('years', years);
+            var months = dataCessacao.diff(dataAdmissao, 'months');
+            //dataCessacao.subtract('months', months);
+            //var days = dataCessacao.diff(dataAdmissao, 'days');
+            $("#spnDuracaoContracto").text(years + " ano(s) " + months + " mes(es) " + days + " dia(s)");
+        }
+        else {
+            $("#spnDuracaoContracto").text("");
+        }
+    }
+
+    function CalcDifDias(dataInicial, dataFinal) {
+        var dias;
+        var dDiaSeguinteFinal = moment(dataFinal);
+        dDiaSeguinteFinal.add('days', 1);
+        if (dataInicial.get('date') == 1 && dDiaSeguinteFinal.get('date') == 1
+            || dataInicial.get('date') != 1 && dataFinal.get('date') == dataInicial.get('date') - 1) {
+            dias = 0;
+        }
+        else {
+
+            if (dataInicial.get('date') <= dataFinal.get('date')) {
+                dias = dataFinal.get('date') - dataInicial.get('date') + 1;
+            }
+            else {
+                var dDia1doMesFinal = moment([dataFinal.get('year'), dataFinal.get('month'), 1]);
+                var dDiaFinaldoMesAnteriorMesFinal = dDia1doMesFinal.add('days', -1);
+                dias = dDiaFinaldoMesAnteriorMesFinal.get('date') - dataInicial.get('date') + 1 + dataFinal.get('date');
+            }
+        }
+        return dias;
+    }
+
+    function isDateValid(text) {
+        var comp = text.split('/');
+
+        if (comp.length !== 3) {
+            return false;
+        }
+
+        var d = parseInt(comp[0], 10);
+        var m = parseInt(comp[1], 10);
+        var y = parseInt(comp[2], 10);
+        var date = new Date(y, m - 1, d);
+
+        return (date.getFullYear() == y && date.getMonth() + 1 == m && date.getDate() == d);
+    }
+
+    function UpdateSubsidioNatalDuracao() {
+        var dataAdmissao = moment($(".txtDataAdmissao").datepicker("getDate"));
+        var dataCessacao = moment($(".txtDataCessacao").datepicker("getDate"));
+        if (moment(dataAdmissao).isBefore(dataCessacao)) {
+            dataCessacao.add('days', 1);
+            var years = dataCessacao.diff(dataAdmissao, 'years');
+            if (years != 0)
+                dataAdmissao = moment([dataCessacao.year(), 0, 1]);
+            else
+                dataCessacao.subtract('years', years);
+            var months = dataCessacao.diff(dataAdmissao, 'months');
+            dataCessacao.subtract('months', months);
+            var days = dataCessacao.diff(dataAdmissao, 'days');
+            $("#spnSubsidioNatalPropDias").text(months + " mes(es) " + days + " dia(s)");
+        }
+        else {
+            $("#spnSubsidioNatalPropDias").text("");
+        }
+    }
+
+    function ToggleDataRenovacao() {
+        if ($(".ddlTipoContrato").val() == "Contrato por tempo indeterminado") {
+            //$("#trDataRenovExtra").hide();
+            $("#trHorasDiarias").hide();
+            $("#trHorasSemanais").hide();
+        } else {
+            //$("#trDataRenovExtra").show();
+            //$("#trHorasDiarias").show();
+            //$("#trHorasSemanais").show();
+            $("#trHorasDiarias").hide();
+            $("#trHorasSemanais").hide();
+        }
+    }
+
+    function ToggleJustaCausaText() {
+        if ($(".ddlEntidade").val() == "Trabalhador" && $(".chkbJustaCausa input").is(':checked'))
+            $("#tabTextJustaCausa").show();
+        else
+            $("#tabTextJustaCausa").hide();
+    }
+
+    function ToggleCompensacao() {
+        if ($(".ddlEntidade").val() == "Trabalhador" || $(".chkbJustaCausa input").is(':checked'))
+            $("#divCompensacao").hide();
+        else
+            $("#divCompensacao").show();
+    }
+
+    function CheckDatas() {
+        var dataAdmissao = moment($(".txtDataAdmissao").datepicker("getDate"));
+        var dataCessacao = moment($(".txtDataCessacao").datepicker("getDate"));
+        if (!moment(dataAdmissao).isBefore(dataCessacao)) {
+            $("#spnDuracaoContracto").text("Datas inválidas!");
+            $("#spnDuracaoContracto").attr("style", "font-size: larger; color: rgb(255,0,0)");
+            ClearResults();
+            return false;
+        }
+        else if (moment(dataCessacao).isBefore('2023-05-01')
+            && ($(".ddlTipoContrato").val() == 'Contrato a termo certo' || $(".ddlTipoContrato").val() == 'Contrato a termo incerto')) {
+            $("#spnDuracaoContracto").text("A data de cessação não pode ser anterior a 2023-05-01!");
+            $("#spnDuracaoContracto").attr("style", "font-size: larger; color: rgb(255,0,0)");
+            ClearResults();
+            return false;
+        }
+        return true;
+    }
+
+    function ClearResults() {
+        $(".lblCompensacao").text("");
+        $(".lblValorFeriasVencidas").text("");
+        $(".lblValorSubsidioFerias").text("");
+        $(".lblFeriasPropDias").text("");
+        $(".lblFeriasPropValor").text("");
+        $(".lblSubsidioFeriasPropDias").text("");
+        $(".lblSubsidioFeriasPropValor").text("");
+        $(".lblSubsidioNatalPropValor").text("");
+        $(".lblCompensacaoTotal").text("");
+        $(".lblCalcDate").text("");
+    }
+
+    $(document).ready(function () {
+        $(".datePicker").datepicker({
+            inline: true,
+            changeYear: true,
+            onSelect: function () { }
+        });
+        $.datepicker.setDefaults($.datepicker.regional["pt"]);
+
+        $(".txtDataAdmissao").datepicker("option", "yearRange", "c-20:c");
+        $(".txtDataAdmissao").datepicker("option", "maxDate", "0");
+
+        moment.lang('pt');
+
+        UpdateContratoDuracao();
+        ToggleDataRenovacao();
+        ToggleJustaCausaText();
+        ToggleCompensacao();
+
+        $(".decimal").change(function () {
+            ApenasDecimalPositivo($(this));
+            ClearResults();
+        });
+
+        $(".int").change(function () {
+            ApenasInteiroPositivo($(this));
+            ClearResults();
+        });
+
+        $(".datePicker").change(function () {
+            if (!isDateValid($(this).val()))
+                $(this).val("");
+        });
+
+        $(".txtDataAdmissao").change(function () {
+            UpdateContratoDuracao();
+            ClearResults();
+        });
+
+        $(".txtDataCessacao").change(function () {
+            UpdateContratoDuracao();
+            ClearResults();
+        });
+
+        $(".ddlTipoContrato").change(function () {
+            ToggleDataRenovacao();
+            ClearResults();
+        });
+
+        $(".chkbJustaCausa").change(function () {
+            ToggleJustaCausaText();
+            ToggleCompensacao();
+            ClearResults();
+        });
+
+        $(".ddlEntidade").change(function () {
+            ToggleJustaCausaText();
+            ToggleCompensacao();
+            ClearResults();
+        });
+
+        $(".txtHorasDiarias").change(function () {
+            var val = $(".txtHorasDiarias").val().replace(",", ".");
+            if (val > 12)
+                $(".txtHorasDiarias").val("");
+        });
+
+        $(".txtHorasSemanais").change(function () {
+            var val = $(".txtHorasSemanais").val().replace(",", ".");
+            if (val > 40)
+                $(".txtHorasSemanais").val("");
+        });
+
+    });
+</script>
+
+				</div><div class="ms-clear"></div></div>
+			</div>
+		</div>
+	</div>
+				</div>
+				<div id="go-top">
+					<button onclick="topFunction()" id="myBtn" title="Voltar para o topo da página"><img class="gotopicon" src="/CustomImages/GoTop.svg"></button>
+				</div>
+<!-- FOOTER -->
+			<footer>
+			<div class="container-fluid">
+			<!-- barra -->
+				<div class="row">
+					<div id="republicapt" class="col-md-2 footerpart">
+						<a href="https://www.portugal.gov.pt/pt/gc24" target="_blank" style="text-decoration: none;">
+							<img src="/CustomImages/republicaportuguesa.png" id="republicaPort" alt="logótipo da república portuguesa">
+						</a>
+					</div>
+					<div id="republicapt3" class="col-md-8 footerpart"></div>
+
+					<div id="republicapt2" class="col-md-2 footerpart">
+						<img src="/CustomImages/Logo25abrilAnos.svg" id="republicaPort2" style="margin-left: 152px;float: left; margin-bottom:6px" alt="logótipo da república portuguesa">
+					
+					</div>
+
+					<!--<div class="col-md-2 footerpart" >
+						<a href="https://www.w3.org/WAI/WCAG1AA-Conformance.html.en" style="text-decoration: none;">
+		            		<img src="/CustomImages/w3c.png" id="w3logo" alt="logótipo da W3C"/>
+		            	</a>
+					</div>-->
+				</div>
+			<!-- barra -->
+			<!-- logo, links e textos -->
+			<div class="row" style="background-color: #018088; padding: 30px 30px 0 30px">
+				<div id="logoACT" class="col-lg-10 col-md-10 col-sm-10 col-xs-10">
+					<img src="/CustomImages/Component88–1.png" id="logoFooterACT" alt="ACT">
+				</div>
+				
+				<div class="col-lg-2 col-md-2 col-sm-2 col-xs-2">
+					<div id="socialFooterVert" style="display: inline-block; width: auto; text-align: center; float: right; width: 30px">
+						<a href="https://www.instagram.com/actportugal/"><img src="/CustomImages/instagram.png" id="instagramLogo" alt="Instagram"></a>
+				        <a href="https://www.youtube.com/channel/UCVnk4Sqw__DUNqcJKVOetqw"><img src="/CustomImages/youtube.png" id="youtubeLogo" alt="Youtube"></a>
+				        <a href="https://www.facebook.com/act.gov.pt/"><img src="/CustomImages/facebook.png" id="facebookLogo" alt="Facebook"></a>
+				        <a href="https://twitter.com/actportugal"><img src="/CustomImages/twitter.png" id="tweeterLogo" alt="Twitter"></a>
+				        <a href="https://www.linkedin.com/company/act-portugal"><img src="/CustomImages/LinkedIn.png" id="linkedInLogo" alt="LinkedIn"></a>
+
+
+					</div>
+				</div>
+			</div>
+			<!-- logo, links e textos -->
+			
+				<div class="row" style="background-color: #018088; padding: 0 30px 30px 30px">
+					<div class="col-lg-7 col-md-7 col-sm-12">
+							<p class="promovemos">Promovemos a melhoria das condições de trabalho</p>
+					</div>
+					<div class="col-lg-5 col-md-5 col-sm-12" id="PPfooter" style="padding-top: 14px;text-align: end;">
+						<ul class="nav-links--footer">
+							<li style="list-style: none;"><a href="/Pages/politicaprivacidade.aspx" target="_self" style="color: white;text-decoration: underline;">Política de Privacidade</a></li>
+							<li style="list-style: none;"><a href="/Pages/DeclaracaoAcessibilidadeUsabilidade.aspx" target="_self" style="color: white;text-decoration: underline;">Acessibilidade</a></li>
+							<li style="list-style: none;"><a href="https://www.livroamarelo.gov.pt" target="_self" style="color: white;text-decoration: underline;">Livro Amarelo</a></li>
+						</ul>
+					</div>
+				</div>				
+				<div class="row">
+				<img src="/CustomImages/Modelos-Barras-FUNDOS-v04_3logos-FSE.png" id="republicaPort2" style="margin-left: 51px;" alt="logótipo da república portuguesa">
+				<div class="p-3" id="bottomFooter">
+					        Siga-nos  <a href="https://www.instagram.com/actportugal/"><img src="/CustomImages/instagram.png" id="instagramLogoMobile" alt="Instagram" style="margin-left: 10px"></a>
+					        <a href="https://www.youtube.com/channel/UCVnk4Sqw__DUNqcJKVOetqw"><img src="/CustomImages/youtube.png" id="youtubeLogoMobile" alt="Youtube" style="margin-left: 10px"></a>
+					        <a href="https://www.facebook.com/act.gov.pt/"><img src="/CustomImages/facebook.png" id="facebookLogoMobile" alt="Facebook" style="margin-left: 10px"></a>
+					        <a href="https://twitter.com/actportugal"><img src="/CustomImages/twitter.png" id="tweeterLogoMobile" alt="Twitter" style="margin-left: 10px"></a>
+					    </div>
+					    <div class="p-3" style="background-color: #B0B1AE;" id="form-footer">
+					    	<p id="copyRight" class="copyright">© 2026 ACT - Autoridade para as Condições do Trabalho</p>					    </div>
+				</div>
+			</div>
+			</footer>
+			<!-- FOOTER -->			</div>
+		
+	<div style="display:none" id="hidZone"><menu class="ms-hide">
+		<ie:menuitem id="MSOMenu_Help" iconsrc="/_layouts/15/images/HelpIcon.gif" onmenuclick="MSOWebPartPage_SetNewWindowLocation(MenuWebPart.getAttribute('helpLink'), MenuWebPart.getAttribute('helpMode'))" text="Ajuda" type="option" style="display:none">
+
+		</ie:menuitem>
+	</menu></div>
+                                                        
+</div>
+                                                    </div>
+                                                    <div id="menusite"></div>
+                                                        <div id="topsitemaster" style="display:block;z-index:3">
+                                                            <div id="customLogoarea">
+                                                            </div>
+                                                            <!-- menu mobile -->
+                                                            <!-- <a class="imgactmobile">
+                                                                <img id="ctl00_onetidHeadbnnr2" class="ms-siteicon-img" name="onetidHeadbnnr0" src="/SiteAssets/imgact.png" alt="Portal ACT" />
+                                                            </a> -->
+                                                            <nav class="navconteinermobile">
+                                                                <label for="drop" class="toggle">
+                                                                   <img class="menuhamburger" src="/CustomImages/menuhamburger.svg" alt="menu mobile"> 
+                                                                </label>
+                                                                <input type="checkbox" id="drop" style="">
+
+                                                            <ul class="menu"><li class="itemslistmenu"><a class="textact" href="#">A ACT</a><i class="fa fa-caret-down" id="menuitmobile1" onclick="javascript: GetSubmenuCheck(this);"></i><ul class="elementsmenu level2"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/QuemSomos/QuemSomos.aspx">Quem somos</a><i class="fa fa-caret-down" onclick="javascript: GetSubmenuCheck3nivel(this);"></i><ul class="elementsmenu nivel3"><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/QuemSomos/MissaoAtribuicoes.aspx">Missão e atribuições</a></li><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/QuemSomos/ConselhoConsultivo.aspx">Conselho Consultivo para a Promoção da Segurança e Saúde no Trabalho</a></li><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/QuemSomos/EnquadramentoInternacional.aspx">Enquadramento internacional</a></li><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/QuemSomos/ACTemNumeros.aspx">ACT em números</a></li><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/QuemSomos/identidade-v​isual.aspx">Identidade Visual</a></li><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/QuemSomos/npdp.aspx">Núcleo de Proteção de Dados Pessoais da ACT</a></li></ul></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/100-Anos.aspx">100 Anos de Inspe​çã​o do trabalho em Portugal​</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/planeamento_e_gestao.aspx">Planeamento e gestão</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Parcerias.aspx">​Parcerias​</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Media.aspx">Media</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="https://portal.act.gov.pt/Pages/publicacoes-obrigatorias.aspx">Publicações obrigatórias </a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/TrabalharACT.aspx">Trabalhar na ACT</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/globals.aspx">Resultados do inquérito: informativo presencial e videoconferência</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="https://portal.act.gov.pt/Pages/Form74.aspx">Documentos administrativos</a></li></ul></li><li class="itemslistmenu"><a class="textact" href="#">TRABALHADOR</a><i class="fa fa-caret-down" id="menuitmobile2" onclick="javascript: GetSubmenuCheck(this);"></i><ul class="elementsmenu level2"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Direitos_Deveres.aspx">Direitos e deveres</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Seguranca_Saude_no_Trabalho.aspx">Segurança e saúde no trabalho</a><i class="fa fa-caret-down" onclick="javascript: GetSubmenuCheck3nivel(this);"></i><ul class="elementsmenu nivel3"><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/CertTec.aspx">Certificação de técnicos de Segurança no Trabalho</a></li></ul></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/formsSims.aspx">Simuladores</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Pedir_intervencao_inspetiva.aspx">Pedido de intervenção inspetiva</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Requerimento.aspx">Requerimentos e comunicações</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="https://portal.act.gov.pt/Pages/trabalhador-estrangeiro.aspx">Trabalhador estrangeiro</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="#">Trabalhador destacado</a><i class="fa fa-caret-down" onclick="javascript: GetSubmenuCheck3nivel(this);"></i><ul class="elementsmenu nivel3"><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/Trabalhador_destacado_Portugal.aspx">em Portugal</a></li><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/Trabalhador_destacado_Estrangeiro.aspx">no estrangeiro</a></li></ul></li></ul></li><li class="itemslistmenu"><a class="textact" href="#">EMPREGADOR</a><i class="fa fa-caret-down" id="menuitmobile3" onclick="javascript: GetSubmenuCheck(this);"></i><ul class="elementsmenu level2"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Direitos_Deveres_Empregador.aspx">Direitos e deveres</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Seguranca_Saude_no_Trabalho_empregador.aspx">Segurança e saúde no trabalho</a><i class="fa fa-caret-down" onclick="javascript: GetSubmenuCheck3nivel(this);"></i><ul class="elementsmenu nivel3"><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/ServicosInternos.aspx">Serviços internos</a></li><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/ServicosComuns.aspx">Serviços comuns</a></li><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/Empregador_trabalhador_designado.aspx">Empregador / trabalhador designado</a></li><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/Entidades_autorizadas_servicos_externos.aspx">Entidades autorizadas para serviços externos</a></li><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/medicos_trabalho.aspx">Médicos do Trabalho</a></li></ul></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Simuladores-Empregador.aspx">Simuladores</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Pedir_intervencao_inspetiva.aspx">Pedido de intervenção inspetiva</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Requerimento-Empregador.aspx">Requerimentos e comunicações</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="#">Destacar trabalhadores</a><i class="fa fa-caret-down" onclick="javascript: GetSubmenuCheck3nivel(this);"></i><ul class="elementsmenu nivel3"><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/Destacar_trabalhadores_para_Portugal.aspx">para Portugal</a></li><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/Destacar_trabalhadores_para_o_estrangeiro.aspx">para o estrangeiro</a></li></ul></li></ul></li><li class="itemslistmenu"><a class="textact" href="#">EM REDE</a><i class="fa fa-caret-down" id="menuitmobile4" onclick="javascript: GetSubmenuCheck(this);"></i><ul class="elementsmenu level2"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Certificacao_entidades_formadoras.aspx">Certificação de entidades formadoras</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Regulacao_Servicos_externosSST.aspx">Regulação de serviços externos SST</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="https://portal.act.gov.pt/Pages/jogo-previne.aspx">Educação para a prevenção</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Requerimentos-emrede.aspx">Requerimentos e comunicações</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Ponto-Focal-Nacional-da-EU-OSHA.aspx">Ponto Focal Nacional da EU-OSHA</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="#">Ferramentas</a><i class="fa fa-caret-down" onclick="javascript: GetSubmenuCheck3nivel(this);"></i><ul class="elementsmenu nivel3"><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/Notas_tecnicas.aspx">Notas técnicas</a></li><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/FichasSeguranca.aspx">Fichas de segurança</a></li><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/Ferramentas_Oira.aspx">Ferramentas OIRA</a></li><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/Listas_verificacao.aspx">Listas de verificação</a></li><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/Sinalizacao_seguranca.aspx">Sinalização de segurança</a></li><li role="menuitem" class="dynamic" style="position: relative;"><a class="level3 dropmenu-link dynamic dynamicMobile" href="/Pages/fichas-investigacao-analise-at-dp.aspx">Fichas de investigação e análise de AT e DP</a></li></ul></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="https://portal.act.gov.pt/Pages/dossiers-tematicos.aspx">Dossiers temáticos</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/acidentes-trabalho-inqueritos.aspx">Acidentes de trabalho - inquéritos</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Legislacao.aspx">Legislação</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/boas-praticas.aspx">Boas práticas</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/ApoioProjetos.aspx">Apoio a projetos</a></li></ul></li><li class="itemslistmenu"><a class="textact" href="#">DOCUMENTAÇÃO</a><i class="fa fa-caret-down" id="menuitmobile5" onclick="javascript: GetSubmenuCheck(this);"></i><ul class="elementsmenu level2"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Publicacoes.aspx">Publicações</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Brochuras-folhetos.aspx">Brochuras e folhetos</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/Cartazes.aspx">Cartazes</a></li><hr class="linhamenu"><li class="menutext1"><a class="textmenu2 level2 dropmenu-link dynamic dynamicMobile" href="/Pages/videos.aspx">Vídeos</a></li></ul></li><li class="itemslistmenu"><a class="textact" href="/Pages/Campanhas.aspx">CAMPANHAS</a><i class="fa fa-caret-down" id="menuitmobile6" onclick="javascript: GetSubmenuCheck(this);" style="display: none;"></i></li><li class="itemslistmenu"><a class="textact" href="/Pages/Contactos.aspx">CONTACTOS</a><i class="fa fa-caret-down" id="menuitmobile7" onclick="javascript: GetSubmenuCheck(this);" style="display: none;"></i></li></ul></nav>
+                                                            <!-- end menu mobile-->
+                                                            <!-- menu -->
+                                                            <div class="navconteiner"><nav id="navMenu" class="nav-center"><ul class="nav-menu"> <li class="rootBg" data-menu="A ACT"><a href="#"><span translate="no">A ACT</span></a><ul class="nivel2"><li class="seta"><a class="nivel2" translate="yes" href="/Pages/QuemSomos/QuemSomos.aspx">Quem somos</a><ul class="nivel3"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/QuemSomos/MissaoAtribuicoes.aspx">Missão e atribuições</a></li><hr class="linhamenu"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/QuemSomos/ConselhoConsultivo.aspx">Conselho Consultivo para a Promoção da Segurança e Saúde no Trabalho</a></li><hr class="linhamenu"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/QuemSomos/EnquadramentoInternacional.aspx">Enquadramento internacional</a></li><hr class="linhamenu"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/QuemSomos/ACTemNumeros.aspx">ACT em números</a></li><hr class="linhamenu"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/QuemSomos/identidade-v​isual.aspx">Identidade Visual</a></li><hr class="linhamenu"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/QuemSomos/npdp.aspx">Núcleo de Proteção de Dados Pessoais da ACT</a></li></ul></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/100-Anos.aspx">100 Anos de Inspe​çã​o do trabalho em Portugal​</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/planeamento_e_gestao.aspx">Planeamento e gestão</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/Parcerias.aspx">​Parcerias​</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/Media.aspx">Media</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="https://portal.act.gov.pt/Pages/publicacoes-obrigatorias.aspx">Publicações obrigatórias </a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/TrabalharACT.aspx">Trabalhar na ACT</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/globals.aspx">Resultados do inquérito: informativo presencial e videoconferência</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="https://portal.act.gov.pt/Pages/Form74.aspx">Documentos administrativos</a></li></ul></li><li class="rootBg" data-menu="TRABALHADOR"><a href="#"><span>TRABALHADOR</span></a><ul class="nivel2"><li><a class="nivel2" translate="yes" href="/Pages/Direitos_Deveres.aspx">Direitos e deveres</a></li><hr class="linhamenu"><li class="seta"><a class="nivel2" translate="yes" href="/Pages/Seguranca_Saude_no_Trabalho.aspx">Segurança e saúde no trabalho</a><ul class="nivel3"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/CertTec.aspx">Certificação de técnicos de Segurança no Trabalho</a></li></ul></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/formsSims.aspx">Simuladores</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/Pedir_intervencao_inspetiva.aspx">Pedido de intervenção inspetiva</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/Requerimento.aspx">Requerimentos e comunicações</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="https://portal.act.gov.pt/Pages/trabalhador-estrangeiro.aspx">Trabalhador estrangeiro</a></li><hr class="linhamenu"><li class="seta"><a class="nivel2" translate="yes" href="#">Trabalhador destacado</a><ul class="nivel3"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/Trabalhador_destacado_Portugal.aspx">em Portugal</a></li><hr class="linhamenu"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/Trabalhador_destacado_Estrangeiro.aspx">no estrangeiro</a></li></ul></li></ul></li><li class="rootBg" data-menu="EMPREGADOR"><a href="#"><span>EMPREGADOR</span></a><ul class="nivel2"><li><a class="nivel2" translate="yes" href="/Pages/Direitos_Deveres_Empregador.aspx">Direitos e deveres</a></li><hr class="linhamenu"><li class="seta"><a class="nivel2" translate="yes" href="/Pages/Seguranca_Saude_no_Trabalho_empregador.aspx">Segurança e saúde no trabalho</a><ul class="nivel3"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/ServicosInternos.aspx">Serviços internos</a></li><hr class="linhamenu"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/ServicosComuns.aspx">Serviços comuns</a></li><hr class="linhamenu"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/Empregador_trabalhador_designado.aspx">Empregador / trabalhador designado</a></li><hr class="linhamenu"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/Entidades_autorizadas_servicos_externos.aspx">Entidades autorizadas para serviços externos</a></li><hr class="linhamenu"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/medicos_trabalho.aspx">Médicos do Trabalho</a></li></ul></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/Simuladores-Empregador.aspx">Simuladores</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/Pedir_intervencao_inspetiva.aspx">Pedido de intervenção inspetiva</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/Requerimento-Empregador.aspx">Requerimentos e comunicações</a></li><hr class="linhamenu"><li class="seta"><a class="nivel2" translate="yes" href="#">Destacar trabalhadores</a><ul class="nivel3"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/Destacar_trabalhadores_para_Portugal.aspx">para Portugal</a></li><hr class="linhamenu"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/Destacar_trabalhadores_para_o_estrangeiro.aspx">para o estrangeiro</a></li></ul></li></ul></li><li class="rootBg" data-menu="EM REDE"><a href="#"><span>EM REDE</span></a><ul class="nivel2"><li><a class="nivel2" translate="yes" href="/Pages/Certificacao_entidades_formadoras.aspx">Certificação de entidades formadoras</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/Regulacao_Servicos_externosSST.aspx">Regulação de serviços externos SST</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="https://portal.act.gov.pt/Pages/jogo-previne.aspx">Educação para a prevenção</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/Requerimentos-emrede.aspx">Requerimentos e comunicações</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/Ponto-Focal-Nacional-da-EU-OSHA.aspx">Ponto Focal Nacional da EU-OSHA</a></li><hr class="linhamenu"><li class="seta"><a class="nivel2" translate="yes" href="#">Ferramentas</a><ul class="nivel3"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/Notas_tecnicas.aspx">Notas técnicas</a></li><hr class="linhamenu"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/FichasSeguranca.aspx">Fichas de segurança</a></li><hr class="linhamenu"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/Ferramentas_Oira.aspx">Ferramentas OIRA</a></li><hr class="linhamenu"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/Listas_verificacao.aspx">Listas de verificação</a></li><hr class="linhamenu"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/Sinalizacao_seguranca.aspx">Sinalização de segurança</a></li><hr class="linhamenu"><li class="seta"><a class="nivel3" translate="yes" href="/Pages/fichas-investigacao-analise-at-dp.aspx">Fichas de investigação e análise de AT e DP</a></li></ul></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="https://portal.act.gov.pt/Pages/dossiers-tematicos.aspx">Dossiers temáticos</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/acidentes-trabalho-inqueritos.aspx">Acidentes de trabalho - inquéritos</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/Legislacao.aspx">Legislação</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/boas-praticas.aspx">Boas práticas</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/ApoioProjetos.aspx">Apoio a projetos</a></li></ul></li><li class="rootBg" data-menu="DOCUMENTAÇÃO"><a href="#"><span>DOCUMENTAÇÃO</span></a><ul class="nivel2"><li><a class="nivel2" translate="yes" href="/Pages/Publicacoes.aspx">Publicações</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/Brochuras-folhetos.aspx">Brochuras e folhetos</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/Cartazes.aspx">Cartazes</a></li><hr class="linhamenu"><li><a class="nivel2" translate="yes" href="/Pages/videos.aspx">Vídeos</a></li></ul></li><li class="rootBg" data-menu="CAMPANHAS"><a href="/Pages/Campanhas.aspx"><span>CAMPANHAS</span></a></li><li class="rootBg" data-menu="CONTACTOS"><a href="/Pages/Contactos.aspx"><span>CONTACTOS</span></a></li></ul></nav></div>
+                                                            <!-- end menu -->
+                                                            <!--Menu Superior-->
+                                                            <!--<script src="https://code.jquery.com/jquery-1.12.4.min.js" integrity="sha256-ZosEbRLbNQzLpnKIkEdrPv7lOy9C27hHQ+Xp8a4MxAQ=" crossorigin="anonymous"></script>  -->                                                                      
+                                                            <link rel="stylesheet" href="/siteassets/menunew/menu.css">
+                                                            <script src="/siteassets/menunew/menuscript.js"></script>
+                                                            <script src="/siteassets/accessibility/text-control.js"></script>
+                                                                <script type="text/javascript">
+                                                                    function googleTranslateElementInit() {
+                                                                        new google.translate.TranslateElement({ includedLanguages: 'en,pt,es,fr', layout: google.translate.TranslateElement.InlineLayout.HORIZONTAL }, 'google_translate_element');
+                                                                    }
+                                                                    </script>
+                                                                     <script src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+
+
+
+                                                            <a href="/Pages/Home.aspx" title="Imagem da ACT"><img class="imgact" src="/SiteAssets/imgact.png" alt="Logótipo da ACT"></a>                                                            <!-- Up bar -->
+                                                            
+                                                              <div id="DepoisDeIniciarSessao" style="display: none;">
+	                                                            	<p id="BemVindoUtilizador"></p>   
+	                                                             	<p id="NifUtilizador"></p> 
+	                                                             	<input type="hidden" id="hdnSession" style="">
+	                                                            </div>
+                                                            <div class="upbarMobile">
+                                                               
+                                                                
+                                                            </div>
+                                                            
+                                                            <div class="upbar">
+	                                                            <div id="divMobile">
+                                                                    <div class="dropdown dropdownAutenticacaoMobile" style="position: relative;display: inline-block;margin-right: 76px;">
+                                                                        <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenu3" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" style="display: contents;">
+                                                                           <img class="buttonHoverGeral" style="width: 45px;padding: 6px 4px 5px 4px;" src="../../CustomImages/GeralAutenticacao.png" alt="Autenticação Geral">
+                                                                        </button>
+                                                                       <div class="dropdown-menu Drop_Autenticacao" aria-labelledby="dropdownMenu3">
+                                                                            <button class="dropdown-item Autenticacao_item" id="AreaReservadaAutenticacao2" style="display:none ;" data-toggle="modal" type="button"><img style="float: left;" src="../../CustomImages/AreaReservadaAutenticacao.png" alt="Área Reservada"><span class="textAutentiacacao">Os meus pedidos</span></button>
+                                                                            <button class="dropdown-item Autenticacao_item" id="SairAutenticacao2" style="display:none ;" type="button"><img style="float: left;" src="../../CustomImages/SairAutenticacao.png" alt="Sair Autenticação"><span class="textAutentiacacao">Sair</span></button>
+                                                                        </div>
+                                                                    </div>
+                                                                     <a id="IniciarSessao2" href="/_layouts/15/ACTLogin/login.aspx" style="color: white; margin-top: 12px; text-decoration: underline; cursor: pointer; display: block;" title="Clique para Iniciar sessão">Iniciar sessão</a>
+
+                                                                    <div id="idiomaIcon">
+																		<button type="button" onclick="openBoxIdioma('globo')" style="display: contents" id="botaoIdioma">
+																		<img src="../../CustomImages/idiomaIcon.svg" alt="Idiomas">
+																		</button>
+																	</div>
+                                                                    <div id="iconLupa"><button type="button" onclick="openBoxIdioma('lupa')" style="display: contents" id="botaoPesquisa"><img src="../../CustomImages/LupaMobile.svg" alt="Procurar"></button></div>
+                                                                
+                                                                    <div id="PesquisaBoxMobile" style="display:none">
+                                                                    
+                                                                       
+                                                                    </div>
+                                                                    
+                                                                </div>
+                                                                 <div id="idiomaBoxMobile">
+                                                                     <input style="margin-left: 5px; width: 215px;" type="text" id="search-input-act&lt;u&gt;&lt;/u&gt;" class="search-input-act elementPesquisa" placeholder="O que procura?">
+
+                                                                        <a class="search-act-button elementPesquisa" style="background-color:transparent;border:none;margin-left: 19px;min-width: 22px ;" title="Pesquisa">
+                                                                            <i style="margin-top: 9px;" class="fas fa-search lupa-act"></i> 
+                                                                                                                                                    </a>
+                                                                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="Off">|</span>
+                                                                </div>
+                                                                <div id="divDesktop">
+                                                                    <div class="btn-textcontrol--wrapper">
+                                                                        <button id="btn-decrease" class="btn btn-default " type="button" translate="no">A-
+                                                                        </button>
+                                                                        <button id="btn-orig" class="btn btn-default" type="button" translate="no">
+                                                                            A
+                                                                        </button>
+                                                                        <button id="btn-increase" class="btn btn-default" type="button" translate="no">A+</button>
+                                                                    </div>
+                                                                    
+                                                                    
+                                                                </div>
+                                                               
+                                                                <div id="google_translate_element"><div class="skiptranslate goog-te-gadget" dir="ltr" style=""><div id=":0.targetLanguage" style="display: inline;"><select class="goog-te-combo" aria-label="Widget do Tradutor do idioma"><option value="">Selecionar idioma</option><option value="es">Espanhol</option><option value="fr">Francês</option><option value="en">Inglês</option><option value="pt">Português (Brasil)</option></select></div>&nbsp;&nbsp;Tecnologia do <span style="white-space:nowrap"><a class="VIpgJd-ZVi9od-l4eHX-hSRGPd" href="https://translate.google.com" target="_blank"><img src="https://www.gstatic.com/images/branding/googlelogo/1x/googlelogo_color_42x16dp.png" width="37px" height="14px" style="padding-right: 3px" alt="Google Tradutor">Tradutor</a></span></div></div>
+                                                                <div class="dropdown dropdownAutenticacao" style="position: relative;display: inline-block;margin-right: 9px;">
+                                                                    <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenu2" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" style="display: initial; padding: 0; margin: 0; background-color: transparent;">
+                                                                        <img class="buttonHoverGeral" style="width: 45px;padding: 6px 4px 5px 4px;" src="../../CustomImages/GeralAutenticacao.png" alt="Autenticação Geral">
+                                                                    </button>
+
+															                                                                     <div class="dropdown-menu Drop_Autenticacao" aria-labelledby="dropdownMenu2">
+															        <button class="dropdown-item Autenticacao_item" id="AreaReservadaAutenticacao" style="display:none ;" data-toggle="modal" type="button"><img style="float: left;" src="../../CustomImages/AreaReservadaAutenticacao.png" alt="Área Reservada"><span class="textAutentiacacao">Os meus pedidos</span></button>
+															        <button class="dropdown-item Autenticacao_item" id="SairAutenticacao" style="display:none ;" type="button"><img style="float: left;" src="../../CustomImages/SairAutenticacao.png" alt="Sair Autenticação"><span class="textAutentiacacao">Sair</span></button>           
+															    </div>                                                              
+															    
+															    </div>	
+															    <a id="IniciarSessao" href="/_layouts/15/ACTLogin/login.aspx" style="color: white; margin-top: 12px; text-decoration: underline; cursor: pointer; display: block;" title="Clique para Iniciar sessão">Iniciar sessão</a>                                                            <style>
+                                                            .goog-te-banner-frame {
+                                                                display: none;
+                                                                height: 0 !important;
+                                                                visibility: hidden
+                                                            }
+
+                                                            .goog-te-gadget img {
+                                                            display: none;
+                                                            }
+                                                            #text{
+                                                            display:none;
+                                                            }
+                                                            .goog-logo-link, .goog-logo-link:link, .goog-logo-link:visited, .goog-logo-link:hover, .goog-logo-link:active {
+                                                            display:none;
+                                                            }
+                                                            .goog-logo-link {
+                                                                display:none !important;
+                                                            } 
+                                                            body {
+                                                            top: 0px !important; 
+                                                            }
+                                                            </style> 
+                                                            <!--<a id="OpenDialogLogin" href="#" class="aut">
+                                                                    <img class="autenticacao" src="../../CustomImages/autenticacao.png" alt="Autenticação"/>                                                                </a>
+                                                                
+
+                                                                <script>
+                                                                $(document).ready(function () {
+                                                                    $("#OpenDialogLogin").click(function () {
+                                                                        var w = window.open("/_layouts/15/ACTLogin/login.aspx", "popupWindow", "width=830, height=600, scrollbars=yes");
+                                                                    });
+                                                                });
+                                                                </script>
+                                                                -->
+
+
+                                                                <div id="DeltaPlaceHolderSearchArea" class="search-input">
+	
+                                                                    <div class="ms-pub-logon">
+                                                                        
+<a id="ctl00_IdOsloWelcome_ExplicitLogin" class="ms-signInLink" href="https://portal.act.gov.pt/_layouts/15/Authenticate.aspx?Source=%2FPages%2FSimuladorCompensacaoCessacaoContratoTrabalho%2Easpx" style="display:inline-block;">Iniciar sessão</a>
+
+                                                                    </div>
+                                                                    
+																		<div id="searchInputBox">
+                                                                            <div class="ms-webpart-chrome ms-webpart-chrome-fullWidth ">
+		<div webpartid="00000000-0000-0000-0000-000000000000" haspers="true" id="WebPartWPQ1" class="ms-WPBody " onlyformepart="true" allowdelete="false" style=""><div componentid="ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr" id="ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr"><div id="SearchBox"><div class="ms-srch-sb ms-srch-sb-border" id="ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr_sboxdiv"><input type="search" value="Procurar..." maxlength="2048" title="Procurar..." id="ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr_sbox" autocomplete="off" autocorrect="off" onkeypress="EnsureScriptFunc('Search.ClientControls.js', 'Srch.U', function() {if (Srch.U.isEnterKey(String.fromCharCode(event.keyCode))) {$find('ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr').search($get('ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr_sbox').value);return Srch.U.cancelEvent(event);}})" onkeydown="EnsureScriptFunc('Search.ClientControls.js', 'Srch.U', function() {var ctl = $find('ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr');ctl.activateDefaultQuerySuggestionBehavior();})" onfocus="EnsureScriptFunc('Search.ClientControls.js', 'Srch.U', function() {var ctl = $find('ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr');ctl.hidePrompt();ctl.setBorder(true);})" onblur="EnsureScriptFunc('Search.ClientControls.js', 'Srch.U', function() {var ctl = $find('ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr'); if (ctl){ ctl.showPrompt(); ctl.setBorder(false);}})" class="ms-textSmall ms-srch-sb-prompt ms-helperText" role="combobox" aria-owns="ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr_AutoCompList" aria-haspopup="true" aria-autocomplete="list" aria-expanded="false" style=""><a title="Procurar" role="button" class="ms-srch-sb-searchLink" id="ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr_SearchLink" onclick="EnsureScriptFunc('Search.ClientControls.js', 'Srch.U', function() {$find('ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr').search($get('ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr_sbox').value);})" href="javascript: {}" aria-label="Procurar"><img src="/_layouts/15/images/searchresultui.png?rev=43#ThemeKey=searchresultui" class="ms-srch-sb-searchImg" id="searchImg" alt="Procurar"></a><div class="ms-qSuggest-container ms-shadow" id="AutoCompContainer"><div id="ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr_AutoCompList" role="listbox" aria-label="Sugestões"></div></div></div></div></div><noscript><div id="ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_noscript">O seu browser parece não ter o JavaScript ativado. Ative o JavaScript e tente novamente.</div></noscript><div id="ctl00_PlaceHolderSearchArea_SmallSearchInputBox1">
+
+		</div><div class="ms-clear"></div></div>
+	</div>
+                                                                        </div>
+                                                                    
+                                                                
+</div>
+                                                                <!-- END Up bar -->
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                        <div id="s4-bodyContainer">
+                                                            <div class="ms-belltown-anonspacer"></div>
+                                                            <div id="ms-belltown-table" class="ms-table">
+                                                                <div class="ms-tableRow">
+                                                                    <div class="ms-tableCell">
+                                                                        <div class="contentwrapper">
+                                                                            <div class="ms-table ms-fullWidth">
+                                                                                <div class="ms-tableRow">
+                                                                                    <div class="ms-tableCell ms-verticalAlignTop">
+                                                                                        <div id="sideNavBox" class="ms-dialogHidden ms-forceWrap ms-noList">
+                                                                                            <a id="startNavigation" name="startNavigation" tabindex="-1"></a>
+                                                                                            <div id="DeltaPlaceHolderLeftNavBar" class="ms-core-navigation ms-belltown-sideNavDelta">
+	
+                                                                                                
+																									
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                
+                                                                                            
+</div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div class="ms-tableCell ms-verticalAlignTop">
+                                                                                        <div id="DeltaFormDigest">
+	
+                                                                                            
+																								<script type="text/javascript">//<![CDATA[
+        var formDigestElement = document.getElementsByName('__REQUESTDIGEST')[0];
+        if (!((formDigestElement == null) || (formDigestElement.tagName.toLowerCase() != 'input') || (formDigestElement.type.toLowerCase() != 'hidden') ||
+            (formDigestElement.value == null) || (formDigestElement.value.length <= 0)))
+        {
+            formDigestElement.value = '0xB1C9F0FC4B9B63992BD7E4D8ABAB1DC344ED02EFDF326547361F3A4AFE0F2F146BE69A075EFA4D32A4C6CD343FC10B65DD52DAF4BFA1E5344B6B75ADED3B88B0,22 May 2026 10:03:45 -0000';_spPageContextInfo.updateFormDigestPageLoaded = new Date();
+        }
+        //]]>
+        </script>
+                                                                                            
+                                                                                        
+</div>
+                                                                                        <div class="ms-hide">
+                                                                                            
+                                                                                            
+                                                                                            
+                                                                                            
+                                                                                            
+                                                                                            
+                                                                                            
+                                                                                            
+                                                                                            
+                                                                                            
+                                                                                            
+                                                                                            
+                                                                                            
+                                                                                            
+                                                                                            
+                                                                                            
+                                                                                            
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <div id="DeltaPlaceHolderFooter">
+	
+                                                                    
+                                                                
+</div>
+                                                            </div>
+                                                        </div>
+                                                        <span id="DeltaHelpPanel">
+                                                                &nbsp;<div id="helppanelCntdiv" class="ms-Help-PanelContainer">
+                                                                    
+                                                                </div>
+                                                            </span>
+                                                            <span id="DeltaPageInstrumentation">
+                                                                
+                                                            </span>
+                                                    </div>
+                                                    <!--<div id="go-top">
+						<button onclick="topFunction()" id="myBtn" title="Voltar para o topo da página"><img class="gotopicon" src="/CustomImages/GoTop.svg" alt="botão ir para cima"/></button>
+					</div>-->
+                                                
+
+                                            
+                                        
+
+<script type="text/javascript">
+//<![CDATA[
+
+var callBackFrameUrl='/WebResource.axd?d=o7rLNHXoAqD85-NHRZgfs4SdXuzL5unOD5VhK35ucQtN07RuxOzN4Aj2aJqYzcGjO_snZBQ2OsiOytj77o-bLwzi1ORM1_mdXNtJnZgUT8Q1&t=638901807720898773';
+WebForm_InitCallback();var _spFormDigestRefreshInterval = 1440000;window.SPThemeUtils && SPThemeUtils.ApplyCurrentTheme(true); IsSPSocialSwitchEnabled = function() { return true; };var _fV4UI = true;
+function _RegisterWebPartPageCUI()
+{
+    var initInfo = {editable: false,isEditMode: false,allowWebPartAdder: false,listId: "{7fbc98cd-f18e-48c4-aab8-b8c0610d2f17}",itemId: 67,recycleBinEnabled: true,enableMinorVersioning: true,enableModeration: false,forceCheckout: true,rootFolderUrl: "\u002fPages",itemPermissions:{High:16,Low:196673}};
+    SP.Ribbon.WebPartComponent.registerWithPageManager(initInfo);
+    var wpcomp = SP.Ribbon.WebPartComponent.get_instance();
+    var hid;
+    hid = document.getElementById("_wpSelected");
+    if (hid != null)
+    {
+        var wpid = hid.value;
+        if (wpid.length > 0)
+        {
+            var zc = document.getElementById(wpid);
+            if (zc != null)
+                wpcomp.selectWebPart(zc, false);
+        }
+    }
+    hid = document.getElementById("_wzSelected");
+    if (hid != null)
+    {
+        var wzid = hid.value;
+        if (wzid.length > 0)
+        {
+            wpcomp.selectWebPartZone(null, wzid);
+        }
+    }
+};
+function __RegisterWebPartPageCUI() {
+ExecuteOrDelayUntilScriptLoaded(_RegisterWebPartPageCUI, "sp.ribbon.js");}
+_spBodyOnLoadFunctionNames.push("__RegisterWebPartPageCUI");var __wpmExportWarning='This Web Part Page has been personalized. As a result, one or more Web Part properties may contain confidential information. Make sure the properties contain information that is safe for others to read. After exporting this Web Part, view properties in the Web Part description file (.WebPart) by using a text editor such as Microsoft Notepad.';var __wpmCloseProviderWarning='You are about to close this Web Part.  It is currently providing data to other Web Parts, and these connections will be deleted if this Web Part is closed.  To close this Web Part, click OK.  To keep this Web Part, click Cancel.';var __wpmDeleteWarning='You are about to permanently delete this Web Part.  Are you sure you want to do this?  To delete this Web Part, click OK.  To keep this Web Part, click Cancel.';
+ExecuteOrDelayUntilScriptLoaded(
+function()
+{
+var initInfo = 
+{
+itemPermMasks: {High:16,Low:196673},
+listPermMasks: {High:16,Low:196673},
+listId: "7fbc98cd-f18e-48c4-aab8-b8c0610d2f17",
+itemId: 67,
+workflowsAssociated: false,
+editable: false,
+doNotShowProperties: false,
+enableVersioning: true
+};
+SP.Ribbon.DocLibAspxPageComponent.registerWithPageManager(initInfo);
+},
+"sp.ribbon.js");
+var g_disableCheckoutInEditMode = false;
+var _spWebPermMasks = {High:16,Low:196673};function _cUpdonetidHeadbnnr2(){var myd = null; if (typeof(dataonetidHeadbnnr2) != 'undefined') {myd = dataonetidHeadbnnr2;} var myc = document.getElementById('ctl00_onetidHeadbnnr2');_cUpdconetidHeadbnnr2(myd, myc);}function _cUpdconetidHeadbnnr2(data, ctrl){SiteLogoImagePageUpdate(ctrl, data);}g_spPreFetchKeys.push('sp.core.js');
+            ExecuteOrDelayUntilScriptLoaded(
+                function() 
+                {                    
+                    Srch.ScriptApplicationManager.get_current().states = {"webUILanguageName":"pt-PT","webDefaultLanguageName":"en-US","QueryDateTimeCulture":2070,"timeZoneOffsetInHours":0,"contextUrl":"https://portal.act.gov.pt","contextTitle":"Portal ACT","supportedLanguages":[{"id":1025,"label":"Árabe"},{"id":1093,"label":"Bangla"},{"id":1026,"label":"Búlgaro"},{"id":1027,"label":"Catalão"},{"id":2052,"label":"Chinês (Simplificado)"},{"id":1028,"label":"Chinês (Tradicional)"},{"id":1050,"label":"Croata"},{"id":1029,"label":"Checo"},{"id":1030,"label":"Dinamarquês"},{"id":1043,"label":"Neerlandês"},{"id":1033,"label":"Inglês"},{"id":1035,"label":"Finlandês"},{"id":1036,"label":"Francês"},{"id":1031,"label":"Alemão"},{"id":1032,"label":"Grego"},{"id":1095,"label":"Guzarate"},{"id":1037,"label":"Hebraico"},{"id":1081,"label":"Hindi"},{"id":1038,"label":"Húngaro"},{"id":1039,"label":"Islandês"},{"id":1057,"label":"Indonésio"},{"id":1040,"label":"Italiano"},{"id":1041,"label":"Japonês"},{"id":1099,"label":"Kannada"},{"id":1042,"label":"Coreano"},{"id":1062,"label":"Letão"},{"id":1063,"label":"Lituano"},{"id":1086,"label":"Malaio"},{"id":1100,"label":"Malayalam"},{"id":1102,"label":"Marati"},{"id":1044,"label":"Norueguês"},{"id":1045,"label":"Polaco"},{"id":1046,"label":"Português (Brasil)"},{"id":2070,"label":"Português (Portugal)"},{"id":1094,"label":"Punjabi"},{"id":1048,"label":"Romeno"},{"id":1049,"label":"Russo"},{"id":3098,"label":"Sérvio (Cirílico)"},{"id":2074,"label":"Sérvio (Latim)"},{"id":1051,"label":"Eslovaco"},{"id":1060,"label":"Esloveno"},{"id":3082,"label":"Espanhol (Espanha)"},{"id":2058,"label":"Espanhol (México)"},{"id":1053,"label":"Sueco"},{"id":1097,"label":"Tamil"},{"id":1098,"label":"Telugu"},{"id":1054,"label":"Tailandês"},{"id":1055,"label":"Turco"},{"id":1058,"label":"Ucraniano"},{"id":1056,"label":"Urdu"},{"id":1066,"label":"Vietnamita"}],"navigationNodes":[{"id":1001,"name":"Tudo","url":"{searchcenterurl}/results.aspx","promptString":"Pesquisar em tudo"},{"id":1002,"name":"Pessoas","url":"{searchcenterurl}/peopleresults.aspx","promptString":"Pesquisar em pessoas"},{"id":1003,"name":"Conversações","url":"{searchcenterurl}/conversationresults.aspx","promptString":"Pesquisar em conversações"},{"id":0,"name":"Este Site","url":"~site/_layouts/15/osssearchresults.aspx?u={contexturl}","promptString":"Pesquisar em este site"}],"webUILanguageDirectory":"pt-PT","showAdminDetails":false,"defaultPagesListName":"Paginas","isSPFSKU":false,"defaultQueryProperties":{"culture":2070,"uiLanguage":2070,"summaryLength":180,"desiredSnippetLength":90,"enableStemming":true,"enablePhonetic":false,"enableNicknames":false,"trimDuplicates":true,"bypassResultTypes":false,"enableInterleaving":true,"enableQueryRules":true,"processBestBets":true,"enableOrderingHitHighlightedProperty":false,"hitHighlightedMultivaluePropertyLimit":-1,"processPersonalFavorites":true}};
+                    Srch.U.trace(null, 'SerializeToClient', 'ScriptApplicationManager state initialized.');
+                }, 'Search.ClientControls.js');var g_clientIdDeltaPlaceHolderMain = "DeltaPlaceHolderMain";
+var g_clientIdDeltaPlaceHolderPageTitleInTitleArea = "DeltaPlaceHolderPageTitleInTitleArea";
+var g_clientIdDeltaPlaceHolderUtilityContent = "DeltaPlaceHolderUtilityContent";
+
+theForm.oldSubmit = theForm.submit;
+theForm.submit = WebForm_SaveScrollPositionSubmit;
+
+theForm.oldOnSubmit = theForm.onsubmit;
+theForm.onsubmit = WebForm_SaveScrollPositionOnSubmit;
+
+var g_commandUIHandlers = {"name":"CommandHandlers","attrs":{},"children":[]};
+
+                    ExecuteOrDelayUntilScriptLoaded(
+                        function() 
+                        {
+                            if ($isNull($find('ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr')))
+                            {
+                                var sb = $create(Srch.SearchBox, {"delayLoadTemplateScripts":true,"messages":[],"queryGroupNames":["MasterPage"],"renderTemplateId":"~sitecollection/_catalogs/masterpage/Display Templates/Search/Control_SearchBox_Compact.js","resultsPageAddress":"https://portal.act.gov.pt/Pages/searchresults.aspx#k={contexturl}","serverInitialRender":true,"showDataErrors":true,"states":{},"tryInplaceQuery":false}, null, null, $get("ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr"));
+                                sb.activate('Procurar...', 'ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr_sbox', 'ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr_sboxdiv', 'ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr_NavButton', 'ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr_AutoCompList', 'ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr_NavDropdownList', 'ctl00_PlaceHolderSearchArea_SmallSearchInputBox1_csr_SearchLink', 'ms-srch-sbprogress', 'ms-srch-sb-prompt ms-helperText');
+                            }
+                        }, 'Search.ClientControls.js');//]]>
+</script>
+</form>
+                                        <span id="DeltaPlaceHolderUtilityContent">
+                                            
+                                        </span>
+                                        <script type="text/javascript">// <![CDATA[ 
+
+var g_Workspace = "s4-workspace"; // ]]>
+</script>
+
+                                        <!-- START: ACTIA -->
+
+                                        <!-- ##### -->
+                                       
+                                       <script src="https://cdn.botframework.com/botframework-webchat/4.17.0/webchat.js"></script>
+                                        <link rel="stylesheet" href="/Style%20Library/GFIBOT/common.css">
+                                        <link rel="stylesheet" href="/Style%20Library/GFIBOT/img/forgerond248.ico">
+
+                                        <!-- ##### -->
+
+                                        <!-- BOT ACT -->
+                                        <div class="floatDiv">
+                                            <div class="tooltipchatbot" id="idtooltipchatbot" style="display: none;">
+                                                <p class="tooltipchatbottext">Agora que está autenticado, pode fazer
+                                                    aqui o seu pedido de intervenção.
+                                                    Para iniciar, escreva: Quero fazer uma denúncia.</p>
+                                            </div>
+                                            <!-- Balão -->
+                                           <div id="balloonchatbot" class="balloon-text--wrapper" style="">
+                                               <p>Olá, eu sou a Actia, a assistente virtual da ACT.<br>
+                                                    Vamos conversar?</p>
+                                                <a href="#" id="closeBalloon" class="btn btn-flat">Mais tarde</a>
+                                                <a href="#" id="openChat" class="btn btn-primary">Sim</a>
+                                            </div>
+                                            <!-- Balão -->
+
+                                       <!-- mudei de div para button por causa da acessibilidade--> 
+                                       <button type="button" class="toggleBtn" style="border:none" onclick="showChatBorder()">
+                                             
+                                                <!-- <div  data-rel="chatBot" class="open">
+                                                    <img src="/Style%20Library/GFIBOT/img/arrow.png" alt="Funcionária digital da Autoridade para as Condições do Trabalho"/>
+                                                </div> -->
+                                            </button>
+                                            <div class="webchatBorder floatClosed" id="webchatBorder" style="display: none;">
+                                                <!-- <img class="talk-ball" src="" alt="Balão de fala" /> -->
+                                                <h4 id="BotName2">Actia</h4>
+                                                <div class="main-window" style="height: 0;">
+                                                    <button style="border: none ;background-color: transparent;" data-rel="chatBot" onclick="closeChatBorder()" data-action="to_close">
+                                                        <img id="closeIcon" src="/Style%20Library/GFIBOT/img/cross.png" alt="close">
+                                                                                                        </button>
+                                                    <a href="#" onclick="closeChatBorder()" data-rel="chatBot">
+                                                    <img id="minimizeIcon" src="/Style%20Library/GFIBOT/img/minimize.png" alt="minimize">
+                                                                                                            </a>
+                                                </div>
+                                                <div id="webchat" role="main"></div>
+                                                <div class="warning-bot-style-ie" style="display:none">
+                                                    Olá, o meu nome é Actia, a sou assistente virtual da ACT.
+                                                    Para uma melhor experiência de navegação, aconselhamos o uso destes
+                                                    browsers:
+                                                    Chrome
+                                                    Firefox
+                                                    Edge
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <!--CHAT BOT-->
+
+                                        <script src="/Style%20Library/GFIBOT/common.js"></script>
+                                        <script>
+                                            //var ballonChat = document.getElementById('balloonchatbot');
+                                            //ballonChat.style.display = 'block';
+                                            //$('#balloonchatbot').removeClass('show').addClass('hidden');
+
+                                            //function showChatCloseBalloon() {
+
+                                            //closeBalloon();
+
+                                            //showChatBorder();
+                                            //}
+
+                                            //function closeBalloon() {
+                                            //$('#balloonchatbot').removeClass('show').addClass('hidden');
+                                            //}
+
+
+                                            loadBot();
+
+                                            $(function () {
+                                                //console.log("cookie ready!");
+
+                                                setTimeout(showModal, 7000);
+
+                                                function showModal() {
+
+                                                    var is_already_show = sessionStorage.getItem('alreadyShow');
+                                                    if (is_already_show != 'already shown') {
+                                                        sessionStorage.setItem('alreadyShow', 'already shown');
+                                                        $("#balloonchatbot").show();
+                                                    } else {
+                                                        //console.log(is_already_show);
+                                                    }
+
+                                                    $("#closeBalloon").click(function (e) {
+                                                        //console.log("FECHA O BALÃO");
+                                                        e.preventDefault();
+                                                        $("#balloonchatbot").hide();
+                                                    });
+
+                                                    $("#openChat").click(function (e) {
+                                                        //console.log("ABRE O CHAT E FECHA O BALÃO");
+                                                        e.preventDefault();
+                                                        $("#balloonchatbot").hide();
+                                                        showChatBorder();
+                                                    });
+                                                }
+                                            });
+
+                                        </script>
+                                        <script>
+                                            $('.search-act-button').on('click', function() {
+                                                let searchParams = $('.search-input-act').val();
+                                                 window.location.assign(`/Pages/searchresults.aspx#k=${searchParams}`);
+                                            }
+                                            )
+                                            $('.search-input-act').keyup(function(event) {
+    											if (event.keyCode === 13) {
+                                                let searchParams = $('.search-input-act').val();
+                                                 window.location.href =`/Pages/searchresults.aspx#k=${searchParams}`;
+                                            }
+                                            }
+                                            )
+                                        </script>
+                                        <!-- END: ACTIA -->
+                                        
+
+                                    
+
+
+
+
+                                
+
+                                <div id="goog-gt-tt" class="VIpgJd-yAWNEb-L7lbkb skiptranslate" style="border-radius: 12px; margin: 0 0 0 -23px; padding: 0; font-family: 'Google Sans', Arial, sans-serif;" data-id=""><div id="goog-gt-vt" class="VIpgJd-yAWNEb-hvhgNd"><div class="VIpgJd-yAWNEb-hvhgNd-Ud7fr"><img src="https://fonts.gstatic.com/s/i/productlogos/translate/v14/24px.svg" width="24" height="24" alt=""><div class=" VIpgJd-yAWNEb-hvhgNd-IuizWc-i3jM8c " dir="ltr">Texto original</div></div><div class="VIpgJd-yAWNEb-hvhgNd-k77Iif"><div id="goog-gt-original-text" class="VIpgJd-yAWNEb-nVMfcd-fmcmS VIpgJd-yAWNEb-hvhgNd-axAV1"></div></div><div class="VIpgJd-yAWNEb-hvhgNd-N7Eqid ltr"><div class="VIpgJd-yAWNEb-hvhgNd-N7Eqid-B7I4Od ltr" dir="ltr"><div class="VIpgJd-yAWNEb-hvhgNd-UTujCb">Classificar esta tradução</div><div class="VIpgJd-yAWNEb-hvhgNd-eO9mKe">O seu feedback vai ser usado para ajudar a melhorar o Google Tradutor</div></div><div class="VIpgJd-yAWNEb-hvhgNd-xgov5 ltr"><button id="goog-gt-thumbUpButton" type="button" class="VIpgJd-yAWNEb-hvhgNd-bgm6sf" title="Boa tradução" aria-label="Boa tradução" aria-pressed="false"><span id="goog-gt-thumbUpIcon"><svg width="24" height="24" viewBox="0 0 24 24" focusable="false" class="VIpgJd-yAWNEb-hvhgNd-THI6Vb NMm5M"><path d="M21 7h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 0S7.08 6.85 7 7H2v13h16c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73V9c0-1.1-.9-2-2-2zM7 18H4V9h3v9zm14-7l-3 7H9V8l4.34-4.34L12 9h9v2z"></path></svg></span><span id="goog-gt-thumbUpIconFilled"><svg width="24" height="24" viewBox="0 0 24 24" focusable="false" class="VIpgJd-yAWNEb-hvhgNd-THI6Vb NMm5M"><path d="M21 7h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 0S7.08 6.85 7 7v13h11c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73V9c0-1.1-.9-2-2-2zM5 7H1v13h4V7z"></path></svg></span></button><button id="goog-gt-thumbDownButton" type="button" class="VIpgJd-yAWNEb-hvhgNd-bgm6sf" title="Má tradução" aria-label="Má tradução" aria-pressed="false"><span id="goog-gt-thumbDownIcon"><svg width="24" height="24" viewBox="0 0 24 24" focusable="false" class="VIpgJd-yAWNEb-hvhgNd-THI6Vb NMm5M"><path d="M3 17h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 24s7.09-6.85 7.17-7h5V4H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2zM17 6h3v9h-3V6zM3 13l3-7h9v10l-4.34 4.34L12 15H3v-2z"></path></svg></span><span id="goog-gt-thumbDownIconFilled"><svg width="24" height="24" viewBox="0 0 24 24" focusable="false" class="VIpgJd-yAWNEb-hvhgNd-THI6Vb NMm5M"><path d="M3 17h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 24s7.09-6.85 7.17-7V4H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2zm16 0h4V4h-4v13z"></path></svg></span></button></div></div><div id="goog-gt-votingHiddenPane" class="VIpgJd-yAWNEb-hvhgNd-aXYTce"><form id="goog-gt-votingForm" action="//translate.googleapis.com/translate_voting?client=te" method="post" target="votingFrame" class="VIpgJd-yAWNEb-hvhgNd-aXYTce"><input type="text" name="sl" id="goog-gt-votingInputSrcLang" style=""><input type="text" name="tl" id="goog-gt-votingInputTrgLang" style=""><input type="text" name="query" id="goog-gt-votingInputSrcText" style=""><input type="text" name="gtrans" id="goog-gt-votingInputTrgText" style=""><input type="text" name="vote" id="goog-gt-votingInputVote" style=""></form><iframe name="votingFrame" frameborder="0"></iframe></div></div></div><div id="ui-datepicker-div" class="ui-datepicker notranslate ui-widget ui-widget-content ui-helper-clearfix ui-corner-all" style="position: absolute; top: 423.609px; left: 510.984px; z-index: 2; display: none;"><div class="ui-datepicker-header ui-widget-header ui-helper-clearfix ui-corner-all"><a class="ui-datepicker-prev ui-corner-all" data-handler="prev" data-event="click" title="&lt;Anterior"><span class="ui-icon ui-icon-circle-triangle-w">&lt;Anterior</span></a><a class="ui-datepicker-next ui-corner-all" data-handler="next" data-event="click" title="Seguinte"><span class="ui-icon ui-icon-circle-triangle-e">Seguinte</span></a><div class="ui-datepicker-title"><span class="ui-datepicker-month">Maio</span>&nbsp;<select class="ui-datepicker-year" data-handler="selectYear" data-event="change"><option value="2016">2016</option><option value="2017">2017</option><option value="2018">2018</option><option value="2019">2019</option><option value="2020">2020</option><option value="2021">2021</option><option value="2022">2022</option><option value="2023">2023</option><option value="2024">2024</option><option value="2025">2025</option><option value="2026" selected="selected">2026</option><option value="2027">2027</option><option value="2028">2028</option><option value="2029">2029</option><option value="2030">2030</option><option value="2031">2031</option><option value="2032">2032</option><option value="2033">2033</option><option value="2034">2034</option><option value="2035">2035</option><option value="2036">2036</option></select></div></div><table class="ui-datepicker-calendar"><thead><tr><th class="ui-datepicker-week-end"><span title="Domingo">Dom</span></th><th><span title="Segunda-feira">Seg</span></th><th><span title="Terça-feira">Ter</span></th><th><span title="Quarta-feira">Qua</span></th><th><span title="Quinta-feira">Qui</span></th><th><span title="Sexta-feira">Sex</span></th><th class="ui-datepicker-week-end"><span title="Sábado">Sáb</span></th></tr></thead><tbody><tr><td class=" ui-datepicker-week-end ui-datepicker-other-month ui-datepicker-unselectable ui-state-disabled">&nbsp;</td><td class=" ui-datepicker-other-month ui-datepicker-unselectable ui-state-disabled">&nbsp;</td><td class=" ui-datepicker-other-month ui-datepicker-unselectable ui-state-disabled">&nbsp;</td><td class=" ui-datepicker-other-month ui-datepicker-unselectable ui-state-disabled">&nbsp;</td><td class=" ui-datepicker-other-month ui-datepicker-unselectable ui-state-disabled">&nbsp;</td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">1</a></td><td class=" ui-datepicker-week-end " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">2</a></td></tr><tr><td class=" ui-datepicker-week-end " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">3</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">4</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">5</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">6</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">7</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">8</a></td><td class=" ui-datepicker-week-end " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">9</a></td></tr><tr><td class=" ui-datepicker-week-end " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">10</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">11</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">12</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">13</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">14</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">15</a></td><td class=" ui-datepicker-week-end " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">16</a></td></tr><tr><td class=" ui-datepicker-week-end " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">17</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">18</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">19</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">20</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">21</a></td><td class=" ui-datepicker-days-cell-over  ui-datepicker-current-day ui-datepicker-today" data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default ui-state-highlight ui-state-active ui-state-hover" href="#">22</a></td><td class=" ui-datepicker-week-end " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">23</a></td></tr><tr><td class=" ui-datepicker-week-end " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">24</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">25</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">26</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">27</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">28</a></td><td class=" " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">29</a></td><td class=" ui-datepicker-week-end " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">30</a></td></tr><tr><td class=" ui-datepicker-week-end " data-handler="selectDay" data-event="click" data-month="4" data-year="2026"><a class="ui-state-default" href="#">31</a></td><td class=" ui-datepicker-other-month ui-datepicker-unselectable ui-state-disabled">&nbsp;</td><td class=" ui-datepicker-other-month ui-datepicker-unselectable ui-state-disabled">&nbsp;</td><td class=" ui-datepicker-other-month ui-datepicker-unselectable ui-state-disabled">&nbsp;</td><td class=" ui-datepicker-other-month ui-datepicker-unselectable ui-state-disabled">&nbsp;</td><td class=" ui-datepicker-other-month ui-datepicker-unselectable ui-state-disabled">&nbsp;</td><td class=" ui-datepicker-week-end ui-datepicker-other-month ui-datepicker-unselectable ui-state-disabled">&nbsp;</td></tr></tbody></table></div><div class="VIpgJd-ZVi9od-aZ2wEe-wOHMyf"><div class="VIpgJd-ZVi9od-aZ2wEe-OiiCO"><svg xmlns="http://www.w3.org/2000/svg" class="VIpgJd-ZVi9od-aZ2wEe" width="96px" height="96px" viewBox="0 0 66 66"><circle class="VIpgJd-ZVi9od-aZ2wEe-Jt5cK" fill="none" stroke-width="6" stroke-linecap="round" cx="33" cy="33" r="30"></circle></svg></div></div>

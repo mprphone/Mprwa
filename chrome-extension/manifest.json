@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "WA PRO Auto Login",
   "description": "Autologin assistido da WA PRO para Autoridade Tributária e Segurança Social.",
-  "version": "0.5.11",
+  "version": "0.5.13",
   "action": {
     "default_title": "WA PRO Auto Login",
     "default_popup": "popup.html",

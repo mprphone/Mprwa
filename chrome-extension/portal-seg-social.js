@@ -37,11 +37,27 @@
       // The login page itself contains "Recebeu um código de verificação? Ativar conta"
       // which would otherwise cause a false positive.
       if (api.findFirst(selectors.username) && api.findFirst(selectors.password)) return false;
+      // Se a página diz para aguardar (rate limit da SS), NÃO é uma página de 2FA activa.
+      if (isWaitPage()) return false;
       const bodyText = api.textOf(document.body).toLowerCase();
       return bodyText.includes('autenticação de dois fatores') ||
         bodyText.includes('autenticacao de dois fatores') ||
         bodyText.includes('código de verificação') ||
         bodyText.includes('codigo de verificacao');
+    }
+
+    // Detecta página de rate-limit da SS ("já foi pedido... aguardar X minutos")
+    function isWaitPage() {
+      if (!/seg-social\.pt/i.test(window.location.hostname)) return false;
+      const bodyText = api.textOf(document.body).toLowerCase();
+      return bodyText.includes('aguardar') && (
+        bodyText.includes('minuto') ||
+        bodyText.includes('já foi pedido') ||
+        bodyText.includes('ja foi pedido') ||
+        bodyText.includes('já enviou') ||
+        bodyText.includes('ja enviou') ||
+        bodyText.includes('acesso bloqueado')
+      );
     }
 
     function findTwoFactorInput() {
@@ -171,6 +187,14 @@
       return true;
     }
 
+    // Detectar erro CAS "A problem occurred restoring the flow execution"
+    // e navegar para URL limpa para obter novo token de sessão
+    function hasCasFlowException() {
+      return /exception[._]message/i.test(window.location.search) ||
+             /problem.*occurred.*restoring/i.test(window.location.search) ||
+             /flow.*execution/i.test(window.location.search);
+    }
+
     api.register('SS', {
       selectors,
       async afterFill(payload, commonApi, usernameInput, passwordInput) {
@@ -214,45 +238,46 @@
         return candidates[0]?.element || null;
       },
       async afterSubmitClick(payload, commonApi, passwordInput, submit) {
+        // Um único submit — múltiplos eventos causam rate-limit da SS ("aguardar X minutos")
         LOG('afterSubmitClick');
         await api.wait(250);
-        if (submit && api.visible(submit)) api.clickElement(submit);
-        await api.wait(150);
-        if (passwordInput?.form?.requestSubmit) {
-          try {
-            if (submit instanceof HTMLElement && submit.form === passwordInput.form) passwordInput.form.requestSubmit(submit);
-            else passwordInput.form.requestSubmit();
-            await api.wait(250);
-          } catch (_) {
-            // Fall through to keyboard submit.
-          }
-        }
-        const form = passwordInput?.closest?.('form');
-        if (form) {
-          try {
-            form.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true, submitter: submit instanceof HTMLElement ? submit : null }));
-          } catch (_) {
-            form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-          }
-        }
-        passwordInput?.focus?.();
-        passwordInput?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
-        passwordInput?.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
-        passwordInput?.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
-        document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
       },
       async before(payload) {
         LOG('before() url:', window.location.href, 'username:', payload?.username);
+        // Página de rate-limit da SS — parar imediatamente com mensagem clara
+        if (isWaitPage()) {
+          LOG('SS wait/rate-limit page detected — stopping');
+          chrome.runtime.sendMessage({ type: 'WA_PRO_AUTLOGIN_ERROR', error: 'A Segurança Social pediu para aguardar antes de tentar de novo (demasiadas tentativas). Aguarde alguns minutos e tente novamente.' });
+          return true;
+        }
+        // Se o CAS devolveu erro de sessão expirada, recarregar com URL limpa
+        if (hasCasFlowException()) {
+          LOG('CAS flow exception detected — reloading with fresh login URL');
+          const freshUrl = payload.loginUrl || 'https://www.seg-social.pt/sso/login?service=https%3A%2F%2Fwww.seg-social.pt%2Fptss%2Fcaslogin';
+          window.location.href = freshUrl;
+          return true;
+        }
         if (await openLoginWhenLoggedOut(payload)) return true;
         if (await fillTwoFactorIfPresent(payload)) return true;
         await openUserLoginIfPresent();
         return false;
       },
       async beforeEach(payload) {
+        // Página de rate-limit — parar imediatamente
+        if (isWaitPage()) {
+          LOG('SS wait/rate-limit page detected in beforeEach — stopping');
+          chrome.runtime.sendMessage({ type: 'WA_PRO_AUTLOGIN_ERROR', error: 'A Segurança Social pediu para aguardar antes de tentar de novo. Aguarde alguns minutos e tente novamente.' });
+          return true;
+        }
+        if (hasCasFlowException()) {
+          const freshUrl = payload.loginUrl || 'https://www.seg-social.pt/sso/login?service=https%3A%2F%2Fwww.seg-social.pt%2Fptss%2Fcaslogin';
+          window.location.href = freshUrl;
+          return true;
+        }
         if (await openLoginWhenLoggedOut(payload)) return true;
         await openUserLoginIfPresent();
         await fillTwoFactorIfPresent(payload);
+        return false;
         return false;
       },
       async afterSubmit(payload) {

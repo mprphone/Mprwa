@@ -100,7 +100,7 @@ function registerAutologinRoutes(context, helpers) {
                 atProfileWarnings.push('Gerência obtida pela Certidão Permanente.');
             }
             const updates = {};
-            ['morada', 'codigoPostal', 'dataNascimento', 'dataConstituicao', 'inicioAtividade', 'tipoIva', 'caePrincipal', 'codigoReparticaoFinancas', 'tipoContabilidade', 'certidaoPermanenteValidade'].forEach((key) => {
+            ['morada', 'codigoPostal', 'dataNascimento', 'dataConstituicao', 'inicioAtividade', 'tipoIva', 'caePrincipal', 'caeDescricao', 'caeSecundarios', 'infoAtividades', 'codigoReparticaoFinancas', 'tipoContabilidade', 'certidaoPermanenteValidade'].forEach((key) => {
                 const value = cleanText(fields[key]);
                 if (value) updates[key] = value;
             });
@@ -468,10 +468,10 @@ function registerAutologinRoutes(context, helpers) {
             if (!usernameSelector || !passwordSelector || !submitSelector) throw new Error('Não foi possível localizar os campos de login da SS Direta.');
             await page.fill(usernameSelector, principalUsername);
             await page.fill(passwordSelector, principalPassword);
-            const twoFaSinceIso2 = new Date().toISOString();
+            const twoFaSinceIso2 = new Date(Date.now() - 2 * 60 * 1000).toISOString();
             await Promise.allSettled([page.waitForLoadState('networkidle', { timeout: Math.min(30000, timeoutMs) }), page.locator(submitSelector).first().click()]);
             await clickContinueLoginIf2faPrompt(page, Math.min(12000, timeoutMs));
-            await handleSegSocialEmailTwoFactor(page, twoFaSinceIso2, 60000);
+            await handleSegSocialEmailTwoFactor(page, twoFaSinceIso2, 120000);
             await clickContinueWithoutActivatingIfPrompt(page, Math.min(18000, timeoutMs));
             stage = 'gestao_acessos';
             await clickFirst(page, [() => page.getByRole('button', { name: /perfil|utilizador|área de acesso|area de acesso/i }), () => page.getByRole('link', { name: /perfil|utilizador|área de acesso|area de acesso/i }), () => page.locator('button, a, [role="button"]', { hasText: /perfil|utilizador|área de acesso|area de acesso/i })], 3500);
@@ -551,10 +551,10 @@ function registerAutologinRoutes(context, helpers) {
                 if (usernameSelector && passwordSelector && submitSelector) {
                     await page.fill(usernameSelector, resolvedSs.username);
                     await page.fill(passwordSelector, resolvedSs.password);
-                    const twoFaSince = new Date().toISOString();
+                    const twoFaSince = new Date(Date.now() - 2 * 60 * 1000).toISOString();
                     await Promise.allSettled([page.waitForLoadState('networkidle', { timeout: 30000 }), page.locator(submitSelector).first().click()]);
                     await clickContinueLoginIf2faPrompt(page, 12000);
-                    await handleSegSocialEmailTwoFactor(page, twoFaSince, 60000);
+                    await handleSegSocialEmailTwoFactor(page, twoFaSince, 120000);
                     await clickContinueWithoutActivatingIfPrompt(page, 18000);
                 }
             }

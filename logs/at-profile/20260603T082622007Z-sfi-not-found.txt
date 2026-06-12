@@ -1,0 +1,29 @@
+URL: https://www.acesso.gov.pt/v2/login
+
+Saltar para o conteúdo principal
+Bem-vindo
+ao serviço de autenticação da AT.
+Autentique-se para aceder aos serviços.
+
+6.0.19-11126 - 2026-03-17
+
+Entrar
+
+Escolha a opção de autenticação e introduza os seus dados
+
+CC / CMD
+NIF
+EORI
+Utilizador
+Password
+Mostrar Password
+Autenticar
+Recuperar senha de acesso
+Alterar dados de acesso
+
+Não tem uma conta? Registe-se
+
+Como tratamos os seus dados pessoais?
+Erro
+Tem mais 3 tentativas.
+Verifique se não está a utilizar maiúsculas ou minúsculas indevidamente.

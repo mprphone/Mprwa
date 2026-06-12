@@ -1,0 +1,29 @@
+URL: https://www.acesso.gov.pt/v2/login
+
+Saltar para o conteúdo principal
+Bem-vindo
+ao serviço de autenticação da AT.
+Autentique-se para aceder aos serviços.
+
+6.0.19-11126 - 2026-03-17
+
+Entrar
+CC / CMD
+NIF
+EORI
+Utilizador
+Password
+Mostrar Password
+Autenticar
+Recuperar senha de acesso
+Alterar dados de acesso
+
+Não tem uma conta? Registe-se
+
+Como tratamos os seus dados pessoais?
+Alertas
+
+Verifique os seguintes alertas.
+
+Só os Contabilistas Certificados habilitados pela OCC, nos termos do Estatuto, podem cumprir obrigações fiscais no Portal das Finanças. Se estiver impedido, contacte a OCC. Caso a situação já esteja regularizada, desconsidere este alerta.
+Fechar

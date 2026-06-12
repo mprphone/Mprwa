@@ -56,7 +56,8 @@ async function loginToSegSocial(page, opts = {}) {
     await fillSegSocialCredential(page, usernameSelector, username);
     await fillSegSocialCredential(page, passwordSelector, password);
 
-    const twoFaSinceIso = new Date().toISOString();
+    // sinceIso 2 minutos antes — emails SS chegam com atraso e podem chegar ao mesmo segundo do login
+    const twoFaSinceIso = new Date(Date.now() - 2 * 60 * 1000).toISOString();
     console.error('[SS Login] a submeter formulário...');
     await clickSegSocialCredentialSubmit(page, passwordSelector);
     await page.waitForLoadState('networkidle', { timeout: Math.min(30000, timeoutMs) }).catch(() => null);
@@ -65,12 +66,29 @@ async function loginToSegSocial(page, opts = {}) {
     console.error('[SS Login] title após submit:', await page.title().catch(() => ''));
     console.error('[SS Login] texto da página:', (await page.locator('body').innerText({ timeout: 3000 }).catch(() => '')).replace(/\s+/g, ' ').slice(0, 400));
 
+    // Detetar "Acesso Bloqueado" — a SS bloqueia após muitas tentativas falhadas
+    const pageBodyText = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '');
+    if (/acesso\s+bloqueado/i.test(pageBodyText)) {
+        console.error('[SS Login] Acesso Bloqueado pela SS Direta. URL:', page.url());
+        throw new Error('Acesso Bloqueado pela Segurança Social Direta. A conta foi bloqueada por demasiadas tentativas. Aguarde e tente mais tarde ou desbloqueie manualmente no portal.');
+    }
+
+    // Se ainda está na página de login após o submit, o login falhou (credenciais erradas,
+    // sessão anterior conflituosa, etc.) — falhar imediatamente em vez de ficar em loop nos 2FA.
+    const urlAfterSubmit = page.url();
+    const stillOnLoginPage = /\/sso\/login|\/login/i.test(urlAfterSubmit);
+    const hasPasswordInputAfterSubmit = (await page.locator('input[type="password"]').count()) > 0;
+    if (stillOnLoginPage && hasPasswordInputAfterSubmit) {
+        console.error('[SS Login] Login falhou — ainda na página de login após submit. URL:', urlAfterSubmit);
+        throw new Error('Login SS falhou: credenciais rejeitadas ou sessão anterior conflituosa. Verifique utilizador/senha e tente novamente.');
+    }
+
     await clickSegSocialActivate2faIfRequired(page, Math.min(30000, timeoutMs));
-    await completeSegSocialEmailCodeIfPresent(page, twoFaSinceIso, 75000);
+    await completeSegSocialEmailCodeIfPresent(page, twoFaSinceIso, 120000); // 2min — email pode demorar
     await clickContinueLoginIf2faPrompt(page, Math.min(12000, timeoutMs));
-    await handleSegSocialEmailTwoFactor(page, twoFaSinceIso, 60000);
+    await handleSegSocialEmailTwoFactor(page, twoFaSinceIso, 120000); // 2min
     await clickSegSocialActivate2faIfRequired(page, Math.min(15000, timeoutMs));
-    await completeSegSocialEmailCodeIfPresent(page, twoFaSinceIso, 45000);
+    await completeSegSocialEmailCodeIfPresent(page, twoFaSinceIso, 90000);
     await clickContinueWithoutActivatingIfPrompt(page, Math.min(18000, timeoutMs));
 
     if (targetUrl) {

@@ -65,19 +65,32 @@ async function validateSalaryWithDoutorFinancas(input) {
     await page.locator('button').filter({ hasText: /aceitar|accept|concordo/i }).first().click({ timeout: 3000 }).catch(() => null);
     await page.waitForTimeout(500);
 
-    // helper: preencher input pelo label
+    // helper: preencher input pelo label — usa .fill() do Playwright (suporta React)
     async function fillByLabel(labelPattern, value) {
       const label = page.locator('label, span, div').filter({ hasText: labelPattern }).filter({ visible: true }).first();
       const input = label.locator('xpath=following::input[not(@type="hidden")][1]');
-      await input.waitFor({ state: 'visible', timeout: 6000 }).catch(() => null);
-      await input.evaluate((el, val) => {
-        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
-        if (setter?.set) setter.set.call(el, val);
-        else el.value = val;
-        ['input', 'change', 'blur'].forEach((t) => el.dispatchEvent(new Event(t, { bubbles: true })));
-        if (typeof window.$ !== 'undefined') try { window.$(el).trigger('change'); } catch (_) {}
-      }, String(value));
-      await page.waitForTimeout(300);
+      const visible = await input.isVisible({ timeout: 4000 }).catch(() => false);
+      if (!visible) return false;
+      try {
+        // Usar .fill() que dispara correctamente os eventos React/Vue/Angular
+        await input.click({ timeout: 2000 });
+        await input.fill(String(value), { timeout: 3000 });
+        // Pressionar Tab para confirmar o valor e mover para o próximo campo
+        await input.press('Tab');
+        await page.waitForTimeout(200);
+        return true;
+      } catch (_) {
+        // fallback via evaluate para casos edge
+        await input.evaluate((el, val) => {
+          const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+          if (setter?.set) setter.set.call(el, val);
+          else el.value = val;
+          el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, data: val }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }, String(value)).catch(() => null);
+        await page.waitForTimeout(300);
+        return false;
+      }
     }
 
     // helper: seleccionar opção pelo label
@@ -119,8 +132,28 @@ async function validateSalaryWithDoutorFinancas(input) {
     // dependentes
     await fillByLabel(/[Nn][uú]mero.*dependentes|dependentes/i, input.dependents || 0);
 
-    // rendimento base
-    await fillByLabel(/[Rr]endimento base|[Vv]encimento/i, input.grossSalary || 0);
+    // rendimento base — tentar múltiplos padrões e fallback por selector directo
+    const salaryFilled = await fillByLabel(/[Rr]endimento base|[Vv]encimento base|[Ss]al[aá]rio bruto/i, input.grossSalary || 0);
+    if (!salaryFilled) {
+      // fallback: preencher todos os inputs numéricos principais pela ordem (1º campo = salário)
+      const numericInputs = await page.locator('input[type="number"]:visible, input[type="text"]:visible').all();
+      for (const inp of numericInputs) {
+        const val = await inp.inputValue().catch(() => '');
+        // campo que tem valor numérico parecido com um salário
+        if (/^\d{3,5}([.,]\d{0,2})?$/.test(val.trim()) || val.trim() === '') {
+          await inp.evaluate((el, v) => {
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+            if (setter?.set) setter.set.call(el, v); else el.value = v;
+            ['input','change','blur'].forEach((t) => el.dispatchEvent(new Event(t, { bubbles: true })));
+          }, String(input.grossSalary || 0));
+          await page.waitForTimeout(300);
+          break;
+        }
+      }
+    }
+    await page.waitForTimeout(500);
+    const salaryCheck = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '');
+    console.error('[DF Salary] salary field filled, page has gross:', salaryCheck.match(/Sal[aá]rio bruto[\s\S]{0,50}/)?.[0] || 'not found');
 
     // taxa SS trabalhador
     await fillByLabel(/[Ss]egurança [Ss]ocial.*%|[Tt]axa SS/i, input.socialSecurityRate ?? 11);
@@ -146,7 +179,43 @@ async function validateSalaryWithDoutorFinancas(input) {
       await fillByLabel(/[Dd]ias/i, input.mealDays || 22);
     }
 
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(800);
+
+    // Remover cookie overlay e outros overlays que bloqueiam cliques
+    await page.evaluate(() => {
+      // Remover classe cookie-overlay do body
+      document.body.classList.remove('cookie-overlay');
+      // Remover qualquer overlay/modal de cookies via CSS
+      const overlays = document.querySelectorAll('[class*="cookie"], [class*="overlay"], [class*="modal"], [id*="cookie"], [id*="consent"]');
+      overlays.forEach((el) => {
+        const style = window.getComputedStyle(el);
+        if (style.position === 'fixed' || style.position === 'absolute') {
+          el.style.display = 'none';
+        }
+      });
+    }).catch(() => null);
+
+    // Aceitar cookies se ainda visível
+    await page.locator('button').filter({ hasText: /aceitar|accept|concordo|ok/i }).first().click({ timeout: 2000, force: true }).catch(() => null);
+    await page.waitForTimeout(300);
+
+    // Clicar no botão "Simular" — obrigatório para calcular os resultados
+    const simularBtn = page.locator('button').filter({ hasText: /^[Ss]imular$/ }).first();
+    const btnVisible = await simularBtn.isVisible({ timeout: 3000 }).catch(() => false);
+    if (btnVisible || await simularBtn.count().then((c) => c > 0).catch(() => false)) {
+      console.error('[DF Salary] a clicar botão Simular (force)...');
+      await simularBtn.click({ timeout: 5000, force: true });
+    } else {
+      // fallback: evaluate click directo por texto
+      const clicked = await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find((b) => /^simular$/i.test((b.textContent || '').trim()));
+        if (btn) { btn.click(); return true; }
+        return false;
+      });
+      console.error('[DF Salary] Simular evaluate click:', clicked);
+    }
+    // Aguardar que os resultados actualizem
+    await page.waitForTimeout(3000);
 
     // ler resultados
     const bodyText = compactSpaces(await page.locator('body').innerText({ timeout: 8000 }));
@@ -159,14 +228,46 @@ async function validateSalaryWithDoutorFinancas(input) {
       return parseEuroValue(slice);
     }
 
-    const netSalary = extractAfter(/[Ss]al[aá]rio l[ií]quido\b/);
-    // IRS total = Rendimentos + Duodécimos
-    const irsRetention = extractAfter(/[Rr]eten[cç][aã]o IRS.*[Rr]endimentos|[Rr]eten[cç][aã]o IRS\b/);
-    // SS trabalhador: procurar especificamente "trabalhador" para não apanhar a quota patronal
-    const socialSecurity = extractAfter(/[Ss]egurança [Ss]ocial.*[Tt]rabalhador|[Cc]ontribui[cç][aã]o.*[Tt]rabalhador|[Dd]esconto.*[Ss]egurança [Ss]ocial/)
+    // Log parcial do texto para diagnóstico
+    console.error('[DF Salary] bodyText (500):', bodyText.slice(0, 500));
+    // Encontrar secção de resultados
+    const resultsIdx = bodyText.search(/[Ss]al[aá]rio l[ií]quido/);
+    if (resultsIdx >= 0) console.error('[DF Salary] results section (800):', bodyText.slice(resultsIdx, resultsIdx + 800));
+
+    // Ler resultados do banner principal (actualizado após Simular)
+    // O banner mostra "O que irá receber mensalmente: X€" — este é o valor correcto
+    const netSalaryBanner = extractAfter(/[Oo] que ir[aá] receber mensalmente[:\s]|mensalmente[:\s]/);
+
+    // Ler da secção de simulação (donut chart) — depois do banner
+    // Procurar a secção que contém "Retenção IRS (Rendimentos" para garantir resultados actualizados
+    const irsIdx = bodyText.indexOf('Reten');
+    const resultSlice = irsIdx >= 0 ? bodyText.slice(Math.max(0, irsIdx - 200), irsIdx + 600) : bodyText;
+    function extractFromSlice(pattern) {
+      const m = resultSlice.match(pattern);
+      if (!m || typeof m.index !== 'number') return null;
+      return parseEuroValue(resultSlice.slice(m.index, m.index + 200));
+    }
+
+    // Salário líquido — preferir o banner (mais fiável), senão secção de simulação
+    const netFromSimul = extractFromSlice(/[Ss]al[aá]rio l[ií]quido/);
+    const netSalary = netSalaryBanner || netFromSimul || extractAfter(/[Ss]al[aá]rio l[ií]quido\b/);
+
+    // IRS — procurar na secção de resultados actualizados
+    const irsRetention = extractFromSlice(/[Rr]eten[cç][aã]o IRS/)
+                      || extractAfter(/[Rr]eten[cç][aã]o IRS.*[Rr]endimentos|[Rr]eten[cç][aã]o IRS\b/);
+
+    // SS trabalhador — na secção de resultados
+    const socialSecurity = extractFromSlice(/[Cc]ontribui[cç][aã]o segurança social|[Ss]egurança.*[Ss]ocial.*\d/)
                         || extractAfter(/Contribui[cç][aã]o segurança social\b/);
+
     const grossAnnual = extractAfter(/sal[aá]rio bruto anual\b/i);
-    const employerCost = extractAfter(/custo anual.*empregador|empregador.*custo anual/i);
+    const employerCost = extractAfter(/custo anual.*empregador|empregador.*custo anual/i)
+                      || (() => {
+                          const m = bodyText.match(/[Cc]usto anual.*empregador[\s\S]{0,10}([\d.,]+€?)/);
+                          return m ? parseEuroValue(m[1]) : null;
+                        })();
+
+    console.error('[DF Salary] netBanner:', netSalaryBanner, '| netSimul:', netFromSimul, '| irs:', irsRetention, '| ss:', socialSecurity);
 
     if (!netSalary) {
       throw new Error('Não consegui ler o salário líquido do Doutor Finanças. A página pode ter mudado de estrutura.');

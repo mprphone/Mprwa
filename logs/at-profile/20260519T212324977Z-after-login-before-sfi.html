@@ -1,0 +1,671 @@
+<!DOCTYPE html><html lang="pt-PT" style="" class=" js flexbox canvas canvastext webgl no-touch geolocation postmessage no-websqldatabase indexeddb hashchange history draganddrop websockets rgba hsla multiplebgs backgroundsize borderimage borderradius boxshadow textshadow opacity cssanimations csscolumns cssgradients cssreflections csstransforms csstransforms3d csstransitions fontface generatedcontent video audio localstorage sessionstorage webworkers no-applicationcache svg inlinesvg smil svgclippaths"><head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="author" content="Autoridade Tributária e Aduaneira [https://www.portaldasfinancas.gov.pt/at/html/index.html]">
+    <meta name="description" content="Autoridade Tributária e Aduaneira">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    
+    <!-- META_PROPERTIES -->
+    <meta id="pfstatic-url" name="pfstatic-url" content="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/">
+    <meta id="appstatic-url" name="appstatic-url" content="//static.portaldasfinancas.gov.pt/app/pfapp_static/">
+    <meta id="portalfin-url" name="portalfin-url" content="https://www.portaldasfinancas.gov.pt/">
+    <meta id="autentica-url" name="autentica-url" content="https://www.acesso.gov.pt/">
+
+
+
+
+    <!-- END META_PROPERTIES -->
+
+
+    <title>Portal das Finanças</title>
+
+    <!-- ICONS -->
+    <link rel="icon" href="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/favicon.ico">
+
+    <!-- FONTS -->
+    <link href="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/fonts/main.css" rel="stylesheet" type="text/css">
+
+    <link rel="stylesheet" href="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/css/bootstrap.css">
+
+    <link rel="stylesheet" href="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/css/pf-bundle.css">
+
+    <!-- SCRIPTS -->
+    <script src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/js/pf-bundle-properties.js"></script>
+
+    <script src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/browserDesatualizado/js/ua-parser.min.js"></script>
+    <script src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/js/pf-validate-browser.js"></script>
+
+    <!-- JQuery -->
+    <script src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/js/lib/jQuery/jquery-3.7.1.min.js"></script>
+
+    <script src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/js/pf-footer.js"></script>
+
+    <!-- Bundle files configurations -->
+
+    <script src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/js/pf-bundle.js"></script>
+
+    <!-- Opensearch -->
+    <link rel="search" type="application/opensearchdescription+xml" href="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/opensearch/osd.xml" title="Portal das Finanças">
+
+    
+    <!-- Indexacao Google https://developers.google.com/structured-data/slsb-overview -->
+    <!-- JSON-LD -->
+    <script type="application/ld+json">
+    {
+        "@context": "http://schema.org",
+        "@type": "WebSite",
+        "url": "https://www.portaldasfinancas.gov.pt/",
+        "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://sitfiscal.portaldasfinancas.gov.pt/geral/search?query={search_term_string}",
+            "query-input": "required name=search_term_string"
+        }
+    }
+    </script>
+
+
+    <!-- IE compatibility -->
+    <!--[if lt IE 9]>
+    <script src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/js/lib/ie8/respond.min.js"></script>
+    <script src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/js/lib/ie8/html5shiv.min.js"></script>
+    <![endif]-->
+
+
+    </head>
+
+<body>
+
+    <noscript>
+        <div class="row js-turned-off-row">
+            <div class="col-xs-12 js-turned-off">
+                <span style="text-align:center; line-height: 40px;">O JavaScript está desativado. Recomendamos que o mesmo seja ativado para o funcionamento correto da aplicação.</span>
+            </div>
+        </div>
+    </noscript>
+<!--Exemplo para mensagem de erro quando existem erros de validação html ( local e dev)-->
+    
+<div>
+
+    <div class="skip-link">
+      <a href="#main">Ir para o conteúdo principal</a>
+      <a href="#footer">Ir para o rodapé</a>
+    </div>
+
+    <!-- HEADER -->
+    <!-- MAIN HEADER -->
+<header role="banner" class="main-header">
+
+    <!-- MAIN HEADER HEAD -->
+    <!-- User related links -->
+    <div class="main-header-head">
+        <div class="container-wrapper">
+            <div class="container-fluid">
+                                    <div class="row user-bar">
+                        <div class="col-xs-5">
+                            <div class="user-welcome">
+                                <div class="user-pic">
+                                    <img src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/images/avatar.png" alt="CELIO FILIPE BARBOSA GOMES                                                                                                                                      ">
+                                </div>
+                                <p class="user-name"><span id="cumprimento">Boa noite, CELIO FILIPE BARBOSA GOMES                                                                                                                                      </span></p>
+                                                                    <p class="user-nif"><strong>NIF:</strong> 211516821</p>
+                                                            </div>
+                        </div>
+                        <div class="col-xs-7">
+                            <ul class="user-links">
+                                                              <li class="user-messages">
+                                <a href="https://sitfiscal.portaldasfinancas.gov.pt/geral/dashboard/consultarMensagens">
+                                  <i class="fa fa-envelope"></i>
+                                  <span class="msg-count" data-role="message-count">
+                                                                                                                              3
+                                                                                                                  </span>
+                                  <span> Mensagens</span></a>
+                              </li>
+                                <li class="user-area"><a href="https://sitfiscal.portaldasfinancas.gov.pt/geral/dashboard"><span>A Minha Área</span></a></li>
+                                <li id="logout-link" class="user-quit"><a href="https://www.acesso.gov.pt//jsp/logout.jsp?partID=PFAP&amp;path=/geral/atauth/logout">Sair</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                            </div>
+        </div>
+    </div>
+    <!-- MAIN HEADER BODY -->
+    <div class="main-header-body">
+        <div class="container-wrapper">
+            <div class="container-fluid">
+                <div class="row">
+                    <div class="header-static">
+
+                        <div class="col-xs-9 col-sm-3">
+                            <a class="logo" href="https://www.portaldasfinancas.gov.pt/">
+                                <!--[if (!IE)|(gt IE 8)]><!-->
+                                <img src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/images/logo-at.svg" alt="AT - Autoridade Tributária e Aduaneira" title="AT - Autoridade Tributária e Aduaneira">
+                                <!--<![endif]-->
+                                <!--[if lte IE 8]>
+                                <img src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/images/logo-at.png" alt="AT - Autoridade Tributária e Aduaneira" title="AT - Autoridade Tributária e Aduaneira">
+                                <![endif]-->
+                            </a>
+                        </div>
+
+                        <!-- search bar @screen-size > xs -->
+                        <div class="hidden-xs  col-sm-9 ">
+
+                                <div class="main-search">
+                                    <form action="https://sitfiscal.portaldasfinancas.gov.pt/geral/search" method="get">
+                                        <input type="text" name="query" class="main-search-input search-query" placeholder="Indique o que pretende efetuar (Ex: Entregar IRS)" title="Pesquisa">
+                                        <input type="hidden" name="appName" value="pfapp">
+                                        <input type="submit" class="main-search-submit" aria-label="Pesquisar" value="Pesquisar" onclick="return inputEmpty()">
+                                    </form>
+                                </div>
+                        </div>
+
+                        <!-- mobile search bar caller -->
+                        <div class="col-xs-2 col-xs-offset-1 mobile-search-toggle-container visible-xs">
+                          <button class="mobile-search-toggle" data-toggle="collapse" data-target="#mobile-search" aria-label="Pesquisa em dispositivos móveis"></button>
+                        </div>
+
+                    </div>
+
+                    <!-- search bar @screen-size xs -->
+                    <div class="header-search clearfix">
+                        <div class="col-xs-2">
+                            <a class="logo-mobile" href="https://www.portaldasfinancas.gov.pt/">
+                                <!--[if (!IE)|(gt IE 8)]><!-->
+                                <img src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/images/logo-at.svg" alt="AT - Autoridade Tributária e Aduaneira" title="AT - Autoridade Tributária e Aduaneira">
+                                <!--<![endif]-->
+                                <!--[if lte IE 8]>
+                                <img src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/images/logo-at.png" alt="AT - Autoridade Tributária e Aduaneira" title="AT - Autoridade Tributária e Aduaneira">
+                                <![endif]-->
+                            </a>
+                        </div>
+
+                        <div class="col-xs-10">
+                            <div class="main-search">
+                                <form action="https://sitfiscal.portaldasfinancas.gov.pt/geral/search" method="get">
+                                    <input name="query" type="text" class="main-search-input search-query" placeholder="Indique o que pretende efetuar (Ex: Entregar IRS)" title="Pesquisa">
+                                    <input type="hidden" name="appName" value="pfapp">
+                                    <input type="submit" class="main-search-submit" aria-label="Pesquisar" value="Pesquisar" onclick="return inputEmpty()">
+                                </form>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    
+                </div><!--/.row-->
+            </div><!--container-fluid-->
+        </div><!--container-wrapper-->
+    </div><!--main-header-body-->
+
+</header>
+<!-- END MAIN HEADER -->
+
+
+
+<script src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/js/pf-header-cumprimento.js"></script>
+<script src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/js/pf-header.js"></script>
+
+
+    <!-- END HEADER -->
+
+    <!-- MAIN -->
+    <main role="main" id="main">
+
+        <noscript>
+            <div id="header-secondary-noscript">
+                <div class="container-fluid">
+                    <div class="row header-secondary header-secondary-background-1">
+                        <div class="container-wrapper">
+                            <div class="container-fluid">
+                                <span class="h1" >&nbsp;</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </noscript>
+
+		<!--.container-fluid-->
+		<div id="header-secondary" class="">
+			<div class="container-fluid">
+				<div class="row header-secondary header-secondary-background-1">
+					<div class="container-wrapper">
+						<div class="container-fluid">
+                          <span class="h1">&nbsp;</span>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+		<!--/.container-fluid-->    
+
+        <!--.container-wrapper-->
+        <div id="main-wrapper" class="container-wrapper home-n-autenticada-container">
+
+            <div class="clearfix minHeightHpna">
+
+                <!--sidebar-->
+				<div class="col-xs-12 col-sm-3 aside-bg home-n-autenticada-container-list">
+					<aside>
+						<ul class="aside-navigation">
+							<li>
+								<a href="https://info.portaldasfinancas.gov.pt/pt/at" title="Informação institucional da Autoridade Tributária e Aduaneira">A AT</a>
+							</li>
+                            <li>
+                                <a href="https://info.portaldasfinancas.gov.pt/pt/apoio_contribuinte/calendario_fiscal/Pages/obrigacoes.aspx" title="Calendário de obrigações declarativas e de pagamento">Agenda Fiscal</a>
+                            </li>
+                            <li>
+								<a href="https://sitfiscal.portaldasfinancas.gov.pt/geral/siteMap" title="Mapa de serviços eletrónicos no Portal das Finanças">Serviços</a>
+							</li>
+							<li>
+								<a href="https://info.portaldasfinancas.gov.pt/pt/home/" title="Informação relevante em matéria tributária e aduaneira">Informação Fiscal e Aduaneira</a>
+							</li>
+							<li>
+								<a href="https://info.portaldasfinancas.gov.pt/pt/apoio_ao_contribuinte/Pages/default.aspx" title="Conteúdos informativos de apoio ao contribuinte">Apoio ao Contribuinte</a>
+							</li>
+							<li>
+								<a href="https://info.portaldasfinancas.gov.pt/pt/grandes_contribuintes" title="Informação de suporte aos contribuintes acompanhados pela UGC">Grandes Contribuintes</a>
+							</li>
+							<li>
+                            	<a href="https://info.portaldasfinancas.gov.pt/pt/U-Tax/">U-Tax</a>
+                            </li>
+							<li>
+								<a href="https://info.portaldasfinancas.gov.pt/pt/dgci/divulgacao/estatisticas/" title="Estatísticas declarativas e relativas a Impostos sobre o Rendimento, a Despesa e o Património">Estatísticas</a>
+							</li>
+							<li>
+								<a href="https://info.portaldasfinancas.gov.pt/en/tax-information/Pages/default.aspx" title="Tax System in Portugal">Tax information</a>
+							</li>
+                            <li>
+                                <a href="https://info.portaldasfinancas.gov.pt/pt/Cidadania/Paginas/default.aspx" title="Informação e conteúdos sobre Cidadania Fiscal">Cidadania Fiscal</a>
+                            </li>
+						</ul>
+					</aside>
+				</div>
+                <!--/sidebar-->
+
+                <div class="content-container aside-helper col-xs-12 col-sm-9">
+                    <!--content-container-->
+					
+
+
+
+
+
+
+<!-- <script src="pfapp_static/js/home/home.min.js"></script> -->
+
+<script src="//static.portaldasfinancas.gov.pt/app/pfapp_static/js/util/strings.js"></script>
+
+<script src="//static.portaldasfinancas.gov.pt/app/pfapp_static/js/home/home.js"></script>
+<script src="//static.portaldasfinancas.gov.pt/app/pfapp_static/js/home/avisos.js"></script>
+<script src="//static.portaldasfinancas.gov.pt/app/pfapp_static/js/home/legislativaInstrAdmin.js"></script>
+<script src="//static.portaldasfinancas.gov.pt/app/pfapp_static/js/home/servicosDestaque.js"></script>
+<script src="//static.portaldasfinancas.gov.pt/app/pfapp_static/js/home/servicosFrequentes.js"></script>
+<script src="//static.portaldasfinancas.gov.pt/app/pfapp_static/js/home/ultimasPublicacoes.js"></script>
+
+<link href="//static.portaldasfinancas.gov.pt/app/pfapp_static//css/home/pfapp.css?cb=2.1.2-5847" rel="stylesheet">
+
+<div id="pagina-n-autentica-content" class="col-xs-12 margin-top">
+
+    <h1>Principais Destaques</h1>
+
+    <div class="loading hidden"></div>
+    <!--[if IE 9]>
+    <div class="loading-lt-ie9"></div>
+    <![endif]-->
+
+    <div id="hpnasemconteudo" class="hidden">
+        <figure class="background">
+            <img src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/images/decoration/mundo-at.svg" alt="">
+        </figure>
+        <div id="listSegmentos">
+                            <span class="h4">Neste momento não existem destaques relevantes.</span>
+                        <p class="styleMessage">Consulte informação para os seguintes:</p>
+            <ul class="aside-list">
+                                                            <li class="margin-left-s"><a href="https://www.portaldasfinancas.gov.pt/geral/home?segmento=CD">Cidadãos</a></li>
+                                                                                <li class="margin-left-s"><a href="https://www.portaldasfinancas.gov.pt/geral/home?segmento=ES">Empresas</a></li>
+                                                                                <li class="margin-left-s"><a href="https://www.portaldasfinancas.gov.pt/geral/home?segmento=EP">Entidades Públicas</a></li>
+                                                                                <li class="margin-left-s"><a href="https://www.portaldasfinancas.gov.pt/geral/home?segmento=OE">Outros Profissionais</a></li>
+                                                                                <li class="margin-left-s"><a href="https://www.portaldasfinancas.gov.pt/geral/home?segmento=OP">Operadores Económicos</a></li>
+                                                                                <li class="margin-left-s"><a href="https://www.portaldasfinancas.gov.pt/geral/home?segmento=TC">Contabilistas Certificados</a></li>
+                                                </ul>
+        </div>
+        <div class="alert alert-danger margin-top-xxl-home margin-bottom-xxl-home hidden" role="alert">Não foi possível obter os respetivos dados. Por favor
+            tente mais tarde.
+        </div>
+    </div>
+
+    <div id="content-context" class="">
+            </div>
+
+    <!-- <script src="pfapp_static/js/home/avisosjs"></script> -->
+
+<script type="text/javascript">
+
+    $(function () {
+        avisos.init('<label>||ALERTA_TITULO||</label><p class="red-excerpt">||ALERTA_DESCRICAO||</p>', '<label>||ALERTA_TITULO||</label><p>||ALERTA_DESCRICAO||</p>', '', '');
+    });
+
+</script>
+
+<section id="avisos-section" class="margin-bottom">
+
+    <div id="avisos-erros" class="panel panel-danger-alt bg-red margin-top hidden">
+        <div class="panel-heading">
+            <div class="panel-title">CONSTRANGIMENTOS</div>
+        </div>
+        <div id="avisos-erros-content" class="panel-body">
+            <!-- data -->
+        </div>
+    </div>
+
+    <div id="avisos-alertas" class="panel panel-danger-alt bg-orange margin-top">
+        <div class="panel-heading">
+            <div class="panel-title">ALERTAS</div>
+        </div>
+        <div id="avisos-alertas-content" class="panel-body"><label><a href="https://info.portaldasfinancas.gov.pt/pt/destaques/Paginas/Alerta_seguranca_18_05.aspx" class="panel-row-title">Alerta de segurança</a></label><p>Mensagem fraudulenta</p><label><a href="https://info.portaldasfinancas.gov.pt/pt/destaques/Paginas/AS0504.aspx" class="panel-row-title">Alerta de segurança</a></label><p>AT alerta para e-mails e SMS fraudulentos enviados em seu nome</p><label><a href="https://info.portaldasfinancas.gov.pt/pt/destaques/Paginas/AS0423.aspx" class="panel-row-title">Alerta de segurança</a></label><p>Mensagem fraudulenta</p></div>
+    </div>
+
+</section>
+
+
+
+
+    <!-- <script src="pfapp_static/js/home/servicosDestaque.js"></script> -->
+
+<script type="text/javascript">
+
+    $(function () {
+
+        servicosDestaque.init('https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/', '<li class="col-sm-4 col-xs-6"><div class="item-utilities element-shadow"><figure class="agenda-macro-figure" url="||PF_STATIC_URL||" image="||AGENDA_BACKGROUND_IMAGE||"><img src="||AGENDA_BACKGROUND_IMAGE||" alt="" class="hidden"/></figure><a href="||AGENDA_NODE_URL||" class="title"><h3>||AGENDA_APP_NAME||</h3></a><p class="text-overflow block-with-text" title="||AGENDA_DESCR||">||AGENDA_DESCR||</p><a href="||AGENDA_NODE_URL||" class="btn-access " title="||AGENDA_DESCR||">Aceder <i class="fa fa-chevron-right"></i></a></div></li>', '', '');
+
+    });
+
+</script>
+
+<section id="servicosDestaque-content" class="clearfix margin-bottom-xl hidden">
+	<h2>Obrigações / Serviços em Destaque</h2>
+	<div class="col-xs-12 no-paddings">
+		<ul id="servicosDestaque" class="col-xs-12 no-paddings list-item-utilities">
+			<!-- data -->
+		</ul>
+	</div>
+</section>
+
+
+        
+<div class="row">
+
+    <div class="col-xs-12 no-paddings margin-top margin-bottom">
+
+        <div class="clearfix margin-bottom-xl">
+
+            <!-- <script src="pfapp_static/js/home/servicosFrequentes.js"></script> -->
+            <!-- <script src="pfapp_static/js/dashboard/servicosFrequentes.js"></script> -->
+
+            <script type="text/javascript">
+
+                $(function () {
+
+                    
+                        servicosFrequentes.init('<li class="col-sm-4 col-xs-12"><a ||SERVICO_FREQUENTE_ARIA|| href="||SERVICO_FREQUENTE_URL||" class="item-utilities-secondary"><figure class="servicoFrequente-macro-figure ||HIDDEN_IMAGEM||" image="||SERVICO_FREQUENTE_IMAGEM||"><img src="||SERVICO_FREQUENTE_IMAGEM||" alt="Serviço ||SERVICO_FREQUENTE_TITULO||" class="hidden"/></figure><div class="item-content ||HIDDEN_CONTENT||"><p class="h4">||SERVICO_FREQUENTE_TITULO||</p><p>||SERVICO_FREQUENTE_DESCR||</p></div><span class="fa fa-chevron-right"></span></a></li>', '', '');
+
+                    
+                });
+
+            </script>
+
+            <section id="servicosFrequentes-content" class="">
+                <h2>Serviços Frequentes</h2>
+                <div class="col-xs-12 no-paddings">
+                    <ul id="servicosFrequentes" class="col-xs-12 no-paddings list-item-utilities"><li class="col-sm-4 col-xs-12"><a href="https://irs.portaldasfinancas.gov.pt/" class="item-utilities-secondary"><figure class="servicoFrequente-macro-figure hidden" image="" style="background-image: url(&quot;&quot;);"><img src="" alt="Serviço IRS" class="hidden"></figure><div class="item-content "><p class="h4">IRS</p><p>IRS Automático e Entregar declaração</p></div><span class="fa fa-chevron-right"></span></a></li><li class="col-sm-4 col-xs-12"><a href="https://aduaneiro.portaldasfinancas.gov.pt/" class="item-utilities-secondary"><figure class="servicoFrequente-macro-figure hidden" image="" style="background-image: url(&quot;&quot;);"><img src="" alt="Serviço Serviços Aduaneiros" class="hidden"></figure><div class="item-content "><p class="h4">Serviços Aduaneiros</p><p></p><p> </p><p></p></div><span class="fa fa-chevron-right"></span></a></li><li class="col-sm-4 col-xs-12"><a href="http://pauta.portaldasfinancas.gov.pt/" class="item-utilities-secondary"><figure class="servicoFrequente-macro-figure hidden" image="" style="background-image: url(&quot;&quot;);"><img src="" alt="Serviço Pauta Aduaneira" class="hidden"></figure><div class="item-content "><p class="h4">Pauta Aduaneira</p><p></p><p> </p><p></p></div><span class="fa fa-chevron-right"></span></a></li><li class="col-sm-4 col-xs-12"><a href="https://aduaneiro.portaldasfinancas.gov.pt/gue/" class="item-utilities-secondary"><figure class="servicoFrequente-macro-figure hidden" image="" style="background-image: url(&quot;&quot;);"><img src="" alt="Serviço GUE (Credenciação)" class="hidden"></figure><div class="item-content "><p class="h4">GUE (Credenciação)</p><p></p><p> </p><p></p></div><span class="fa fa-chevron-right"></span></a></li><li class="col-sm-4 col-xs-12"><a href="https://aduaneiro.portaldasfinancas.gov.pt/consultasaduaneiras/page/encomendaspostais" class="item-utilities-secondary"><figure class="servicoFrequente-macro-figure hidden" image="" style="background-image: url(&quot;&quot;);"><img src="" alt="Serviço Encomendas Postais" class="hidden"></figure><div class="item-content "><p class="h4">Encomendas Postais</p><p>Pesquisa</p></div><span class="fa fa-chevron-right"></span></a></li><li class="col-sm-4 col-xs-12"><a href="https://aduaneiro.portaldasfinancas.gov.pt/consultasaduaneiras/page/declaracoesaduaneiras" class="item-utilities-secondary"><figure class="servicoFrequente-macro-figure hidden" image="" style="background-image: url(&quot;&quot;);"><img src="" alt="Serviço Declarações Aduaneiras" class="hidden"></figure><div class="item-content "><p class="h4">Declarações Aduaneiras</p><p>Consulta</p></div><span class="fa fa-chevron-right"></span></a></li></ul>
+                                                                </div>
+            </section>
+
+            
+
+        </div>
+
+    </div>
+
+</div>
+
+    <!-- <script src="pfapp_static/js/home/ultimasPublicacoes.js"></script> -->
+
+<script type="text/javascript">
+
+    $(function () {
+
+        ultimasPublicacoes.init('https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/', '<li class="col-xs-12 no-paddings"><div class="item-news"><div class="item-news-image col-sm-4 col-xs-12 alpha"><figure class="publicao-macro-figure" url="||PF_STATIC_URL||" image="||PUBLICACAO_IMAGEM_URL||"><img src="||PUBLICACAO_IMAGEM_URL||" alt="" class="hidden" /></figure></div><div class="item-news-content col-sm-8 col-xs-12 omega"><a href="||PUBLICACAO_ACAO_URL||" class="item-title"><h3>||PUBLICACAO_TITULO||</h3></a><p class="item-excerpt">||PUBLICACAO_DESCRICAO||</p><a href="||PUBLICACAO_ACAO_URL||" class="btn-more pdf" title="||PUBLICACAO_ACAO_LABEL|| sobre ||PUBLICACAO_TITULO||">||PUBLICACAO_ACAO_LABEL||</a></div></div></li>', '', '');
+
+    });
+
+</script>
+
+<section id="ultimasPublicacoes-content" class="clearfix margin-bottom-xl">
+	<h2>Últimas Publicações</h2>
+	<div class="col-xs-12 no-paddings">
+		<ul id="ultimasPublicacoes" class="col-xs-12 no-paddings"><li class="col-xs-12 no-paddings"><div class="item-news"><div class="item-news-image col-sm-4 col-xs-12 alpha"><figure class="publicao-macro-figure" url="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/" image="https://info-aduaneiro.portaldasfinancas.gov.pt/pt/destaques/PublishingImages/entrega_online_1.png" style="background-image: url(&quot;https://info-aduaneiro.portaldasfinancas.gov.pt/pt/destaques/PublishingImages/entrega_online_1.png&quot;);"><img src="https://info-aduaneiro.portaldasfinancas.gov.pt/pt/destaques/PublishingImages/entrega_online_1.png" alt="" class="hidden"></figure></div><div class="item-news-content col-sm-8 col-xs-12 omega"><a href="https://info-aduaneiro.portaldasfinancas.gov.pt/pt/noticias/Pages/STADAIMP_CAU_manual_v4.aspx" class="item-title"><h3>11/05/2026</h3></a><p class="item-excerpt">Manual e respetivos anexos que contém as regras de preenchimento das declarações e notificações de importação.</p><a href="https://info-aduaneiro.portaldasfinancas.gov.pt/pt/noticias/Pages/STADAIMP_CAU_manual_v4.aspx" class="btn-more" title="Ler Mais sobre 11/05/2026">Ler Mais</a></div></div></li><li class="col-xs-12 no-paddings"><div class="item-news"><div class="item-news-image col-sm-4 col-xs-12 alpha"><figure class="publicao-macro-figure" url="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/" image="https://info-aduaneiro.portaldasfinancas.gov.pt/pt/destaques/PublishingImages/entrega_online_1.png" style="background-image: url(&quot;https://info-aduaneiro.portaldasfinancas.gov.pt/pt/destaques/PublishingImages/entrega_online_1.png&quot;);"><img src="https://info-aduaneiro.portaldasfinancas.gov.pt/pt/destaques/PublishingImages/entrega_online_1.png" alt="" class="hidden"></figure></div><div class="item-news-content col-sm-8 col-xs-12 omega"><a href="https://info-aduaneiro.portaldasfinancas.gov.pt/pt/noticias/Pages/Manual-Utilizador-SAL-Atualizacao-1-7.aspx" class="item-title"><h3>Manual do Utilizador SAL Garantias | Operador Económico</h3></a><p class="item-excerpt">Divulgação da versão 1.7</p><a href="https://info-aduaneiro.portaldasfinancas.gov.pt/pt/noticias/Pages/Manual-Utilizador-SAL-Atualizacao-1-7.aspx" class="btn-more" title="Ler Mais sobre Manual do Utilizador SAL Garantias | Operador Económico">Ler Mais</a></div></div></li><li class="col-xs-12 no-paddings"><div class="item-news"><div class="item-news-image col-sm-4 col-xs-12 alpha"><figure class="publicao-macro-figure" url="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/" image="https://info.portaldasfinancas.gov.pt/pt/destaques/PublishingImages/inspecao.png" style="background-image: url(&quot;https://info.portaldasfinancas.gov.pt/pt/destaques/PublishingImages/inspecao.png&quot;);"><img src="https://info.portaldasfinancas.gov.pt/pt/destaques/PublishingImages/inspecao.png" alt="" class="hidden"></figure></div><div class="item-news-content col-sm-8 col-xs-12 omega"><a href="https://info.portaldasfinancas.gov.pt/pt/destaques/Paginas/Notas_cobranca_IMI.aspx" class="item-title"><h3>Alteração ao modelo de impressão e envelopagem das comunicações da AT</h3></a><p class="item-excerpt">Notas de cobrança IMI.</p><a href="https://info.portaldasfinancas.gov.pt/pt/destaques/Paginas/Notas_cobranca_IMI.aspx" class="btn-more" title="Ler Mais sobre Alteração ao modelo de impressão e envelopagem das comunicações da AT">Ler Mais</a></div></div></li></ul>
+	</div>
+</section>
+
+
+    <!-- <script src="pfapp_static/js/home/legislativaInstrAdmin.js"></script> -->
+
+<script type="text/javascript">
+
+    $(function () {
+
+        legislativaInstrAdmin.init('https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/', '<li><div class="item-doc"><a href="||LEGISLATIVA_URL||"><h3>||LEGISLATIVA_TITULO||</h3></a><div class="item-doc-date">||LEGISLATIVA_DATA_PUBLICACAO||</div><a href="||LEGISLATIVA_URL||" class="btn-more pdf">Ver PDF ||LEGISLATIVA_NUMERO_PAGINAS||</a></div></li>', '', '');
+
+    });
+
+</script>
+
+<div id="legislativaInstrAdmin-content" class="col-xs-12 margin-bottom">
+	<div class="panel panel-transparent">
+		<div class="row">
+			<div class="tabs tabs-with-docs">
+
+				<input type="radio" name="tabs" id="tabWithDocs1" checked="">
+				<label for="tabWithDocs1" class="tab-with-docs-label"> 
+					<span>Legislação</span>
+				</label> 
+				
+				<input type="radio" name="tabs" id="tabWithDocs2"> 
+				<label for="tabWithDocs2" class="tab-with-docs-label"> 
+					<span>Instruções Administrativas</span>
+				</label>
+				
+				<div class="tabs-in-docs-container"></div>
+
+				<div id="tab-with-docs-content1" class="tab-content-container"><ul><li><div class="item-doc"><a href="https://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/legislacao/diplomas_legislativos/Documents/portaria-222-b-2026-1.pdf"><h3>Portaria n.º 222-B/2026/1, de 15/05</h3></a><div class="item-doc-date">2026-05-15</div><a href="https://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/legislacao/diplomas_legislativos/Documents/portaria-222-b-2026-1.pdf" class="btn-more pdf">Ver PDF (2 páginas)</a></div></li><li><div class="item-doc"><a href="https://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/legislacao/diplomas_legislativos/Documents/portaria-213-a-2026-1.pdf"><h3>Portaria n.º 213-A/2026/1, de 08/05</h3></a><div class="item-doc-date">2026-05-08</div><a href="https://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/legislacao/diplomas_legislativos/Documents/portaria-213-a-2026-1.pdf" class="btn-more pdf">Ver PDF (2 páginas)</a></div></li><li><div class="item-doc"><a href="https://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/legislacao/diplomas_legislativos/Documents/despacho-5538-2026.pdf"><h3>Despacho n.º 5538/2026, de 28/04</h3></a><div class="item-doc-date">2026-04-28</div><a href="https://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/legislacao/diplomas_legislativos/Documents/despacho-5538-2026.pdf" class="btn-more pdf">Ver PDF (2 páginas)</a></div></li><li><div class="item-doc"><a href="https://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/legislacao/diplomas_legislativos/Documents/despacho-5190-2026.pdf"><h3>Despacho n.º 5190/2026, de 21/04</h3></a><div class="item-doc-date">2026-04-21</div><a href="https://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/legislacao/diplomas_legislativos/Documents/despacho-5190-2026.pdf" class="btn-more pdf">Ver PDF (2 páginas)</a></div></li><li class="col-xs-12 no-paddings align-right"><a href="http://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/legislacao/diplomas_legislativos/Pages/default.aspx" title="Ver Mais sobre Legislação">Ver Mais</a></li></ul></div>
+
+				<div id="tab-with-docs-content2" class="tab-content-container"><ul><li><div class="item-doc"><a href="https://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/legislacao/instrucoes_administrativas/Documents/Oficio-circulado-40130-2026.pdf"><h3>Ofício-circulado n.º 40130/2026, de 19/05</h3></a><div class="item-doc-date">2026-05-19</div><a href="https://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/legislacao/instrucoes_administrativas/Documents/Oficio-circulado-40130-2026.pdf" class="btn-more pdf">Ver PDF (5 páginas)</a></div></li><li><div class="item-doc"><a href="https://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/legislacao/instrucoes_administrativas/Documents/Oficio-circulado-25111-2026.pdf"><h3>Ofício-circulado n.º 25111/2026, de 12/05</h3></a><div class="item-doc-date">2026-05-13</div><a href="https://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/legislacao/instrucoes_administrativas/Documents/Oficio-circulado-25111-2026.pdf" class="btn-more pdf">Ver PDF (7 páginas)</a></div></li><li><div class="item-doc"><a href="https://info-aduaneiro.portaldasfinancas.gov.pt/pt/legislacao_aduaneira/oficios_circulados_doclib/Documents/Oficio-circulado-16094-2026.pdf"><h3>Ofício-circulado n.º 16094/2026, de 08/05</h3></a><div class="item-doc-date">2026-05-11</div><a href="https://info-aduaneiro.portaldasfinancas.gov.pt/pt/legislacao_aduaneira/oficios_circulados_doclib/Documents/Oficio-circulado-16094-2026.pdf" class="btn-more pdf">Ver PDF (1 página)</a></div></li><li><div class="item-doc"><a href="https://info-aduaneiro.portaldasfinancas.gov.pt/pt/legislacao_aduaneira/oficios_circulados_doclib/Documents/Oficio-circulado-16095-2026.pdf"><h3>Ofício-circulado n.º 16095/2026, de 07/05</h3></a><div class="item-doc-date">2026-05-07</div><a href="https://info-aduaneiro.portaldasfinancas.gov.pt/pt/legislacao_aduaneira/oficios_circulados_doclib/Documents/Oficio-circulado-16095-2026.pdf" class="btn-more pdf">Ver PDF (7 páginas)</a></div></li><li class="col-xs-12 no-paddings align-right"><a href="http://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/legislacao/instrucoes_administrativas/Pages/default.aspx" title="Ver Mais sobre Instruções Administrativas">Ver Mais</a></li></ul></div>
+				
+			</div>
+			
+		</div>
+	</div>
+</div>
+
+
+</div>
+
+                    <!--/.content-container-->
+                </div>
+            </div>
+            <!--/.container-wrapper-->
+        </div>
+    </main>
+    <!-- END MAIN-->
+</div><!-- END MAIN WRAPPER -->
+
+<!-- FOOTER -->
+<script src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/js/pf-footer.js"></script>
+
+<footer role="contentinfo" class="main-footer" id="footer">
+    <div class="container-wrapper">
+        <div class="container-fluid">
+            <div class="row">
+
+                <div class="col-xs-7 col-md-3 col-md-offset-3">
+                    <nav>
+                        <span class="h5">Links Úteis</span>
+                        <ul>
+                            <li>
+                                <a href="https://info.portaldasfinancas.gov.pt/pt/apoio_contribuinte/questoes_frequentes" title="Respostas às questões mais frequentes (FAQ)">Questões Frequentes</a>
+                            </li>
+                            <li>
+                                <a href="https://info.portaldasfinancas.gov.pt/pt/apoio_contribuinte/Folhetos_informativos/Pages/default.aspx" title="Folhetos informativos de apoio ao contribuinte">Folhetos Informativos</a>
+                            </li>
+                            <li>
+                                <a href="https://info.portaldasfinancas.gov.pt/pt/apoio_ao_contribuinte/Informacao/Paginas/default.aspx" title="Manuais / guias">Manuais e guias</a>
+                            </li>
+                            <li>
+                                <a href="https://info.portaldasfinancas.gov.pt/pt/dgci/divulgacao/estatisticas/" title="Estatísticas declarativas e relativas a Impostos sobre o Rendimento, a Despesa e o Património">Estatísticas</a>
+                            </li>
+                            <li>
+                                <a href="https://info.portaldasfinancas.gov.pt/pt/quem_somos/privacidade/" title="Site da AT - Política de privacidade">Segurança e Privacidade</a>
+                            </li>
+                            <li>
+                                <a href="https://info.portaldasfinancas.gov.pt/pt/divulgacao/Pages/outros-links.aspx" title="Hiperligações para sites Nacionais, da União Europeia e de outras Administrações Aduaneiras e Tributárias">Ligações</a>
+                            </li>
+                            <li>
+                                <a href="https://vendas.portaldasfinancas.gov.pt/vendasat" title="Portal de Venda de Bens da Administração Tributária e Aduaneira">Venda de bens</a>
+                            </li>
+                            <li>
+                                <a href="https://www.portaldasfinancas.gov.pt/pt/menu.action?pai=100" title="Listas de Devedores à AT e à Segurança Social">Lista de Devedores</a>
+                            </li>
+                            <li>
+                                <a href="http://ec.europa.eu/taxation_customs/vies/" title="Sistema de Intercâmbio de Informações sobre o IVA (VIES) - Validação do n.º de  IVA">Transações Intracomunitárias</a>
+                            </li>
+                            <li>
+                                <a href="https://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/uniao_europeia/projetos/Pages/projetos-iva.aspx#CBR" title="Projeto Cross-Border Ruling (CBR)">Cross-Border Ruling (CBR)</a>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
+
+                <nav class="col-xs-5 col-md-3">
+                                            <span class="h5">Área Pessoal</span>
+                        <ul>
+                            <li>
+                                <a href="https://www.portaldasfinancas.gov.pt/pt/menu.action?pai=660" title="Visualização dos Dados Pessoais">Dados Pessoais</a>
+                            </li>
+                            <li>
+                                <a href="https://sitfiscal.portaldasfinancas.gov.pt/geral/dashboard/consultarMensagens" title="Visualização das Mensagens">Mensagens</a>
+                            </li>
+                            <li>
+                                <a href="https://www.acesso.gov.pt//jsp/logout.jsp?partID=PFAP&amp;path=/geral/atauth/logout" title="Sair da Sessão">Sair</a>
+                            </li>
+                        </ul>
+                                    </nav>
+
+                <div id="footer-icons" class="col-xs-12 col-md-3">
+                    <div class="col-xs-12">
+                        <ul id="footer-icons-ebalcao">
+                            <li>
+                                <a href="https://sitfiscal.portaldasfinancas.gov.pt/ebalcao/home" title="Contactos">
+                                    <img src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/images/AT56_contactos_iconografia-portal_ver01.png" height="40" alt="Logotipo Contactos">
+                                </a>
+                            </li>
+                            <li class="hidden-xs visible-sm hidden-md">
+    <a href="https://info.portaldasfinancas.gov.pt/pt/apoio_contribuinte/Apps/Pages/Apps_AT_.aspx" title="Aplicações móveis">
+        <img src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/images/AT56_apps-at_iconografia-portal_ver01.png" height="50" alt="Logotipo Aplicações móveis">
+    </a>
+</li>
+                            <li class="hidden-xs visible-sm hidden-md">
+    <a href="https://info.portaldasfinancas.gov.pt/pt/direitos_dos_contribuintes/Paginas/default.aspx" title="Direitos dos Contribuintes">
+        <img src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/images/AT56_direitos-do-contribuinte_iconografia-portal_ver01.png" width="118" alt="Logotipo Direitos dos Contribuintes">
+    </a>
+</li>
+                        </ul>
+                    </div>
+
+                    <div class="col-xs-12">
+                        <ul id="footer-icons-social">
+                            <li>
+                                <a href="https://www.facebook.com/AT.financas" target="_blank" rel="noopener noreferrer">
+                                    <img src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/images/AT56_facebook_iconografia-portal_ver01.png" width="32" alt="Facebook" title="Siga-nos no Facebook">
+                                </a>
+                            </li>
+                            <li>
+                                <a href="https://www.instagram.com/at.financas" target="_blank" rel="noopener noreferrer">
+                                    <img src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/images/AT56_instagram_iconografia-portal_ver01.png" width="32" alt="Instagram" title="Siga-nos no Instagram">
+                                </a>
+                            </li>
+                            <li>
+                                <a href="https://www.youtube.com/@AutoridadeTributariaAduaneira" target="_blank" rel="noopener noreferrer">
+                                    <img src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/images/AT56_youtube_iconografia-portal_ver01.png" width="32" alt="Youtube" title="Veja os nossos tutoriais no Youtube">
+                                </a>
+                            </li>
+                            <li>
+                                <a href="https://x.com/Aut_Trib_Adua" target="_blank" rel="noopener noreferrer">
+                                    <img src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/images/AT56_twitter_iconografia-portal_ver01.png" width="32" alt="X" title="Siga-nos no X">
+                                </a>
+                            </li>
+                            <li>
+                                <a href="https://www.linkedin.com/company/atfinancas" target="_blank" rel="noopener noreferrer">
+                                    <img src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/images/AT56_linkedin_iconografia-portal_ver01.png" width="32" alt="LinkedIn" title="Siga-nos no LinkedIn">
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div class="col-xs-6 hidden-sm col-md-12">
+                        <ul id="footer-icons-apps">
+                            <li class="">
+    <a href="https://info.portaldasfinancas.gov.pt/pt/apoio_contribuinte/Apps/Pages/Apps_AT_.aspx" title="Aplicações móveis">
+        <img src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/images/AT56_apps-at_iconografia-portal_ver01.png" height="50" alt="Logotipo Aplicações móveis">
+    </a>
+</li>
+                        </ul>
+                    </div>
+                    <div class="col-xs-6 hidden-sm col-md-12">
+                        <ul id="footer-icons-direitos">
+                            <li class="">
+    <a href="https://info.portaldasfinancas.gov.pt/pt/direitos_dos_contribuintes/Paginas/default.aspx" title="Direitos dos Contribuintes">
+        <img src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/images/AT56_direitos-do-contribuinte_iconografia-portal_ver01.png" width="118" alt="Logotipo Direitos dos Contribuintes">
+    </a>
+</li>
+                        </ul>
+                    </div>
+                    <div class="col-xs-12">
+                        <ul id="footer-icons-acessibilidade">
+                            <li>
+                                <a href="http://www.w3.org/WAI/WCAG1AA-Conformance" target="_blank" rel="noopener noreferrer">
+                                    <img src="https://static.portaldasfinancas.gov.pt/app/pfstatic_static/t2/images/wcag1AA-blue.png" alt="Acessibilidade" title="Acessibilidade" height="32">
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="row">
+                <div class="col-xs-12 col-md-8 col-md-offset-3 margin-bottom-sm">
+                    <p class="footer-font" id="footer-rgpd-content"><strong>Dados Pessoais</strong><br>A Autoridade Tributária e Aduaneira (AT) trata dados pessoais no âmbito das suas atribuições, designadamente as constantes do artigo 2.º, n.º 2, do Decreto-Lei n.º 118/2011, de 5 de dezembro. Para cumprimento do Regulamento Geral sobre a Proteção de Dados (RGPD) e da Lei n.º 58/2019, de 8 de agosto, o Despacho n.º 13949-A/2022 designou a mestre Inês Oliveira Andrade de Jesus como <a href="https://info.portaldasfinancas.gov.pt/pt/at/Pages/Encarregado_protecao_dados.aspx" title="Informação sobre encarregada da proteção de dados">encarregada da proteção de dados</a> da AT. Os titulares dos dados podem contactar a encarregada da proteção de dados da AT sobre todas as questões relacionadas com o tratamento dos seus dados pessoais e com o exercício dos direitos que lhe são conferidos pelo RGPD através do endereço eletrónico <a href="mailto:epd@at.gov.pt">epd@at.gov.pt</a>. <br>Saiba mais sobre a <a href="https://info.portaldasfinancas.gov.pt/pt/quem_somos/privacidade/Pages/privacidade.aspx" title="Informação sobre Política de proteção de dados pessoais e privacidade">Política de proteção de dados pessoais e privacidade</a>.</p>
+                </div>
+                <div class="col-xs-12 col-md-12 col-md-offset-3">
+                    <p class="footer-font foreground-at-gray-dark">Última atualização em 2025-11-25 | 2.1.2-5847 </p>
+                                        <!-- pfview-1.7.0-5758 -->
+                    <!-- atauth-2.0.12-10687 -->
+                    <!-- PFSTATIC-1.7.4-6033 -->
+                </div>
+            </div>
+        </div>
+    </div>
+</footer>
+
+
+
+
+<!-- END FOOTER -->
+
+
+
+
+
+</body></html>

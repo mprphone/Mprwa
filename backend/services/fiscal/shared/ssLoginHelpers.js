@@ -8,7 +8,8 @@ async function fillSegSocialCredential(page, selector, value) {
 }
 
 async function clickSegSocialCredentialSubmit(page, passwordSelector) {
-    // Tentar clicar no botão de submit (mesma lógica de scoring da extensão Chrome)
+    // Um único submit: tenta o botão "Entrar" visível; se não encontrar, usa Enter no campo password.
+    // Não repetir cliques nem disparar múltiplos eventos — a SS bloqueia por excesso de submits.
     const submitSelectors = [
         () => page.locator('button').filter({ hasText: /^Entrar$/i }).first(),
         () => page.locator('button').filter({ hasText: /entrar/i }).first(),
@@ -16,6 +17,7 @@ async function clickSegSocialCredentialSubmit(page, passwordSelector) {
         () => page.locator('button[type="submit"]').first(),
         () => page.locator('input[type="submit"]').first(),
     ];
+    let submitted = false;
     for (const buildLocator of submitSelectors) {
         try {
             const locator = buildLocator();
@@ -23,33 +25,14 @@ async function clickSegSocialCredentialSubmit(page, passwordSelector) {
             const visible = await locator.isVisible().catch(() => false);
             if (!visible) continue;
             await locator.click({ timeout: 4000 });
-            await page.waitForTimeout(250);
-            // Se o botão ainda está visível, clicar de novo (igual à extensão afterSubmitClick)
-            if (await locator.isVisible().catch(() => false)) await locator.click({ timeout: 2000 }).catch(() => null);
+            submitted = true;
             break;
-        } catch { /* continue */ }
+        } catch { /* continua para o próximo seletor */ }
     }
-
-    // Disparar os mesmos eventos que a extensão Chrome usa (form.requestSubmit + SubmitEvent + Enter keyevents)
-    await page.evaluate(() => {
-        const passwordInput = document.querySelector('input[type="password"]:not([disabled])');
-        const form = passwordInput?.closest?.('form');
-        const submitBtn = form?.querySelector?.('button[type="submit"], input[type="submit"]') || null;
-        if (form) {
-            try { if (submitBtn) form.requestSubmit(submitBtn); else form.requestSubmit(); } catch (_) {}
-            try { form.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true, submitter: submitBtn })); } catch (_) {
-                try { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); } catch (_2) {}
-            }
-        }
-        ['keydown', 'keypress', 'keyup'].forEach((type) => {
-            const ev = new KeyboardEvent(type, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true });
-            passwordInput?.dispatchEvent(ev);
-            document.dispatchEvent(ev);
-        });
-    }).catch(() => null);
-
-    // Fallback final: Enter direto no campo de password via Playwright
-    await page.locator(passwordSelector).first().press('Enter', { timeout: 3000 }).catch(() => null);
+    if (!submitted) {
+        // Fallback: Enter direto no campo de password
+        await page.locator(passwordSelector).first().press('Enter', { timeout: 3000 }).catch(() => null);
+    }
     return true;
 }
 
