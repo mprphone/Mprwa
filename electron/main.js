@@ -1716,6 +1716,23 @@ async function bootstrap() {
     return String(clipboard.readText() || '').trim();
   });
 
+  ipcMain.handle('wa:open-folder', async (_event, folderPath) => {
+    const targetPath = String(folderPath || '').trim();
+    if (!targetPath) {
+      return { success: false, error: 'Pasta não definida.' };
+    }
+
+    try {
+      const result = await shell.openPath(targetPath);
+      if (result) {
+        return { success: false, error: result };
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Não foi possível abrir a pasta.' };
+    }
+  });
+
   ipcMain.handle('wa:open-as-app', async (_event, url) => {
     let parsedUrl;
     try {

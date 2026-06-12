@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('waDesktop', {
   readClipboardText: async () => {
     return ipcRenderer.invoke('wa:read-clipboard-text');
   },
+  openFolder: async (folderPath) => {
+    return ipcRenderer.invoke('wa:open-folder', String(folderPath || ''));
+  },
   notifyInboundMessage: (payload) => {
     ipcRenderer.send('wa:notify-inbound-message', payload || {});
   },

@@ -10,6 +10,7 @@ declare global {
       setUnreadOverlay?: (count: number, dataUrl: string) => void;
       notifyInboundMessage?: (payload: { from: string; body: string; conversationId?: string }) => void;
       readClipboardText?: () => Promise<string>;
+      openFolder?: (folderPath: string) => Promise<{ success?: boolean; error?: string }>;
       financasAtProfile?: (payload: {
         username: string;
         password: string;

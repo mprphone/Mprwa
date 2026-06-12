@@ -11,7 +11,7 @@ import {
   CustomerHouseholdRelation,
   CustomerRelatedRecord,
 } from '../types';
-import { Plus, Search, Edit2, Trash2, FolderOpen, Eye, RefreshCw, Upload, User, Building2, Shield, Users, ArrowDownToLine } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, FolderOpen, Eye, RefreshCw, Upload, User, Building2, Shield, Users, ArrowDownToLine, Copy } from 'lucide-react';
 import { CustomerAccessTab, type CustomerCredentialPreset } from './customers/CustomerAccessTab';
 import { CustomerFiscalSummaryTab } from './customers/CustomerFiscalSummaryTab';
 import { CustomerDocumentBrowser } from './customers/CustomerDocumentBrowser';
@@ -2861,6 +2861,22 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       // Assim, se outro PC acabou de gravar uma senha/dado, este ecrã não fica preso ao snapshot antigo.
       void (async () => {
         try {
+          const directCustomer = await mockService.getCustomerById(customer.id);
+          if (directCustomer) {
+            const directFormState = formStateFromCustomer(directCustomer);
+            const directSnapshot = serializeCustomerFormState(directFormState);
+            setEditingCustomer((current) => {
+              if (!current) return current;
+              return String(current.id || '').trim() === String(customer.id || '').trim() ? directCustomer : current;
+            });
+            setFormData((current) => (
+              serializeCustomerFormState(current) === initialSnapshot ? directFormState : current
+            ));
+            setSavedFormSnapshot((current) => (
+              current === initialSnapshot ? directSnapshot : current
+            ));
+          }
+
           const refreshedList = await mockService.refreshCustomersFromServer();
           const deduped = dedupeCustomersForListing(refreshedList);
           setCustomers(deduped);
@@ -3270,6 +3286,50 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
   const removeManager = (index: number) => {
     const nextManagers = formData.managers.filter((_, i) => i !== index);
     setFormData({ ...formData, managers: nextManagers });
+  };
+
+  const copyCustomerNif = async () => {
+    const nif = normalizeNifDigits(formData.nif || '');
+    if (!nif) return;
+
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(nif);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = nif;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setFormSavedNotice('NIF copiado.');
+    } catch {
+      window.alert('Não foi possível copiar o NIF.');
+    }
+  };
+
+  const openCustomerDocumentsFolder = async () => {
+    const folderPath = String(formData.documentsFolder || '').trim();
+    if (!folderPath) {
+      window.alert('Esta ficha não tem pasta de documentos definida.');
+      return;
+    }
+    if (typeof window.waDesktop?.openFolder !== 'function') {
+      window.alert('Para abrir a pasta no explorador, atualize o WA PRO desktop e volte a abrir a aplicação.');
+      return;
+    }
+
+    const result = await window.waDesktop.openFolder(folderPath).catch((error) => ({
+      success: false,
+      error: error instanceof Error ? error.message : 'Não foi possível abrir a pasta.',
+    }));
+    if (!result?.success) {
+      window.alert(result?.error || 'Não foi possível abrir a pasta.');
+    }
   };
 
   const addAccessCredential = () => {
@@ -4235,8 +4295,96 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       )}
 
       {showModal && (
-        <div className="fixed inset-0 z-50 overflow-auto bg-black/45 p-2 md:p-3">
-          <div className="mx-auto w-[min(98vw,1900px)] rounded-2xl border border-slate-200 bg-[#f3f6fb] shadow-2xl">
+        <div className="customer-modal-shell fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/45 p-2 md:p-4">
+          <style>{`
+            .customer-detail-modal {
+              width: min(1800px, calc(100vw - 48px));
+              max-height: calc(100vh - 48px);
+            }
+            .customer-detail-modal input:not([type="checkbox"]),
+            .customer-detail-modal select {
+              min-height: 32px;
+              padding: 0.38rem 0.58rem !important;
+              border-radius: 0.5rem !important;
+              font-size: 0.8125rem !important;
+            }
+            .customer-detail-modal textarea {
+              min-height: 54px !important;
+              padding: 0.45rem 0.62rem !important;
+              border-radius: 0.5rem !important;
+              font-size: 0.8125rem !important;
+            }
+            .customer-detail-modal label {
+              margin-bottom: 0.18rem !important;
+              font-size: 0.72rem !important;
+              line-height: 1.1rem !important;
+            }
+            .customer-modal-body {
+              scrollbar-gutter: stable;
+            }
+            .customer-modal-body > div {
+              row-gap: 0.65rem !important;
+            }
+            .customer-modal-body section,
+            .customer-modal-body details {
+              border-radius: 0.72rem !important;
+            }
+            .customer-modal-body section > div:first-child,
+            .customer-modal-body details > summary {
+              padding: 0.58rem 0.85rem !important;
+              min-height: 42px;
+            }
+            .customer-modal-body section > div:nth-child(2),
+            .customer-modal-body details > div {
+              padding: 0.72rem 0.85rem !important;
+            }
+            .customer-modal-body .grid {
+              gap: 0.55rem 0.75rem !important;
+            }
+            .customer-modal-body .md\\:grid-cols-4 {
+              grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+            }
+            .customer-modal-body .md\\:col-span-2 {
+              grid-column: span 2 / span 2;
+            }
+            .customer-modal-body .md\\:col-span-4 {
+              grid-column: 1 / -1;
+            }
+            .customer-modal-body .rounded-lg {
+              border-radius: 0.5rem !important;
+            }
+            .customer-modal-body .space-y-2 > :not([hidden]) ~ :not([hidden]) {
+              margin-top: 0.4rem !important;
+            }
+            .customer-modal-body .min-h-\\[80px\\] {
+              min-height: 56px !important;
+            }
+            .customer-modal-body [style*="grid-template-columns"] {
+              min-width: 560px;
+            }
+            @media (max-width: 900px) {
+              .customer-detail-modal {
+                width: calc(100vw - 16px);
+                max-height: calc(100vh - 16px);
+              }
+              .customer-modal-body .md\\:grid-cols-4 {
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+              }
+              .customer-modal-body .md\\:col-span-2,
+              .customer-modal-body .md\\:col-span-4 {
+                grid-column: 1 / -1;
+              }
+              .customer-modal-body [style*="grid-template-columns"] {
+                min-width: 620px;
+              }
+            }
+            @media (max-width: 640px) {
+              .customer-modal-body .md\\:grid-cols-4 {
+                grid-template-columns: 1fr !important;
+              }
+            }
+          `}</style>
+          <div className="customer-detail-modal flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-[#f3f6fb] shadow-2xl">
             {/* Confirmação de saída sem gravar — inline para não perder foco no Electron */}
             {showUnsavedConfirm && (
               <div className="mx-3 mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 flex items-center justify-between gap-3">
@@ -4253,23 +4401,23 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                 </div>
               </div>
             )}
-            <div className="mx-3 mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
-              <div className="flex items-center justify-between gap-3">
+            <div className="mx-3 mt-3 shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                 <button
                   type="button"
                   onClick={() => closeCustomerModal(true)}
-                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  className="self-start rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
                   ← Sair
                 </button>
                 <div className="min-w-0 flex-1 text-center">
-                  <h2 className="text-xl font-bold text-slate-900">{editingCustomer ? 'Editar Cliente' : 'Novo Cliente'}</h2>
+                  <h2 className="text-lg font-bold text-slate-900">{editingCustomer ? 'Editar Cliente' : 'Novo Cliente'}</h2>
                   {editingCustomer && (
-                    <p className="mx-auto mt-0.5 max-w-[80vw] truncate text-sm font-semibold text-blue-700" title={editingCustomerDisplayName}>
+                    <p className="mx-auto max-w-[80vw] truncate text-sm font-semibold text-blue-700" title={editingCustomerDisplayName}>
                       {editingCustomerDisplayName}
                     </p>
                   )}
-                  <p className="text-sm text-slate-500">
+                  <p className="text-xs text-slate-500">
                     {editingCustomer
                       ? 'Edite os dados locais. Os contactos podem existir só aqui, sem existir no Supabase.'
                       : 'Ao criar, pode escolher se também quer sincronizar este cliente no MPR Control (Supabase).'}
@@ -4278,7 +4426,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                     <p className="mt-1 text-xs font-semibold text-emerald-700">{formSavedNotice}</p>
                   )}
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                   {editingCustomer && (
                     <button
                       type="button"
@@ -4286,7 +4434,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         void handleUpdateCustomerFromAt();
                       }}
                       disabled={atProfileBusy}
-                      className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
+                      className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
                       title="Entrar na AT e preencher morada, início de atividade, regime IVA, CAE e repartição"
                     >
                       <RefreshCw size={15} className={atProfileBusy ? 'animate-spin' : ''} />
@@ -4300,7 +4448,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         onClick={handlePushToSupabase}
                         disabled={supabasePushBusy}
                         title="Forçar envio dos dados locais para o Supabase — local é sempre a fonte de verdade"
-                        className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700 shadow-sm hover:bg-violet-100 disabled:cursor-wait disabled:opacity-60"
+                        className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 shadow-sm hover:bg-violet-100 disabled:cursor-wait disabled:opacity-60"
                       >
                         <ArrowDownToLine size={15} className={`rotate-180 ${supabasePushBusy ? 'animate-bounce' : ''}`} />
                         {supabasePushBusy ? 'A enviar...' : '→ Supabase'}
@@ -4316,7 +4464,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         onClick={handleReadCredsFromSaft}
                         disabled={saftReadBusy}
                         title="Importar todas as credenciais do SAFTonline para esta ficha"
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-semibold text-cyan-700 shadow-sm hover:bg-cyan-100 disabled:cursor-wait disabled:opacity-60"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-700 shadow-sm hover:bg-cyan-100 disabled:cursor-wait disabled:opacity-60"
                       >
                         <ArrowDownToLine size={13} className={saftReadBusy ? 'animate-bounce' : ''} />
                         {saftReadBusy ? 'SAFT...' : '← SAFT'}
@@ -4332,7 +4480,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         onClick={handleWriteSSToSaft}
                         disabled={saftSSBusy}
                         title="Gravar subutilizador SS + chave + token no SAFTonline (renovação)"
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 shadow-sm hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
                       >
                         <RefreshCw size={13} className={saftSSBusy ? 'animate-spin' : ''} />
                         {saftSSBusy ? 'SAFT...' : 'SS → SAFT'}
@@ -4347,7 +4495,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                   <button
                     type="submit"
                     form="customer-detail-form"
-                    className="rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
+                    className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
                   >
                     Gravar
                   </button>
@@ -4355,12 +4503,12 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
               </div>
             </div>
 
-            <div className="p-3 md:p-4">
-              <form id="customer-detail-form" onSubmit={handleSubmit} className="space-y-4">
-                <div className="rounded-xl border border-slate-200 bg-white p-3">
+            <div className="flex min-h-0 flex-1 flex-col p-2 md:p-3">
+              <form id="customer-detail-form" onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col gap-2">
+                <div className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2">
                   <div className="flex flex-wrap items-center gap-4">
                     <div className="min-w-[280px] flex-1">
-                      <label htmlFor="allowAuto" className="block text-sm font-medium text-gray-900 cursor-pointer">
+                      <label htmlFor="allowAuto" className="block text-xs font-semibold text-gray-900 cursor-pointer">
                         Permitir Respostas Automáticas
                       </label>
                       <p className="text-xs text-gray-500">Se desativado, este cliente não receberá mensagens de gatilhos automáticos.</p>
@@ -4371,21 +4519,22 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         id="allowAuto"
                         checked={formData.allowAutoResponses}
                         onChange={(e) => setFormData({ ...formData, allowAutoResponses: e.target.checked })}
-                        className="w-5 h-5 text-whatsapp-600 rounded focus:ring-whatsapp-500 border-gray-300 cursor-pointer"
+                        className="h-4 w-4 cursor-pointer rounded border-gray-300 text-whatsapp-600 focus:ring-whatsapp-500"
                       />
                     </div>
-                    <div className="min-w-[220px] border-l border-slate-200 pl-3 text-right">
+                    <div className="min-w-[190px] border-l border-slate-200 pl-3 text-right">
                       <div className="text-[11px] uppercase tracking-wide text-slate-500">Última sincronização</div>
-                      <div className="text-sm font-semibold text-slate-700">{formatDateTime(editingCustomer?.supabaseUpdatedAt)}</div>
+                      <div className="text-xs font-semibold text-slate-700">{formatDateTime(editingCustomer?.supabaseUpdatedAt)}</div>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                <div className="shrink-0 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-1.5">
+                  <div className="flex min-w-max gap-1.5">
                   <button
                     type="button"
                     onClick={() => setActiveTab('dados')}
-                    className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition ${
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                       activeTab === 'dados'
                         ? 'border border-blue-200 bg-white text-blue-700 shadow-sm'
                         : 'text-slate-700 hover:bg-white'
@@ -4396,7 +4545,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                   <button
                     type="button"
                     onClick={() => setActiveTab('acessos')}
-                    className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition ${
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                       activeTab === 'acessos'
                         ? 'border border-blue-200 bg-white text-blue-700 shadow-sm'
                         : 'text-slate-700 hover:bg-white'
@@ -4407,7 +4556,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                   <button
                     type="button"
                     onClick={() => setActiveTab('contactos')}
-                    className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition ${
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                       activeTab === 'contactos'
                         ? 'border border-blue-200 bg-white text-blue-700 shadow-sm'
                         : 'text-slate-700 hover:bg-white'
@@ -4418,7 +4567,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                   <button
                     type="button"
                     onClick={() => setActiveTab('relacoes')}
-                    className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition ${
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                       activeTab === 'relacoes'
                         ? 'border border-blue-200 bg-white text-blue-700 shadow-sm'
                         : 'text-slate-700 hover:bg-white'
@@ -4429,7 +4578,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                   <button
                     type="button"
                     onClick={() => setActiveTab('atividade')}
-                    className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition ${
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                       activeTab === 'atividade'
                         ? 'border border-blue-200 bg-white text-blue-700 shadow-sm'
                         : 'text-slate-700 hover:bg-white'
@@ -4440,7 +4589,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                   <button
                     type="button"
                     onClick={() => setActiveTab('sociedade')}
-                    className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition ${
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                       activeTab === 'sociedade'
                         ? 'border border-blue-200 bg-white text-blue-700 shadow-sm'
                         : 'text-slate-700 hover:bg-white'
@@ -4451,7 +4600,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                   <button
                     type="button"
                     onClick={() => setActiveTab('documentos')}
-                    className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition ${
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                       activeTab === 'documentos'
                         ? 'border border-blue-200 bg-white text-blue-700 shadow-sm'
                         : 'text-slate-700 hover:bg-white'
@@ -4462,7 +4611,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                   <button
                     type="button"
                     onClick={() => setActiveTab('fiscal')}
-                    className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition ${
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                       activeTab === 'fiscal'
                         ? 'border border-green-300 bg-white text-green-700 shadow-sm'
                         : 'text-slate-700 hover:bg-white'
@@ -4470,8 +4619,10 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                   >
                     Resumo Fiscal
                   </button>
+                  </div>
                 </div>
 
+                <div className="customer-modal-body min-h-0 flex-1 overflow-y-auto pr-1">
               {activeTab === 'dados' && (
                 <div className="space-y-4">
 
@@ -4486,10 +4637,21 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         <label className="block text-xs font-medium text-slate-500 mb-1">Nome *</label>
                         <input required type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
                       </div>
-                      <div>
+                      <div className="max-w-[260px]">
                         <label className="block text-xs font-medium text-slate-500 mb-1">NIF</label>
-                        <input type="text" className={`w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 ${isNifLocked ? 'bg-slate-50 text-slate-400 cursor-not-allowed' : ''}`} value={formData.nif} onChange={(e) => setFormData({ ...formData, nif: e.target.value })} disabled={isNifLocked} title={isNifLocked ? 'NIF bloqueado após validação.' : ''} />
-                        {isNifLocked && <p className="mt-1 text-[11px] text-slate-400">NIF validado e bloqueado para evitar alterações indevidas.</p>}
+                        <div className="flex items-center gap-1.5">
+                          <input type="text" className={`min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 ${isNifLocked ? 'bg-slate-50 text-slate-400 cursor-not-allowed' : ''}`} value={formData.nif} onChange={(e) => setFormData({ ...formData, nif: e.target.value })} disabled={isNifLocked} title={isNifLocked ? 'NIF bloqueado após validação.' : ''} />
+                          <button
+                            type="button"
+                            onClick={() => { void copyCustomerNif(); }}
+                            disabled={!normalizeNifDigits(formData.nif || '')}
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                            title="Copiar NIF"
+                            aria-label="Copiar NIF"
+                          >
+                            <Copy size={14} />
+                          </button>
+                        </div>
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-slate-500 mb-1">NISS</label>
@@ -4567,7 +4729,7 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         <input type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.codigoReparticaoFinancas} onChange={(e) => setFormData({ ...formData, codigoReparticaoFinancas: e.target.value })} />
                       </div>
                       {/* Lista unificada de CAEs — Principal + Secundários */}
-                      <div className="md:col-span-4">
+                      <div className="md:col-span-4 mt-1 border-t border-slate-100 pt-3">
                         <label className="block text-xs font-medium text-slate-500 mb-1">Atividades Exercidas (CAEs)</label>
                         {(() => {
                           let secCaes: {codigo: string; descricao: string}[] = [];
@@ -4626,11 +4788,28 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         <div>
                           <div className="flex items-center justify-between mb-1">
                             <label className="text-xs font-medium text-slate-500">Pasta de documentos (caminho)</label>
-                            <button type="button"
-                              onClick={() => setFolderEditMode(m => !m)}
-                              className={`text-xs font-semibold px-2 py-0.5 rounded transition-colors ${folderEditMode ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'text-slate-400 hover:text-slate-600 border border-slate-200 hover:border-slate-300'}`}>
-                              {folderEditMode ? 'Bloquear' : '✎ Editar'}
-                            </button>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => { void openCustomerDocumentsFolder(); }}
+                                disabled={!String(formData.documentsFolder || '').trim() || typeof window.waDesktop?.openFolder !== 'function'}
+                                className="inline-flex items-center gap-1 rounded border border-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-500 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+                                title={
+                                  !String(formData.documentsFolder || '').trim()
+                                    ? 'Pasta não definida'
+                                    : typeof window.waDesktop?.openFolder === 'function'
+                                      ? 'Abrir pasta no explorador'
+                                      : 'Atualize o WA PRO desktop para ativar'
+                                }
+                              >
+                                <FolderOpen size={12} /> Abrir pasta
+                              </button>
+                              <button type="button"
+                                onClick={() => setFolderEditMode(m => !m)}
+                                className={`text-xs font-semibold px-2 py-0.5 rounded transition-colors ${folderEditMode ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'text-slate-400 hover:text-slate-600 border border-slate-200 hover:border-slate-300'}`}>
+                                {folderEditMode ? 'Bloquear' : '✎ Editar'}
+                              </button>
+                            </div>
                           </div>
                           <div className="relative">
                             <FolderOpen size={14} className="absolute left-3 top-2.5 text-slate-400" />
@@ -4723,16 +4902,32 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         <Plus size={13} /> Adicionar gerente
                       </button>
                     </div>
-                    <div className="space-y-2 px-5 py-4">
+                    <div className="px-5 py-3">
+                      {formData.managers.length > 0 && (
+                        <div
+                          className="mb-1 hidden min-w-[920px] grid-cols-[130px_minmax(260px,1.25fr)_minmax(220px,1fr)_150px_86px] gap-2 px-2 text-[10px] font-bold uppercase tracking-wide text-slate-400 lg:grid"
+                        >
+                          <span>NIF</span>
+                          <span>Nome</span>
+                          <span>Email</span>
+                          <span>Telefone</span>
+                          <span className="text-right">Ações</span>
+                        </div>
+                      )}
+                      <div className="space-y-1.5 overflow-x-auto">
                       {formData.managers.map((manager, index) => (
-                        <div key={`manager-${index}`} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
-                          <input type="text" placeholder="NIF" className="md:col-span-2 rounded-lg border border-slate-200 px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" value={manager.nif || ''} onChange={(e) => updateManager(index, 'nif', e.target.value)} />
-                          <input type="text" placeholder="Nome" className="md:col-span-4 rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" value={manager.name || ''} onChange={(e) => updateManager(index, 'name', e.target.value)} />
-                          <input type="email" placeholder="Email" className="md:col-span-3 rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" value={manager.email || ''} onChange={(e) => updateManager(index, 'email', e.target.value)} />
-                          <input type="text" placeholder="Telefone" className="md:col-span-2 rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" value={manager.phone || ''} onChange={(e) => updateManager(index, 'phone', e.target.value)} />
-                          <button type="button" onClick={() => removeManager(index)} className="md:col-span-1 text-red-500 text-xs font-semibold hover:text-red-700 justify-self-end">Remover</button>
+                        <div
+                          key={`manager-${index}`}
+                          className="grid min-w-[920px] grid-cols-[130px_minmax(260px,1.25fr)_minmax(220px,1fr)_150px_86px] items-center gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-2 py-1.5"
+                        >
+                          <input type="text" placeholder="NIF" className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" value={manager.nif || ''} onChange={(e) => updateManager(index, 'nif', e.target.value)} />
+                          <input type="text" placeholder="Nome" className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" value={manager.name || ''} onChange={(e) => updateManager(index, 'name', e.target.value)} />
+                          <input type="email" placeholder="Email" className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" value={manager.email || ''} onChange={(e) => updateManager(index, 'email', e.target.value)} />
+                          <input type="text" placeholder="Telefone" className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" value={manager.phone || ''} onChange={(e) => updateManager(index, 'phone', e.target.value)} />
+                          <button type="button" onClick={() => removeManager(index)} className="justify-self-end rounded-md px-2 py-1 text-xs font-semibold text-red-500 hover:bg-red-50 hover:text-red-700">Remover</button>
                         </div>
                       ))}
+                      </div>
                       {formData.managers.length === 0 && (
                         <p className="text-xs text-slate-400 italic py-1">Sem gerentes definidos nesta ficha.</p>
                       )}
@@ -5378,16 +5573,17 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                   triggerSegSocialInteroperabilityInfo={triggerSegSocialInteroperabilityInfo}
                 />
               )}
+                </div>
 
-              <div className="flex justify-end gap-2 mt-6 pt-3 border-t border-slate-200">
+              <div className="flex shrink-0 justify-end gap-2 border-t border-slate-200 pt-2">
                 <button
                   type="button"
                   onClick={() => closeCustomerModal(true)}
-                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  className="rounded-lg border border-slate-200 bg-white px-4 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
                   Sair
                 </button>
-                <button type="submit" className="rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500">
+                <button type="submit" className="rounded-lg bg-blue-600 px-5 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500">
                   Gravar
                 </button>
               </div>
