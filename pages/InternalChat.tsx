@@ -1466,7 +1466,7 @@ const InternalChat: React.FC = () => {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)_360px] 2xl:grid-cols-[300px_minmax(0,1fr)_390px]">
+      <div className="min-h-0 flex-1 grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)_380px] 2xl:grid-cols-[300px_minmax(0,1fr)_400px]">
         <aside className="border-r border-gray-200 bg-white flex flex-col min-h-0">
           <div className="p-3 border-b border-gray-200">
             <label className="relative block">
@@ -1892,10 +1892,10 @@ const InternalChat: React.FC = () => {
           </footer>
         </section>
 
-        <aside className="hidden xl:flex border-l border-gray-200 bg-white min-h-0 flex-col gap-4 overflow-hidden p-4">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
-            <div className="text-sm uppercase tracking-wide text-slate-500">Atalhos</div>
-            <div className="mt-3 grid grid-cols-3 gap-2">
+        <aside className="hidden xl:flex border-l border-gray-200 bg-white min-h-0 flex-col gap-3 overflow-hidden p-3">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 shadow-sm">
+            <div className="text-xs uppercase tracking-wide text-slate-500">Atalhos</div>
+            <div className="mt-2 grid grid-cols-3 gap-2">
               {([
                 { url: 'https://controle.mpr.pt/', icon: '/icone_mprcontrol.png', label: 'MPR Control' },
                 { url: 'https://cmrmpr.vercel.app/', icon: '/icone_CMRMPR.png', label: 'MPR CMR' },
@@ -1913,18 +1913,26 @@ const InternalChat: React.FC = () => {
                     }
                   }}
                   title={label}
-                  className="rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  className="rounded-lg border border-slate-200 bg-white p-1.5 shadow-sm transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-300"
                 >
-                  <img src={icon} alt={label} className="h-20 w-full rounded-lg object-contain" />
+                  <img src={icon} alt={label} className="h-14 w-full rounded-md object-contain" />
                 </a>
               ))}
             </div>
             {pedidoFeedback && <div className="mt-2 rounded-lg border border-green-200 bg-green-50 px-2 py-1.5 text-xs text-green-700">{pedidoFeedback}</div>}
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="text-sm font-semibold text-slate-900">Registo de Ponto</div>
-            <p className="mt-1 text-sm text-slate-500">Introduza o PIN pessoal para registar entrada ou saída.</p>
+          <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-slate-900">Registo de Ponto</div>
+                <p className="mt-0.5 text-xs text-slate-500">PIN pessoal para entrada ou saída.</p>
+              </div>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+                {pontoRecent.length}
+              </span>
+            </div>
+            <div className="mt-2 grid grid-cols-[minmax(0,1fr)_88px_88px] gap-2">
             <input
               type="password"
               value={pontoPin}
@@ -1933,22 +1941,21 @@ const InternalChat: React.FC = () => {
                 if (pontoError) setPontoError('');
               }}
               placeholder="PIN"
-              className="mt-3 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-whatsapp-200"
+              className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-whatsapp-200"
             />
-            <div className="mt-3 grid grid-cols-2 gap-2">
               <button
                 onClick={() => void submitPonto('ENTRADA')}
                 disabled={!!pontoSubmittingType}
-                className="rounded-lg bg-emerald-500 px-3 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-60"
+                className="h-10 rounded-lg bg-emerald-500 px-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-60"
               >
-                {pontoSubmittingType === 'ENTRADA' ? 'A registar...' : 'ENTRADA'}
+                {pontoSubmittingType === 'ENTRADA' ? '...' : 'Entrada'}
               </button>
               <button
                 onClick={() => void submitPonto('SAIDA')}
                 disabled={!!pontoSubmittingType}
-                className="rounded-lg bg-rose-500 px-3 py-2.5 text-sm font-semibold text-white hover:bg-rose-600 disabled:opacity-60"
+                className="h-10 rounded-lg bg-rose-500 px-2 text-sm font-semibold text-white hover:bg-rose-600 disabled:opacity-60"
               >
-                {pontoSubmittingType === 'SAIDA' ? 'A registar...' : 'SAÍDA'}
+                {pontoSubmittingType === 'SAIDA' ? '...' : 'Saída'}
               </button>
             </div>
             {pontoFeedback && (
@@ -1961,13 +1968,9 @@ const InternalChat: React.FC = () => {
                 {pontoError}
               </div>
             )}
-            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2">
-              <div className="flex items-center justify-between">
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Últimos registos</div>
-                <span className="text-[11px] text-slate-500">{pontoRecent.length}</span>
-              </div>
+            <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
               {pontoRecentError && <div className="mt-1 text-[11px] text-red-600">{pontoRecentError}</div>}
-              <div className="mt-1 space-y-1">
+              <div className="space-y-1">
                 {pontoRecentLoading && <div className="text-[11px] text-slate-500">A carregar...</div>}
                 {!pontoRecentLoading && pontoRecent.length === 0 && (
                   <div className="text-[11px] text-slate-500">Sem registos recentes.</div>
@@ -2006,7 +2009,7 @@ const InternalChat: React.FC = () => {
             </div>
           )}
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4 flex-1 min-h-0 flex flex-col shadow-sm">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 flex-1 min-h-[280px] flex flex-col shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <div>
                 <div className="text-sm uppercase tracking-wide text-slate-500">Tarefas</div>
