@@ -1,12 +1,29 @@
 ﻿﻿'use strict';
 
+// ── Log de erros para ficheiro (logs/errors.log) ───────────────────────────────
+// Regista erros não tratados (uncaughtException, unhandledRejection) e erros de
+// rotas Express. Configurável via ERROR_LOG. Nunca deixa o logger partir nada.
+function logError(context, err) {
+  try {
+    const fsMod = require('fs');
+    const pathMod = require('path');
+    const logPath = pathMod.resolve(process.env.ERROR_LOG || pathMod.join(process.cwd(), 'logs', 'errors.log'));
+    const detail = err && err.stack ? err.stack : String(err && err.message ? err.message : err);
+    fsMod.appendFile(logPath, `${new Date().toISOString()} [${context}] ${detail}\n`, () => {});
+  } catch (_) {
+    // um logger nunca pode partir o processo
+  }
+}
+
 // ── Handlers globais para evitar crash silencioso do processo ──────────────────
 process.on('uncaughtException', (err) => {
   console.error('[FATAL] uncaughtException:', err?.message || err);
+  logError('uncaughtException', err);
   // Não sair — o processo continua; apenas regista para diagnóstico
 });
 process.on('unhandledRejection', (reason) => {
   console.error('[WARN] unhandledRejection:', reason?.message || reason);
+  logError('unhandledRejection', reason);
 });
 
 const { createApp } = require('./src/app');
@@ -3045,6 +3062,13 @@ if (!IS_CHAT_CORE_ONLY) {
         baseDir: __dirname,
     });
 }
+
+// Error-middleware do Express: regista erros de rotas e mantém a resposta como
+// antes (delega no handler default do Express). Registado depois de todas as rotas.
+app.use((err, req, res, next) => {
+    logError(`route ${req.method} ${req.originalUrl || req.url}`, err);
+    return next(err);
+});
 
 startServerLifecycle({
     app,
