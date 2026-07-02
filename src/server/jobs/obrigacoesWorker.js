@@ -1,3 +1,5 @@
+const { internalApiHeaders } = require('../utils/internalApi');
+
 function createObrigacoesWorker(deps) {
     const {
         axios,
@@ -37,7 +39,7 @@ function createObrigacoesWorker(deps) {
                     await axios({
                         method: 'POST',
                         url: `http://127.0.0.1:${localPort}/api/saft/fetch-and-send`,
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: internalApiHeaders({ 'Content-Type': 'application/json' }),
                         data: {
                             customerId: String(job.customer_id || '').trim(),
                             conversationId: String(job.conversation_id || '').trim(),
@@ -138,7 +140,7 @@ function createObrigacoesWorker(deps) {
                     const response = await axios({
                         method: 'POST',
                         url: `http://127.0.0.1:${localPort}/api/import/obrigacoes/${job.route}`,
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: internalApiHeaders({ 'Content-Type': 'application/json' }),
                         data: job.payload,
                         timeout: job.timeoutMs,
                         validateStatus: () => true,

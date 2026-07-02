@@ -11,10 +11,11 @@ import {
   CustomerHouseholdRelation,
   CustomerRelatedRecord,
 } from '../types';
-import { Plus, Search, Edit2, Trash2, FolderOpen, Eye, RefreshCw, Upload, User, Building2, Shield, Users, ArrowDownToLine, Copy } from 'lucide-react';
+import { Plus, Trash2, FolderOpen, RefreshCw, Upload, User, Building2, Shield, Users, ArrowDownToLine, Copy } from 'lucide-react';
 import { CustomerAccessTab, type CustomerCredentialPreset } from './customers/CustomerAccessTab';
 import { CustomerFiscalSummaryTab } from './customers/CustomerFiscalSummaryTab';
 import { CustomerDocumentBrowser } from './customers/CustomerDocumentBrowser';
+import { CustomersListPanel } from './customers/CustomersListPanel';
 import { useCustomerDocuments } from './customers/hooks/useCustomerDocuments';
 import {
   SegSocialSubUserState,
@@ -38,686 +39,68 @@ import {
   resolveSsSubUserAccessFromCustomer,
   todayIsoDate,
 } from './customers/customerAccessUtils';
+import {
+  SEG_SOCIAL_LOGIN_URL,
+  SEG_SOCIAL_ACTIVATE_URL,
+  SEG_SOCIAL_USERNAME_SELECTORS,
+  SEG_SOCIAL_PASSWORD_SELECTORS,
+  SEG_SOCIAL_SUBMIT_SELECTORS,
+  SEG_SOCIAL_SUCCESS_SELECTORS,
+  SOCIEDADE_BASE_PATH,
+  DEFAULT_CUSTOMER_FOLDER_ROOT,
+  SOCIEDADE_DOCUMENT_CATEGORIES,
+  CUSTOMER_INGEST_TYPES,
+  HOUSEHOLD_RELATION_OPTIONS,
+  RELATED_RECORD_OPTIONS,
+  isLocalAutomationBridgeUnavailable,
+  classifyAutologinFallbackReason,
+  normalizeImportedKey,
+  buildImportedLookup,
+  formatImportedValue,
+  pickImportedValue,
+  normalizeStatus,
+  previousMonthAnoMes,
+  generateSegSocialPassword,
+  isValidPortugueseNif,
+  normalizeCustomerTypeForSubUserFlow,
+  canUseSegSocialSubUserFlow,
+  dedupeCustomersForListing,
+  sanitizeWindowsFolderSegment,
+  buildSuggestedCustomerFolderPath,
+  normalizeHouseholdRelationTypeValue,
+  type AutologinFallbackReason,
+  type CustomerIngestDocumentType,
+  type CustomerModalTab,
+  type CustomerTaskSummary,
+  type CustomerOccurrenceSummary,
+  formatDateOnly,
+  formatTaskStatus,
+  formatOccurrenceStatus,
+  getTaskStatusBadgeClass,
+  getOccurrenceStatusBadgeClass,
+} from './customers/customerHelpers';
+import {
+  CustomerFormState,
+  CustomerSortKey,
+  SortDirection,
+  emptyFormState,
+  formStateFromCustomer,
+  serializeCustomerFormState,
+} from './customers/customerFormState';
+import {
+  LOCAL_CARTAO_ELETRONICO_BRIDGE_URL,
+  triggerChromeExtensionAutologin,
+  triggerLocalFinancasAutologinBridge,
+  triggerLocalFinancasAtProfileBridge,
+  type FinancasAtProfileFields,
+} from './customers/customerAutomationBridge';
+import { CustomerContactosTab } from './customers/tabs/CustomerContactosTab';
+import { CustomerAtividadeTab } from './customers/tabs/CustomerAtividadeTab';
+import { CustomerSociedadeTab } from './customers/tabs/CustomerSociedadeTab';
+import { CustomerRelacoesTab } from './customers/tabs/CustomerRelacoesTab';
+import { CustomerDadosTab } from './customers/tabs/CustomerDadosTab';
 
 const OPEN_CUSTOMER_PROFILE_STORAGE_KEY = 'wa_pro_open_customer_id';
-const LOCAL_FINANCAS_AUTOMATION_BRIDGE_URL = String(
-  import.meta.env?.VITE_LOCAL_AUTOMATION_BRIDGE_URL || 'http://127.0.0.1:30777/financas-autologin'
-).trim();
-const LOCAL_FINANCAS_AT_PROFILE_BRIDGE_URL = String(
-  import.meta.env?.VITE_LOCAL_AT_PROFILE_BRIDGE_URL || LOCAL_FINANCAS_AUTOMATION_BRIDGE_URL.replace(/\/financas-autologin\/?$/, '/financas-at-profile')
-).trim();
-const LOCAL_CARTAO_ELETRONICO_BRIDGE_URL = String(
-  import.meta.env?.VITE_LOCAL_CARTAO_ELETRONICO_BRIDGE_URL || LOCAL_FINANCAS_AUTOMATION_BRIDGE_URL.replace(/\/financas-autologin\/?$/, '/cartao-eletronico')
-).trim();
-const SEG_SOCIAL_LOGIN_URL = 'https://www.seg-social.pt/sso/login?service=https%3A%2F%2Fwww.seg-social.pt%2Fptss%2Fcaslogin';
-const SEG_SOCIAL_ACTIVATE_URL = 'https://www.seg-social.pt/ptss/gus/atribuir-palavra-chave/codigo-verificacao';
-const SEG_SOCIAL_USERNAME_SELECTORS = [
-  'input[name="username"]',
-  'input[name="niss"]',
-  'input[id*="username" i]',
-  'input[name*="user" i]',
-  'input[id*="utilizador" i]',
-  'input[name*="utilizador" i]',
-  'input[id*="niss" i]',
-  'input[placeholder*="NISS" i]',
-  'input[autocomplete="username"]',
-];
-const SEG_SOCIAL_PASSWORD_SELECTORS = [
-  'input[name="password"]',
-  'input[id*="password" i]',
-  'input[placeholder*="senha" i]',
-  'input[type="password"]',
-];
-const SEG_SOCIAL_SUBMIT_SELECTORS = [
-  'button[type="submit"]',
-  'input[type="submit"]',
-  'button:has-text("Entrar")',
-  'button:has-text("Iniciar sessão")',
-  'button:has-text("Autenticar")',
-  'button:has-text("Continuar")',
-];
-const SEG_SOCIAL_SUCCESS_SELECTORS = [
-  'a[href*="logout"]',
-  'a[href*="sair"]',
-  'button:has-text("Terminar sessão")',
-  'button:has-text("Sair")',
-  '[data-testid*="logout"]',
-];
-
-type LocalFinancasAutologinResponse = {
-  success?: boolean;
-  message?: unknown;
-  error?: unknown;
-  loginState?: unknown;
-};
-
-type FinancasAtProfileFields = Partial<Pick<CustomerFormState,
-  'morada' | 'codigoPostal' | 'dataNascimento' | 'dataConstituicao' | 'inicioAtividade' | 'tipoIva' | 'caePrincipal' | 'codigoReparticaoFinancas' | 'tipoContabilidade' | 'managers'
->>;
-
-type LocalFinancasAtProfileResponse = {
-  success?: boolean;
-  message?: unknown;
-  error?: unknown;
-  sourceUrl?: unknown;
-  fields?: FinancasAtProfileFields;
-};
-
-function isLocalAutomationBridgeUnavailable(rawMessage: string): boolean {
-  const message = String(rawMessage || '').trim().toLowerCase();
-  if (!message) return true;
-  return (
-    message.includes('failed to fetch') ||
-    message.includes('networkerror') ||
-    message.includes('err_connection_refused') ||
-    message.includes('err_failed') ||
-    message.includes('mixed content') ||
-    message.includes('cors') ||
-    message.includes('load failed')
-  );
-}
-
-type AutologinFallbackReason = 'automation_unavailable' | 'fields_not_found' | null;
-
-function classifyAutologinFallbackReason(rawMessage: string): AutologinFallbackReason {
-  const compact = String(rawMessage || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[’']/g, "'");
-
-  if (!compact) return null;
-
-  if (
-    compact.includes('browsertype.launch') ||
-    compact.includes('executable does') ||
-    compact.includes('does not exist') ||
-    compact.includes('playwright install') ||
-    compact.includes('ms-playwright') ||
-    compact.includes('chrome-win64') ||
-    compact.includes('browser de automacao') ||
-    compact.includes('playwright nao instalado') ||
-    compact.includes('nao instalado') ||
-    compact.includes('not installed') ||
-    compact.includes('helper local') ||
-    compact.includes('automacao local') ||
-    compact.includes('nao encontrei o helper')
-  ) {
-    return 'automation_unavailable';
-  }
-
-  if (
-    compact.includes('nao foi possivel localizar os campos de login') ||
-    compact.includes('campos de login')
-  ) {
-    return 'fields_not_found';
-  }
-
-  return null;
-}
-
-async function triggerChromeExtensionAutologin(params: {
-  username: string;
-  password: string;
-  loginUrl?: string;
-  credentialLabel?: string;
-  usernameSelectors?: string[];
-  passwordSelectors?: string[];
-  submitSelectors?: string[];
-  successSelectors?: string[];
-  clickSubmit?: boolean;
-  keepPendingAfterSubmit?: boolean;
-  emailPollMs?: number;
-}): Promise<boolean> {
-  if (typeof window === 'undefined' || typeof window.postMessage !== 'function') return false;
-
-  const requestId = `wa-pro-autologin-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const payload = {
-    username: String(params.username || '').trim(),
-    password: String(params.password || '').trim(),
-    loginUrl: String(params.loginUrl || '').trim() || undefined,
-    credentialLabel: String(params.credentialLabel || '').trim() || undefined,
-    usernameSelectors: Array.isArray(params.usernameSelectors) ? params.usernameSelectors : undefined,
-    passwordSelectors: Array.isArray(params.passwordSelectors) ? params.passwordSelectors : undefined,
-    submitSelectors: Array.isArray(params.submitSelectors) ? params.submitSelectors : undefined,
-    successSelectors: Array.isArray(params.successSelectors) ? params.successSelectors : undefined,
-    clickSubmit: params.clickSubmit !== false,
-    keepPendingAfterSubmit: params.keepPendingAfterSubmit === true,
-    emailPollMs: params.emailPollMs,
-    createdAt: Date.now(),
-    // apiBaseUrl não incluído — o background.js usa o default 'https://wa.mpr.pt'
-    // (se incluirmos window.location.origin do Electron seria localhost e falharia a validação)
-  };
-
-  if (!payload.username || !payload.password || !payload.loginUrl) return false;
-
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const cleanup = () => {
-      window.removeEventListener('message', onMessage);
-      window.clearTimeout(timeoutId);
-    };
-    const finish = (value: boolean) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(value);
-    };
-    const fail = (error: Error) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(error);
-    };
-    const onMessage = (event: MessageEvent) => {
-      if (event.source !== window) return;
-      const data = event.data || {};
-      if (data.source !== 'WA_PRO_CHROME_EXTENSION' || data.type !== 'AUTLOGIN_RESPONSE') return;
-      if (data.requestId !== requestId) return;
-      const response = data.response || {};
-      if (response.success) finish(true);
-      else fail(new Error(String(response.error || 'A extensão Chrome recusou o pedido de autologin.')));
-    };
-
-    const timeoutId = window.setTimeout(() => finish(false), 700);
-    window.addEventListener('message', onMessage);
-    window.postMessage({
-      source: 'WA_PRO',
-      type: 'AUTLOGIN_REQUEST',
-      requestId,
-      payload,
-    }, window.location.origin);
-  });
-}
-
-async function triggerLocalFinancasAutologinBridge(params: {
-  username: string;
-  password: string;
-  loginUrl?: string;
-  targetUrl?: string;
-  timeoutMs?: number;
-  closeAfterSubmit?: boolean;
-  returnAfterSubmit?: boolean;
-  credentialLabel?: string;
-  usernameSelectors?: string[];
-  passwordSelectors?: string[];
-  submitSelectors?: string[];
-  successSelectors?: string[];
-  activateFinancasNifTab?: boolean;
-  browserExecutablePath?: string;
-}): Promise<{ success: boolean; message: string; loginState?: string }> {
-  const response = await fetch(LOCAL_FINANCAS_AUTOMATION_BRIDGE_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      username: String(params.username || '').trim(),
-      password: String(params.password || '').trim(),
-      loginUrl: String(params.loginUrl || '').trim() || undefined,
-      targetUrl: String(params.targetUrl || '').trim() || undefined,
-      timeoutMs:
-        typeof params.timeoutMs === 'number' && Number.isFinite(params.timeoutMs)
-          ? Math.max(20000, Math.min(180000, Math.trunc(params.timeoutMs)))
-          : undefined,
-      closeAfterSubmit: params.closeAfterSubmit === true,
-      returnAfterSubmit: params.returnAfterSubmit === true,
-      credentialLabel: String(params.credentialLabel || '').trim() || undefined,
-      usernameSelectors: Array.isArray(params.usernameSelectors) ? params.usernameSelectors : undefined,
-      passwordSelectors: Array.isArray(params.passwordSelectors) ? params.passwordSelectors : undefined,
-      submitSelectors: Array.isArray(params.submitSelectors) ? params.submitSelectors : undefined,
-      successSelectors: Array.isArray(params.successSelectors) ? params.successSelectors : undefined,
-      activateFinancasNifTab:
-        typeof params.activateFinancasNifTab === 'boolean' ? params.activateFinancasNifTab : undefined,
-      browserExecutablePath: String(params.browserExecutablePath || '').trim() || undefined,
-    }),
-  });
-
-  const payload = (await response.json().catch(() => ({}))) as LocalFinancasAutologinResponse;
-  if (!response.ok || !payload.success) {
-    const errorText =
-      typeof payload.error === 'string'
-        ? payload.error
-        : payload.error
-          ? JSON.stringify(payload.error)
-          : `Falha no autologin local (${response.status}).`;
-    throw new Error(errorText);
-  }
-
-  return {
-    success: true,
-    message: String(payload.message || 'Autologin local iniciado no desktop.'),
-    loginState: payload.loginState ? String(payload.loginState) : undefined,
-  };
-}
-
-async function triggerLocalFinancasAtProfileBridge(params: {
-  username: string;
-  password: string;
-  loginUrl?: string;
-  targetUrl?: string;
-  timeoutMs?: number;
-  closeAfterCollect?: boolean;
-  activateFinancasNifTab?: boolean;
-  browserExecutablePath?: string;
-}): Promise<{ success: boolean; message: string; sourceUrl?: string; fields: FinancasAtProfileFields }> {
-  const response = await fetch(LOCAL_FINANCAS_AT_PROFILE_BRIDGE_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      username: String(params.username || '').trim(),
-      password: String(params.password || '').trim(),
-      loginUrl: String(params.loginUrl || '').trim() || undefined,
-      targetUrl: String(params.targetUrl || '').trim() || undefined,
-      timeoutMs:
-        typeof params.timeoutMs === 'number' && Number.isFinite(params.timeoutMs)
-          ? Math.max(20000, Math.min(180000, Math.trunc(params.timeoutMs)))
-          : undefined,
-      closeAfterCollect: params.closeAfterCollect !== false,
-      credentialLabel: 'AT',
-      activateFinancasNifTab:
-        typeof params.activateFinancasNifTab === 'boolean' ? params.activateFinancasNifTab : undefined,
-      browserExecutablePath: String(params.browserExecutablePath || '').trim() || undefined,
-    }),
-  });
-
-  const payload = (await response.json().catch(() => ({}))) as LocalFinancasAtProfileResponse;
-  if (!response.ok || !payload.success) {
-    const rawError =
-      typeof payload.error === 'string'
-        ? payload.error
-        : payload.error
-          ? JSON.stringify(payload.error)
-          : `Falha ao recolher dados da AT (${response.status}).`;
-    const errorText =
-      response.status === 404 || rawError.toLowerCase().includes('endpoint local não encontrado')
-        ? 'A app desktop ainda não tem a recolha AT instalada. Cria/publica uma nova versão desktop e atualiza este PC.'
-        : rawError;
-    throw new Error(errorText);
-  }
-
-  return {
-    success: true,
-    message: String(payload.message || 'Dados da AT recolhidos.'),
-    sourceUrl: payload.sourceUrl ? String(payload.sourceUrl) : undefined,
-    fields: payload.fields && typeof payload.fields === 'object' ? payload.fields : {},
-  };
-}
-
-function normalizeImportedKey(value: string): string {
-  return String(value || '')
-    .trim()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9]/g, '')
-    .toLowerCase();
-}
-
-function buildImportedLookup(payload?: Record<string, unknown>): Map<string, unknown> {
-  const map = new Map<string, unknown>();
-  if (!payload || typeof payload !== 'object') return map;
-  Object.entries(payload).forEach(([key, value]) => {
-    map.set(normalizeImportedKey(key), value);
-  });
-  return map;
-}
-
-function formatImportedValue(value: unknown): string {
-  if (value === undefined || value === null) return '';
-  if (typeof value === 'string') return value.trim();
-  if (typeof value === 'number') return String(value);
-  if (typeof value === 'boolean') return value ? 'Sim' : 'Não';
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => {
-        if (typeof item === 'string') return item.trim();
-        try {
-          return JSON.stringify(item);
-        } catch {
-          return String(item ?? '');
-        }
-      })
-      .filter(Boolean)
-      .join(' | ');
-  }
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
-function pickImportedValue(lookup: Map<string, unknown>, candidates: string[]): string {
-  for (const candidate of candidates) {
-    const raw = lookup.get(normalizeImportedKey(candidate));
-    const formatted = formatImportedValue(raw);
-    if (formatted) return formatted;
-  }
-  return '';
-}
-
-function normalizeStatus(raw: string): string {
-  const value = String(raw || '')
-    .trim()
-    .toUpperCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-  if (!value) return 'ATIVA';
-  if (value.includes('INAT')) return 'INATIVA';
-  if (value.includes('SUSP')) return 'SUSPENSA';
-  if (value.includes('ENCERR')) return 'ENCERRADA';
-  return 'ATIVA';
-}
-
-function previousMonthAnoMes(baseDate = new Date()): string {
-  const date = new Date(baseDate);
-  date.setMonth(date.getMonth() - 1);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function generateSegSocialPassword(): string {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-  const bytes = new Uint8Array(8);
-  if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
-    window.crypto.getRandomValues(bytes);
-  } else {
-    bytes.forEach((_, index) => {
-      bytes[index] = Math.floor(Math.random() * 255);
-    });
-  }
-  const suffix = Array.from(bytes).map((byte) => alphabet[byte % alphabet.length]).join('');
-  return `Mpr${new Date().getFullYear()}!${suffix}`;
-}
-
-function isValidPortugueseNif(rawValue: string): boolean {
-  const nif = normalizeNifDigits(rawValue);
-  if (!/^\d{9}$/.test(nif)) return false;
-  if (!/^[1235689]/.test(nif)) return false;
-
-  let total = 0;
-  for (let i = 0; i < 8; i += 1) {
-    total += Number(nif[i]) * (9 - i);
-  }
-  const modulo = total % 11;
-  const checkDigit = modulo < 2 ? 0 : 11 - modulo;
-  return checkDigit === Number(nif[8]);
-}
-
-// Helper function to normalize customer type for Seg Social sub-user flow.
-// Important: do not guess only by the displayed label. The real value comes from CustomerType in ../types,
-// but older/imported records may still have values like EMPRESA, INDEPENDENTE or Trabalhador Independente.
-function normalizeCustomerTypeForSubUserFlow(value: unknown): string {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
-
-const SEG_SOCIAL_SUBUSER_ALLOWED_CUSTOMER_TYPES = new Set(
-  [CustomerType.ENTERPRISE, CustomerType.INDEPENDENT, 'empresa', 'empresas', 'enterprise', 'independente', 'independent', 'trabalhador_independente']
-    .map(normalizeCustomerTypeForSubUserFlow)
-);
-
-function canUseSegSocialSubUserFlow(customer: Customer): boolean {
-  const customerType = normalizeCustomerTypeForSubUserFlow(customer.type);
-  if (!customerType) return false;
-  if (SEG_SOCIAL_SUBUSER_ALLOWED_CUSTOMER_TYPES.has(customerType)) return true;
-  return customerType.includes('empresa') || customerType.includes('enterprise') || customerType.includes('independent') || customerType.includes('independente');
-}
-
-
-function dedupeCustomersForListing(items: Customer[]): Customer[] {
-  const list = Array.isArray(items) ? [...items] : [];
-  const byNif = new Map<string, number>();
-  const deduped: Customer[] = [];
-
-  const sourceIdFor = (customer: Customer): string => {
-    const explicit = String((customer as Customer & { sourceId?: string }).sourceId || '').trim();
-    if (explicit) return explicit;
-    const id = String(customer.id || '').trim();
-    if (id.startsWith('ext_c_')) return id.slice(6);
-    return '';
-  };
-
-  const score = (customer: Customer): number => {
-    let total = 0;
-    if (String(customer.id || '').startsWith('local_')) total += 10;
-    if (sourceIdFor(customer)) total += 6;
-    if (String(customer.id || '').startsWith('ext_c_')) total += 2;
-    if (String(customer.phone || '').trim()) total += 1;
-    if (String(customer.email || '').trim()) total += 1;
-    if (String(customer.documentsFolder || '').trim()) total += 1;
-    return total;
-  };
-
-  const fillMissing = (primary: Customer, secondary: Customer): Customer => {
-    const merged = { ...primary } as Customer;
-    (Object.keys(secondary) as Array<keyof Customer>).forEach((key) => {
-      const currentValue = merged[key];
-      const incomingValue = secondary[key];
-      const currentEmpty =
-        currentValue === undefined ||
-        currentValue === null ||
-        (typeof currentValue === 'string' && currentValue.trim() === '') ||
-        (Array.isArray(currentValue) && currentValue.length === 0);
-      const incomingFilled =
-        incomingValue !== undefined &&
-        incomingValue !== null &&
-        (!(typeof incomingValue === 'string') || incomingValue.trim() !== '') &&
-        (!Array.isArray(incomingValue) || incomingValue.length > 0);
-      if (currentEmpty && incomingFilled) {
-        merged[key] = incomingValue as never;
-      }
-    });
-    return merged;
-  };
-
-  list.forEach((customer) => {
-    const nif = normalizeNifDigits(String(customer.nif || ''));
-    if (!nif) {
-      deduped.push(customer);
-      return;
-    }
-
-    const existingIndex = byNif.get(nif);
-    if (existingIndex === undefined) {
-      byNif.set(nif, deduped.length);
-      deduped.push(customer);
-      return;
-    }
-
-    const current = deduped[existingIndex];
-    const keepCurrent = score(current) >= score(customer);
-    const preferred = keepCurrent ? current : customer;
-    const fallback = keepCurrent ? customer : current;
-    deduped[existingIndex] = fillMissing(preferred, fallback);
-  });
-
-  return deduped;
-}
-
-type CustomerIngestDocumentType =
-  | 'cartao_eletronico'
-  | 'certidao_permanente'
-  | 'pacto_social'
-  | 'inicio_atividade'
-  | 'rcbe'
-  | 'cartao_cidadao'
-  | 'outros';
-
-const CUSTOMER_INGEST_TYPES: Array<{ value: CustomerIngestDocumentType; label: string }> = [
-  { value: 'cartao_eletronico', label: 'Cartão Eletrónico da Empresa' },
-  { value: 'certidao_permanente', label: 'Certidão Permanente' },
-  { value: 'pacto_social', label: 'Pacto Social' },
-  { value: 'inicio_atividade', label: 'Início de Atividade' },
-  { value: 'rcbe', label: 'RCBE' },
-  { value: 'cartao_cidadao', label: 'Cartão de Cidadão' },
-  { value: 'outros', label: 'Outros' },
-];
-
-type CustomerModalTab = 'dados' | 'acessos' | 'contactos' | 'relacoes' | 'atividade' | 'sociedade' | 'documentos' | 'fiscal';
-
-type CustomerTaskSummary = {
-  id: string;
-  title: string;
-  status: string;
-  priority: string;
-  dueDate: string;
-  assignedUserName: string;
-};
-
-type CustomerOccurrenceSummary = {
-  id: string;
-  title: string;
-  state: string;
-  typeName: string;
-  date: string;
-  dueDate: string;
-  responsibleNames: string;
-};
-
-const SOCIEDADE_BASE_PATH = 'Documentos Oficiais';
-const DEFAULT_CUSTOMER_FOLDER_ROOT = '\\\\10.0.0.6\\OneDrive - MPR\\Documentos\\Contabilidades\\Empresas';
-const SOCIEDADE_DOCUMENT_CATEGORIES: Array<{ key: string; label: string }> = [
-  { key: 'certidao_permanente', label: 'Certidão Permanente' },
-  { key: 'pacto_social', label: 'Pacto Social' },
-  { key: 'inicio_atividade', label: 'Início da Atividade' },
-  { key: 'cartao_cidadao', label: 'Cartão do Cidadão' },
-  { key: 'licencas', label: 'Licenças' },
-];
-
-function sanitizeWindowsFolderSegment(rawValue: string): string {
-  return String(rawValue || '')
-    .trim()
-    .replace(/[<>:"/\\|?*\x00-\x1F]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/[. ]+$/g, '')
-    .slice(0, 120);
-}
-
-function buildSuggestedCustomerFolderPath(customerName: string): string {
-  const leaf = sanitizeWindowsFolderSegment(customerName) || `Cliente_${Date.now()}`;
-  return `${DEFAULT_CUSTOMER_FOLDER_ROOT}\\${leaf}`;
-}
-
-function normalizeHouseholdRelationTypeValue(rawValue: string): CustomerHouseholdRelation['relationType'] {
-  const folded = String(rawValue || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-  if (!folded) return 'outro';
-  if (folded === 'conjuge') return 'conjuge';
-  if (folded === 'esposa' || folded === 'marido') return 'conjuge';
-  if (folded.startsWith('espos') || folded.startsWith('marid')) return 'conjuge';
-  if (folded.startsWith('filh')) return 'filho';
-  if (folded === 'pai' || folded === 'mae' || folded.startsWith('progenitor')) return 'pai';
-  if (folded === 'outro') return 'outro';
-  return 'outro';
-}
-
-const HOUSEHOLD_RELATION_OPTIONS: Array<{ value: CustomerHouseholdRelation['relationType']; label: string }> = [
-  { value: 'conjuge', label: 'Cônjuge' },
-  { value: 'filho', label: 'Filho' },
-  { value: 'pai', label: 'Pai' },
-  { value: 'outro', label: 'Outro' },
-];
-
-const RELATED_RECORD_OPTIONS: Array<{ value: CustomerRelatedRecord['relationType']; label: string }> = [
-  { value: 'funcionario', label: 'Funcionário' },
-  { value: 'amigo', label: 'Amigo' },
-  { value: 'familiar', label: 'Familiar' },
-  { value: 'gerente', label: 'Gerente' },
-  { value: 'socio', label: 'Sócio' },
-  { value: 'outro', label: 'Outro' },
-];
-
-type CustomerFormState = {
-  name: string;
-  contactName: string;
-  company: string;
-  phone: string;
-  email: string;
-  documentsFolder: string;
-  nif: string;
-  niss: string;
-  senhaFinancas: string;
-  senhaSegurancaSocial: string;
-  tipoIva: string;
-  morada: string;
-  codigoPostal: string;
-  notes: string;
-  certidaoPermanenteNumero: string;
-  certidaoPermanenteValidade: string;
-  rcbeNumero: string;
-  rcbeData: string;
-  dataConstituicao: string;
-  dataNascimento: string;
-  inicioAtividade: string;
-  caePrincipal: string;
-  caeDescricao: string;
-  caeSecundarios: string; // legacy
-  infoAtividades: string; // JSON: [{codigo, descricao}] para CAEs secundários
-  codigoReparticaoFinancas: string;
-  tipoContabilidade: string;
-  estadoCliente: string;
-  contabilistaCertificado: string;
-  managers: CustomerManager[];
-  accessCredentials: CustomerAccessCredential[];
-  agregadoFamiliar: CustomerHouseholdRelation[];
-  fichasRelacionadas: CustomerRelatedRecord[];
-  type: CustomerType;
-  ownerId: string;
-  contacts: SubContact[];
-  allowAutoResponses: boolean;
-};
-
-type CustomerSortKey = 'nif' | 'name' | 'type' | 'email' | 'phone' | 'owner' | 'status' | 'subuser';
-type SortDirection = 'asc' | 'desc';
-
-const emptyFormState = (): CustomerFormState => ({
-  name: '',
-  contactName: '',
-  company: '',
-  phone: '',
-  email: '',
-  documentsFolder: '',
-  nif: '',
-  niss: '',
-  senhaFinancas: '',
-  senhaSegurancaSocial: '',
-  tipoIva: '',
-  morada: '',
-  codigoPostal: '',
-  notes: '',
-  certidaoPermanenteNumero: '',
-  certidaoPermanenteValidade: '',
-  rcbeNumero: '',
-  rcbeData: '',
-  dataConstituicao: '',
-  dataNascimento: '',
-  inicioAtividade: '',
-  caePrincipal: '',
-  caeDescricao: '',
-  caeSecundarios: '',
-  infoAtividades: '',
-  codigoReparticaoFinancas: '',
-  tipoContabilidade: '',
-  estadoCliente: '',
-  contabilistaCertificado: '',
-  managers: [],
-  accessCredentials: [],
-  agregadoFamiliar: [],
-  fichasRelacionadas: [],
-  type: CustomerType.ENTERPRISE,
-  ownerId: '',
-  contacts: [],
-  allowAutoResponses: true,
-});
-
-const serializeCustomerFormState = (state: CustomerFormState): string => JSON.stringify(state);
 
 const Customers: React.FC = () => {
   const navigate = useNavigate();
@@ -758,6 +141,12 @@ const Customers: React.FC = () => {
   const modalDocsLoading = modalDocuments.state.loading;
   const modalDocsError = modalDocuments.state.error;
   const modalUploadingDoc = modalDocuments.state.uploading;
+  const [modalOrganizingDocs, setModalOrganizingDocs] = useState(false);
+  const [modalOrganizerStatus, setModalOrganizerStatus] = useState('');
+  const [modalOrganizerWarnings, setModalOrganizerWarnings] = useState<string[]>([]);
+  const [modalOrganizerUndoAvailable, setModalOrganizerUndoAvailable] = useState(false);
+  const [modalOrganizerUndoing, setModalOrganizerUndoing] = useState(false);
+  const [modalOrganizerPreview, setModalOrganizerPreview] = useState<Array<{ from: string; to: string; reason: string; type: string }> | null>(null);
   const sociedadeDocs = sociedadeDocuments.state.entries;
   const sociedadeDocsPath = sociedadeDocuments.state.folderPath;
   const sociedadeCurrentPath = sociedadeDocuments.state.currentPath;
@@ -806,6 +195,10 @@ const Customers: React.FC = () => {
 
   useEffect(() => {
     if (!showModal || activeTab !== 'documentos' || !editingCustomer?.id) return;
+    setModalOrganizerStatus('');
+    setModalOrganizerWarnings([]);
+    setModalOrganizerUndoAvailable(false);
+    setModalOrganizerPreview(null);
     void loadModalDocuments(editingCustomer.id, '');
   }, [showModal, activeTab, editingCustomer?.id]);
 
@@ -953,106 +346,12 @@ const Customers: React.FC = () => {
     setShowHeaderIngestModal(true);
   };
 
-const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
-  name: customer.name,
-  contactName: customer.contactName || '',
-  company: customer.company,
-    phone: customer.phone,
-    email: customer.email || '',
-    documentsFolder: customer.documentsFolder || '',
-    nif: customer.nif || '',
-    niss: customer.niss || '',
-    senhaFinancas: customer.senhaFinancas || '',
-    senhaSegurancaSocial: customer.senhaSegurancaSocial || '',
-    tipoIva: customer.tipoIva || '',
-    morada: customer.morada || '',
-    codigoPostal: customer.codigoPostal || '',
-    notes: customer.notes || '',
-    certidaoPermanenteNumero: customer.certidaoPermanenteNumero || '',
-    certidaoPermanenteValidade: customer.certidaoPermanenteValidade || '',
-    rcbeNumero: customer.rcbeNumero || '',
-    rcbeData: customer.rcbeData || '',
-    dataConstituicao: customer.dataConstituicao || '',
-    dataNascimento: customer.dataNascimento || '',
-    inicioAtividade: customer.inicioAtividade || '',
-    caePrincipal: customer.caePrincipal || '',
-    caeDescricao: customer.caeDescricao || '',
-    caeSecundarios: (customer as any).caeSecundarios || '',
-    infoAtividades: (customer as any).infoAtividades || '',
-    codigoReparticaoFinancas: customer.codigoReparticaoFinancas || '',
-    tipoContabilidade: customer.tipoContabilidade || '',
-    estadoCliente: customer.estadoCliente || '',
-    contabilistaCertificado: customer.contabilistaCertificado || '',
-    managers: Array.isArray(customer.managers) ? customer.managers.map((manager) => ({ ...manager })) : [],
-    accessCredentials: preserveExistingCredentialSecrets(
-      applyAtUsernameFallback(
-        Array.isArray(customer.accessCredentials)
-          ? customer.accessCredentials.map((credential) => ({ ...credential }))
-          : [],
-        customer.nif || ''
-      ),
-      [],
-      customer.niss || ''
-    ),
-    agregadoFamiliar: Array.isArray(customer.agregadoFamiliar)
-      ? customer.agregadoFamiliar.map((item) => ({
-          ...item,
-          relationType: normalizeHouseholdRelationTypeValue(String(item?.relationType || '')),
-        }))
-      : [],
-    fichasRelacionadas: Array.isArray(customer.fichasRelacionadas)
-      ? customer.fichasRelacionadas.map((item) => ({ ...item }))
-      : [],
-    type: customer.type,
-    ownerId: customer.ownerId || '',
-    contacts: customer.contacts ? [...customer.contacts] : [],
-    allowAutoResponses: customer.allowAutoResponses !== undefined ? customer.allowAutoResponses : true,
-  });
-
   const formatDateTime = (value?: string): string => {
     const raw = String(value || '').trim();
     if (!raw) return 'Nunca sincronizado';
     const date = new Date(raw);
     if (Number.isNaN(date.getTime())) return raw;
     return date.toLocaleString('pt-PT');
-  };
-
-  const formatDateOnly = (value?: string): string => {
-    const raw = String(value || '').trim();
-    if (!raw) return '-';
-    const date = new Date(raw);
-    if (Number.isNaN(date.getTime())) return raw;
-    return date.toLocaleDateString('pt-PT');
-  };
-
-  const formatTaskStatus = (status: string): string => {
-    const normalized = String(status || '').trim().toUpperCase();
-    if (normalized === 'DONE') return 'Fechada';
-    if (normalized === 'IN_PROGRESS') return 'Em progresso';
-    if (normalized === 'WAITING') return 'Aguardando';
-    return 'Aberta';
-  };
-
-  const formatOccurrenceStatus = (status: string): string => {
-    const normalized = String(status || '').trim().toUpperCase();
-    if (normalized === 'RESOLVIDA') return 'Fechada';
-    if (normalized === 'ATRASADA') return 'Atrasada';
-    return 'Aberta';
-  };
-
-  const getTaskStatusBadgeClass = (status: string): string => {
-    const normalized = String(status || '').trim().toUpperCase();
-    if (normalized === 'DONE') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-    if (normalized === 'IN_PROGRESS') return 'border-blue-200 bg-blue-50 text-blue-700';
-    if (normalized === 'WAITING') return 'border-amber-200 bg-amber-50 text-amber-700';
-    return 'border-slate-200 bg-slate-50 text-slate-700';
-  };
-
-  const getOccurrenceStatusBadgeClass = (status: string): string => {
-    const normalized = String(status || '').trim().toUpperCase();
-    if (normalized === 'RESOLVIDA') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-    if (normalized === 'ATRASADA') return 'border-rose-200 bg-rose-50 text-rose-700';
-    return 'border-blue-200 bg-blue-50 text-blue-700';
   };
 
   const resolveSuggestedCustomerName = (suggested: Partial<Customer> | undefined, suggestedNif = ''): string => {
@@ -1147,6 +446,149 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     if (!editingCustomer?.id || !file) return;
 
     await modalDocuments.upload(editingCustomer.id, file, modalDocsCurrentPath);
+  };
+
+  const organizeModalDocumentsWithAi = async () => {
+    if (!editingCustomer?.id || modalOrganizingDocs) return;
+
+    setModalOrganizingDocs(true);
+    setModalOrganizerStatus('A analisar documentos (pré-visualização)...');
+    setModalOrganizerWarnings([]);
+    setModalOrganizerUndoAvailable(false);
+    setModalOrganizerPreview(null);
+
+    try {
+      const preview = await mockService.organizeCustomerDocuments(editingCustomer.id, {
+        maxAiDocuments: 1,
+        maxFiles: 40,
+        maxLegacyFolders: 2,
+        maxEmptyFolders: 25,
+        maxFilesPerLegacyFolder: 10,
+        compareExistingDuplicates: true,
+        dryRun: true,
+      });
+
+      setModalOrganizingDocs(false);
+
+      if (preview.wouldMove.length === 0 && preview.movedLegacyFoldersCount === 0) {
+        setModalOrganizerStatus('Pasta já está organizada. Nenhuma alteração necessária.');
+        setModalOrganizerWarnings(preview.warnings.slice(0, 10));
+        return;
+      }
+
+      setModalOrganizerPreview(preview.wouldMove);
+      setModalOrganizerStatus(
+        `Pré-visualização: ${preview.wouldMove.length} ficheiro(s) serão movidos/renomeados` +
+        (preview.truncated ? ` (mais ficheiros existem — organização irá correr em rondas)` : '') +
+        `. Confirma?`
+      );
+      setModalOrganizerWarnings(preview.warnings.slice(0, 10));
+    } catch (error) {
+      setModalOrganizingDocs(false);
+      setModalOrganizerStatus('');
+      setModalOrganizerWarnings([error instanceof Error ? error.message : 'Falha na pré-visualização.']);
+    }
+  };
+
+  const confirmOrganizeModalDocuments = async () => {
+    if (!editingCustomer?.id || modalOrganizingDocs) return;
+
+    setModalOrganizingDocs(true);
+    setModalOrganizerPreview(null);
+    setModalOrganizerWarnings([]);
+    setModalOrganizerUndoAvailable(false);
+
+    try {
+      const totals = {
+        scannedCount: 0,
+        movedCount: 0,
+        repeatedCount: 0,
+        expiredCount: 0,
+        aiReadCount: 0,
+        aiCacheHitCount: 0,
+        aiRenamedCount: 0,
+        movedLegacyFoldersCount: 0,
+        removedEmptyFoldersCount: 0,
+        fiscalUpdatesCount: 0,
+      };
+      const warnings: string[] = [];
+      const maxRounds = 12;
+      const aiBatchSize = 1;
+      const filesPerRound = 40;
+      for (let round = 1; round <= maxRounds; round += 1) {
+        setModalOrganizerStatus(`A organizar documentos... ronda ${round}/${maxRounds}`);
+        const result = await mockService.organizeCustomerDocuments(editingCustomer.id, {
+          maxAiDocuments: aiBatchSize,
+          maxFiles: filesPerRound,
+          maxLegacyFolders: 2,
+          maxEmptyFolders: 25,
+          maxFilesPerLegacyFolder: 10,
+          compareExistingDuplicates: true,
+        });
+        totals.scannedCount = Math.max(totals.scannedCount, result.scannedCount);
+        totals.movedCount += result.movedCount;
+        totals.repeatedCount += result.repeatedCount;
+        totals.expiredCount += result.expiredCount;
+        totals.aiReadCount += result.aiReadCount;
+        totals.aiCacheHitCount += result.aiCacheHitCount;
+        totals.aiRenamedCount += result.aiRenamedCount;
+        totals.movedLegacyFoldersCount += result.movedLegacyFoldersCount;
+        totals.removedEmptyFoldersCount += result.removedEmptyFoldersCount;
+        totals.fiscalUpdatesCount += result.fiscalUpdates.length;
+        warnings.push(...result.warnings);
+        if (result.undoAvailable) setModalOrganizerUndoAvailable(true);
+
+        const didWork =
+          result.movedCount > 0 ||
+          result.aiReadCount > 0 ||
+          result.aiRenamedCount > 0 ||
+          result.movedLegacyFoldersCount > 0 ||
+          result.removedEmptyFoldersCount > 0;
+        if (!didWork) break;
+        const stillCleaningFolders =
+          result.movedLegacyFoldersCount > 0 ||
+          result.removedEmptyFoldersCount > 0;
+        if (!stillCleaningFolders && result.scannedCount < filesPerRound && result.aiReadCount < aiBatchSize) break;
+      }
+      const fiscalText = totals.fiscalUpdatesCount > 0
+        ? ` Atualizou resumo fiscal em ${totals.fiscalUpdatesCount} documento(s).`
+        : '';
+      setModalOrganizerStatus(
+        `Concluído. Analisados ${totals.scannedCount} ficheiro(s), movidos ${totals.movedCount}. ` +
+        `IA leu ${totals.aiReadCount} (cache: ${totals.aiCacheHitCount}), renomeou ${totals.aiRenamedCount}. ` +
+        `Repetidos ${totals.repeatedCount}. Caducados ${totals.expiredCount}. ` +
+        `Pastas antigas ${totals.movedLegacyFoldersCount}. Pastas vazias ${totals.removedEmptyFoldersCount}.${fiscalText}`
+      );
+      setModalOrganizerWarnings(Array.from(new Set(warnings)).slice(0, 20));
+      await loadModalDocuments(editingCustomer.id, modalDocsCurrentPath);
+      setFiscalSummaryRefreshKey((value) => value + 1);
+      void loadCustomers();
+    } catch (error) {
+      setModalOrganizerStatus('');
+      setModalOrganizerWarnings([error instanceof Error ? error.message : 'Falha ao organizar documentos.']);
+    } finally {
+      setModalOrganizingDocs(false);
+    }
+  };
+
+  const undoOrganizeModalDocuments = async () => {
+    if (!editingCustomer?.id || modalOrganizerUndoing) return;
+    setModalOrganizerUndoing(true);
+    setModalOrganizerWarnings([]);
+    try {
+      const result = await mockService.undoOrganizeCustomerDocuments(editingCustomer.id);
+      setModalOrganizerUndoAvailable(false);
+      setModalOrganizerStatus(
+        `Anulado. Revertidos ${result.revertedCount} ficheiro(s)` +
+        (result.skippedCount > 0 ? `, ${result.skippedCount} não revertido(s).` : '.')
+      );
+      setModalOrganizerWarnings([...result.warnings, ...result.skipped.map((s) => `Não revertido: ${s.to || s.from} — ${s.reason}`)].slice(0, 10));
+      await loadModalDocuments(editingCustomer.id, modalDocsCurrentPath);
+    } catch (error) {
+      setModalOrganizerWarnings([error instanceof Error ? error.message : 'Falha ao anular organização.']);
+    } finally {
+      setModalOrganizerUndoing(false);
+    }
   };
 
   const loadSociedadeDocuments = async (customerId: string, relativePath = SOCIEDADE_BASE_PATH) => {
@@ -3644,23 +3086,6 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
     setFichasSearchTerms({});
   };
 
-  const getTypeColor = (type: CustomerType) => {
-    switch (type) {
-      case CustomerType.ENTERPRISE:
-        return 'bg-blue-100 text-blue-800';
-      case CustomerType.INDEPENDENT:
-        return 'bg-gray-200 text-gray-700';
-      case CustomerType.SPAM:
-        return 'bg-red-100 text-red-800';
-      case CustomerType.SUPPLIER:
-        return 'bg-purple-100 text-purple-800';
-      case CustomerType.PRIVATE:
-        return 'bg-amber-100 text-amber-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
   const getCustomerStatus = (customer: Customer): string => {
     const lookup = buildImportedLookup((customer.supabasePayload as Record<string, unknown>) || undefined);
     const sourceStatus = pickImportedValue(lookup, ['estado', 'status']);
@@ -3867,35 +3292,6 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
       .filter((entry) => entry.value);
   }, [importedPayload]);
 
-  const StatusBadge = ({ status }: { status: string }) => {
-    if (status === 'INATIVA' || status === 'ENCERRADA') {
-      return <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-100 text-red-700">{status}</span>;
-    }
-    if (status === 'SUSPENSA') {
-      return <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">{status}</span>;
-    }
-    return <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700">ATIVA</span>;
-  };
-
-  const SegSocialSubUserBadge = ({ state }: { state: SegSocialSubUserState }) => {
-    if (state === 'COM_SUBUTILIZADOR') {
-      return <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700">Com sub</span>;
-    }
-    if (state === 'INCOMPLETO') {
-      return <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">Incompleto</span>;
-    }
-    return <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600">Sem sub</span>;
-  };
-
-  // Botões de acção — ghost style: invisíveis em repouso, revelam-se no hover
-  const actionButtonBaseClass =
-    'inline-flex h-7 w-7 items-center justify-center rounded-md transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-1 disabled:opacity-35 disabled:cursor-not-allowed';
-  const actionButtonAutologinClass = `${actionButtonBaseClass} text-slate-400 hover:text-slate-700 hover:bg-slate-100`;
-  const actionButtonSsAutologinClass = `${actionButtonBaseClass} text-slate-400 hover:text-emerald-700 hover:bg-emerald-50`;
-  const actionButtonAutologinImageClass = 'hidden'; // não usado — substituído por texto
-  const actionButtonViewClass = `${actionButtonBaseClass} text-slate-300 hover:text-slate-600 hover:bg-slate-100`;
-  const actionButtonEditClass = `${actionButtonBaseClass} text-slate-300 hover:text-slate-600 hover:bg-slate-100`;
-
   return (
     <div className="p-4 md:p-6 w-full space-y-4">
       <div className="rounded-2xl border border-slate-700/20 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-900 p-4 md:p-5 text-white shadow-sm">
@@ -3931,176 +3327,31 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-3 border-b border-slate-200 grid grid-cols-1 md:grid-cols-5 gap-2">
-          <div className="relative md:col-span-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Nome ou NIF..."
-              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-md bg-slate-50 text-sm"
-            />
-          </div>
-
-          <select value={stateFilter} onChange={(e) => setStateFilter(e.target.value)} className="w-full py-2 px-3 border border-slate-200 rounded-md bg-white text-sm">
-            <option value="TODOS">Todos os estados</option>
-            <option value="ATIVA">Ativa</option>
-            <option value="SUSPENSA">Suspensa</option>
-            <option value="INATIVA">Inativa</option>
-            <option value="ENCERRADA">Encerrada</option>
-          </select>
-
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="w-full py-2 px-3 border border-slate-200 rounded-md bg-white text-sm">
-            <option value="TODOS">Todos os tipos</option>
-            {Object.values(CustomerType).map((type) => (
-              <option key={type} value={type}>{type}</option>
-            ))}
-          </select>
-
-          <select value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)} className="w-full py-2 px-3 border border-slate-200 rounded-md bg-white text-sm">
-            <option value="TODOS">Todos</option>
-            {users.map((user) => (
-              <option key={user.id} value={user.id}>{user.name}</option>
-            ))}
-          </select>
-
-          <select value={subUserFilter} onChange={(e) => setSubUserFilter(e.target.value as 'TODOS' | SegSocialSubUserState)} className="w-full py-2 px-3 border border-slate-200 rounded-md bg-white text-sm">
-            <option value="TODOS">Todos os subutilizadores</option>
-            <option value="COM_SUBUTILIZADOR">Com subutilizador</option>
-            <option value="SEM_SUBUTILIZADOR">Sem subutilizador</option>
-            <option value="INCOMPLETO">Subutilizador incompleto</option>
-          </select>
-        </div>
-
-        <div className="px-3 py-2 text-xs text-slate-500 border-b border-slate-100 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span>{sortedCustomers.length} cliente(s)</span>
-          <span className="text-emerald-700 font-semibold">{segSocialSubUserCounts.COM_SUBUTILIZADOR} com subutilizador</span>
-          <span className="text-slate-500 font-semibold">{segSocialSubUserCounts.SEM_SUBUTILIZADOR} sem subutilizador</span>
-          {segSocialSubUserCounts.INCOMPLETO > 0 && (
-            <span className="text-amber-700 font-semibold">{segSocialSubUserCounts.INCOMPLETO} incompleto(s)</span>
-          )}
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="min-w-[1220px] w-full table-fixed">
-            <thead className="bg-slate-100/80">
-              <tr>
-                <th className="w-[8%] px-3 py-3 text-left text-[11px] uppercase text-slate-600 font-semibold">
-                  <button type="button" onClick={() => toggleSort('nif')} className="inline-flex items-center gap-1 hover:text-slate-900">
-                    NIF <span className="text-[10px]">{sortIndicator('nif')}</span>
-                  </button>
-                </th>
-                <th className="w-[24%] px-3 py-3 text-left text-[11px] uppercase text-slate-600 font-semibold">
-                  <button type="button" onClick={() => toggleSort('name')} className="inline-flex items-center gap-1 hover:text-slate-900">
-                    Nome <span className="text-[10px]">{sortIndicator('name')}</span>
-                  </button>
-                </th>
-                <th className="w-[9%] px-3 py-3 text-left text-[11px] uppercase text-slate-600 font-semibold">
-                  <button type="button" onClick={() => toggleSort('type')} className="inline-flex items-center gap-1 hover:text-slate-900">
-                    Tipo <span className="text-[10px]">{sortIndicator('type')}</span>
-                  </button>
-                </th>
-                <th className="w-[16%] px-3 py-3 text-left text-[11px] uppercase text-slate-600 font-semibold">
-                  <button type="button" onClick={() => toggleSort('email')} className="inline-flex items-center gap-1 hover:text-slate-900">
-                    Email <span className="text-[10px]">{sortIndicator('email')}</span>
-                  </button>
-                </th>
-                <th className="w-[11%] px-3 py-3 text-left text-[11px] uppercase text-slate-600 font-semibold">
-                  <button type="button" onClick={() => toggleSort('phone')} className="inline-flex items-center gap-1 hover:text-slate-900">
-                    Telefone <span className="text-[10px]">{sortIndicator('phone')}</span>
-                  </button>
-                </th>
-                <th className="w-[11%] px-3 py-3 text-left text-[11px] uppercase text-slate-600 font-semibold">
-                  <button type="button" onClick={() => toggleSort('owner')} className="inline-flex items-center gap-1 hover:text-slate-900">
-                    Resp. interno <span className="text-[10px]">{sortIndicator('owner')}</span>
-                  </button>
-                </th>
-                <th className="w-[8%] px-3 py-3 text-left text-[11px] uppercase text-slate-600 font-semibold">
-                  <button type="button" onClick={() => toggleSort('status')} className="inline-flex items-center gap-1 hover:text-slate-900">
-                    Estado <span className="text-[10px]">{sortIndicator('status')}</span>
-                  </button>
-                </th>
-                <th className="w-[9%] px-3 py-3 text-left text-[11px] uppercase text-slate-600 font-semibold">
-                  <button type="button" onClick={() => toggleSort('subuser')} className="inline-flex items-center gap-1 hover:text-slate-900">
-                    Subutilizador <span className="text-[10px]">{sortIndicator('subuser')}</span>
-                  </button>
-                </th>
-                <th className="w-[6%] px-3 py-3 text-right text-[11px] uppercase text-slate-600 font-semibold">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedCustomers.map((customer) => {
-                const owner = users.find((u) => u.id === customer.ownerId);
-                const status = getCustomerStatus(customer);
-                const subUserState = getSegSocialSubUserState(customer);
-                const ssSubUserAccess = resolveSsSubUserAccessFromCustomer(customer);
-                const hasSsSubUserLogin = Boolean(String(ssSubUserAccess.username || '').trim());
-                const isThisSsSubUserBusy = segSocialAutologinBusyCustomerId === customer.id;
-                return (
-                  <tr key={customer.id} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => openModal(customer)}>
-                    <td className="px-3 py-3 text-xs font-mono text-slate-700">{customer.nif || '--'}</td>
-                    <td className="px-3 py-3 text-sm text-slate-900">
-                      <div className="font-semibold truncate" title={customer.company || customer.name}>{customer.company || customer.name}</div>
-                      <div className="text-xs text-slate-500 truncate">{customer.name}</div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <span className={`px-2 py-0.5 inline-flex text-[11px] font-semibold rounded-full ${getTypeColor(customer.type)}`}>
-                        {customer.type.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 text-xs text-slate-700 truncate" title={customer.email || '--'}>{customer.email || '--'}</td>
-                    <td className="px-3 py-3 text-xs text-slate-700 font-mono">{customer.phone || '--'}</td>
-                    <td className="px-3 py-3 text-xs text-slate-700">{owner?.name || '--'}</td>
-                    <td className="px-3 py-3"><StatusBadge status={status} /></td>
-                    <td className="px-3 py-3"><SegSocialSubUserBadge state={subUserState} /></td>
-                    <td className="px-3 py-3">
-                      <div className="flex justify-end items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                        {/* AT — Finanças */}
-                        <button
-                          onClick={() => void triggerFinancasAutologin(customer)}
-                          disabled={Boolean(autologinBusyCustomerId || segSocialAutologinBusyCustomerId || segSocialSubUserBusyCustomerId)}
-                          className={actionButtonAutologinClass}
-                          title="Autologin Portal das Finanças"
-                        >
-                          {autologinBusyCustomerId === customer.id
-                            ? <RefreshCw size={11} className="animate-spin" />
-                            : <span className="text-[10px] font-bold tracking-wide">AT</span>}
-                        </button>
-                        {/* SS — Segurança Social subutilizador */}
-                        <button
-                          onClick={() => void triggerSegSocialSubUserLogin(customer)}
-                          disabled={Boolean(autologinBusyCustomerId || segSocialAutologinBusyCustomerId || segSocialSubUserBusyCustomerId || segSocialActivationBusyCustomerId || !hasSsSubUserLogin)}
-                          className={actionButtonSsAutologinClass}
-                          title={hasSsSubUserLogin ? 'Entrar na Segurança Social (subutilizador)' : 'Sem subutilizador SS configurado'}
-                        >
-                          {isThisSsSubUserBusy
-                            ? <RefreshCw size={11} className="animate-spin" />
-                            : <span className="text-[10px] font-bold tracking-wide">SS</span>}
-                        </button>
-                        {/* Ver / Editar */}
-                        <button onClick={() => openModal(customer)} className={actionButtonViewClass} title="Ver detalhes">
-                          <Eye size={13} />
-                        </button>
-                        <button onClick={() => openModal(customer)} className={actionButtonEditClass} title="Editar cliente">
-                          <Edit2 size={13} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-
-              {sortedCustomers.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-500">Nenhum cliente encontrado para os filtros atuais.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <CustomersListPanel
+        customers={sortedCustomers}
+        users={users}
+        searchTerm={searchTerm}
+        stateFilter={stateFilter}
+        typeFilter={typeFilter}
+        ownerFilter={ownerFilter}
+        subUserFilter={subUserFilter}
+        segSocialSubUserCounts={segSocialSubUserCounts}
+        autologinBusyCustomerId={autologinBusyCustomerId}
+        segSocialAutologinBusyCustomerId={segSocialAutologinBusyCustomerId}
+        segSocialSubUserBusyCustomerId={segSocialSubUserBusyCustomerId}
+        segSocialActivationBusyCustomerId={segSocialActivationBusyCustomerId}
+        setSearchTerm={setSearchTerm}
+        setStateFilter={setStateFilter}
+        setTypeFilter={setTypeFilter}
+        setOwnerFilter={setOwnerFilter}
+        setSubUserFilter={setSubUserFilter}
+        toggleSort={toggleSort}
+        sortIndicator={sortIndicator}
+        getCustomerStatus={getCustomerStatus}
+        openCustomer={openModal}
+        triggerFinancasAutologin={triggerFinancasAutologin}
+        triggerSegSocialSubUserLogin={triggerSegSocialSubUserLogin}
+      />
 
       {showHeaderIngestModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
@@ -4624,340 +3875,22 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
 
                 <div className="customer-modal-body min-h-0 flex-1 overflow-y-auto pr-1">
               {activeTab === 'dados' && (
-                <div className="space-y-4">
-
-                  {/* ── Identificação ─────────────────────────────── */}
-                  <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                    <div className="flex items-center gap-2.5 border-b border-slate-100 px-5 py-3.5">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100"><User size={14} className="text-emerald-600" /></span>
-                      <h3 className="text-sm font-bold text-slate-800">Identificação</h3>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-x-4 gap-y-3 px-5 py-4">
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Nome *</label>
-                        <input required type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
-                      </div>
-                      <div className="max-w-[260px]">
-                        <label className="block text-xs font-medium text-slate-500 mb-1">NIF</label>
-                        <div className="flex items-center gap-1.5">
-                          <input type="text" className={`min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 ${isNifLocked ? 'bg-slate-50 text-slate-400 cursor-not-allowed' : ''}`} value={formData.nif} onChange={(e) => setFormData({ ...formData, nif: e.target.value })} disabled={isNifLocked} title={isNifLocked ? 'NIF bloqueado após validação.' : ''} />
-                          <button
-                            type="button"
-                            onClick={() => { void copyCustomerNif(); }}
-                            disabled={!normalizeNifDigits(formData.nif || '')}
-                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
-                            title="Copiar NIF"
-                            aria-label="Copiar NIF"
-                          >
-                            <Copy size={14} />
-                          </button>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">NISS</label>
-                        <input type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.niss} onChange={(e) => setFormData({ ...formData, niss: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Data de nascimento</label>
-                        <input type="date" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.dataNascimento} onChange={(e) => setFormData({ ...formData, dataNascimento: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Morada</label>
-                        <input type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.morada} onChange={(e) => setFormData({ ...formData, morada: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Código Postal</label>
-                        <input type="text" placeholder="0000-000 Localidade" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.codigoPostal} onChange={(e) => setFormData({ ...formData, codigoPostal: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Email</label>
-                        <input type="email" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Telefone (opcional)</label>
-                        <input type="text" placeholder="+351..." className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Empresa</label>
-                        <input required type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.company} onChange={(e) => setFormData({ ...formData, company: e.target.value })} />
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Nome do Contacto (Telemóvel)</label>
-                        <input type="text" placeholder="Ex.: Marco Rebelo" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.contactName} onChange={(e) => setFormData({ ...formData, contactName: e.target.value })} />
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* ── Dados Corporativos ────────────────────────── */}
-                  <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                    <div className="flex items-center gap-2.5 border-b border-slate-100 px-5 py-3.5">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100"><Building2 size={14} className="text-emerald-600" /></span>
-                      <h3 className="text-sm font-bold text-slate-800">Dados Corporativos</h3>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-x-4 gap-y-3 px-5 py-4">
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Certidão Permanente (nº)</label>
-                        <input type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.certidaoPermanenteNumero} onChange={(e) => setFormData({ ...formData, certidaoPermanenteNumero: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Certidão Permanente (validade)</label>
-                        <div className="flex items-center gap-2">
-                          <input type="date" className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.certidaoPermanenteValidade} onChange={(e) => setFormData({ ...formData, certidaoPermanenteValidade: e.target.value })} />
-                          {formData.certidaoPermanenteValidade && new Date(formData.certidaoPermanenteValidade) > new Date() && (
-                            <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Válida</span>
-                          )}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">RCBE (nº)</label>
-                        <input type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.rcbeNumero} onChange={(e) => setFormData({ ...formData, rcbeNumero: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">RCBE (data)</label>
-                        <input type="date" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.rcbeData} onChange={(e) => setFormData({ ...formData, rcbeData: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Data de constituição</label>
-                        <input type="date" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.dataConstituicao} onChange={(e) => setFormData({ ...formData, dataConstituicao: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Início de atividade</label>
-                        <input type="date" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.inicioAtividade} onChange={(e) => setFormData({ ...formData, inicioAtividade: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Código Repartição Finanças</label>
-                        <input type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.codigoReparticaoFinancas} onChange={(e) => setFormData({ ...formData, codigoReparticaoFinancas: e.target.value })} />
-                      </div>
-                      {/* Lista unificada de CAEs — Principal + Secundários */}
-                      <div className="md:col-span-4 mt-1 border-t border-slate-100 pt-3">
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Atividades Exercidas (CAEs)</label>
-                        {(() => {
-                          let secCaes: {codigo: string; descricao: string}[] = [];
-                          try {
-                            const raw = formData.infoAtividades;
-                            if (raw && raw.startsWith('[')) secCaes = JSON.parse(raw);
-                            else if (raw) {
-                              secCaes = raw.split('\n').filter(l => /secund/i.test(l))
-                                .map(l => { const m = l.match(/:\s*(\d{5})\s*[—-]\s*(.*)/); return m ? { codigo: m[1], descricao: m[2].trim() } : null; })
-                                .filter(Boolean) as {codigo: string; descricao: string}[];
-                            }
-                          } catch {}
-                          const saveSecCaes = (next: {codigo: string; descricao: string}[]) =>
-                            setFormData(p => ({ ...p, infoAtividades: JSON.stringify(next), caeSecundarios: next.map(c => c.codigo).join(', ') }));
-                          return (
-                            <div className="rounded-lg border border-slate-200 overflow-hidden">
-                              {/* Cabeçalho tabela */}
-                              <div className="grid bg-slate-800 text-white text-[10px] font-bold uppercase tracking-wide px-3 py-1.5" style={{gridTemplateColumns:'80px 72px 1fr 24px'}}>
-                                <span>Tipo</span><span>Código</span><span>Descrição</span><span></span>
-                              </div>
-                              {/* CAE Principal */}
-                              <div className="grid items-center gap-2 px-2 py-1.5 border-b border-slate-100 bg-emerald-50" style={{gridTemplateColumns:'80px 72px 1fr 24px'}}>
-                                <span className="text-[10px] font-bold text-emerald-700">Principal</span>
-                                <input type="text" placeholder="Código" className="rounded border border-slate-200 px-1.5 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white"
-                                  value={formData.caePrincipal} onChange={e => setFormData(p => ({ ...p, caePrincipal: e.target.value }))} />
-                                <input type="text" placeholder="Descrição" className="rounded border border-slate-200 px-1.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white"
-                                  value={formData.caeDescricao} onChange={e => setFormData(p => ({ ...p, caeDescricao: e.target.value }))} />
-                                <span></span>
-                              </div>
-                              {/* CAEs Secundários */}
-                              {secCaes.map((cae, idx) => (
-                                <div key={idx} className="grid items-center gap-2 px-2 py-1.5 border-b border-slate-100 hover:bg-slate-50" style={{gridTemplateColumns:'80px 72px 1fr 24px'}}>
-                                  <span className="text-[10px] text-slate-500">Sec. {idx + 1}</span>
-                                  <input type="text" placeholder="Código" className="rounded border border-slate-200 px-1.5 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-slate-400"
-                                    value={cae.codigo} onChange={e => { const n=[...secCaes]; n[idx]={...n[idx],codigo:e.target.value}; saveSecCaes(n); }} />
-                                  <input type="text" placeholder="Descrição" className="rounded border border-slate-200 px-1.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400"
-                                    value={cae.descricao} onChange={e => { const n=[...secCaes]; n[idx]={...n[idx],descricao:e.target.value}; saveSecCaes(n); }} />
-                                  <button type="button" className="text-slate-300 hover:text-red-400 text-base leading-none"
-                                    onClick={() => saveSecCaes(secCaes.filter((_, i) => i !== idx))}>×</button>
-                                </div>
-                              ))}
-                              {/* Linha adicionar */}
-                              <div className="px-3 py-1.5">
-                                <button type="button"
-                                  className="text-xs font-medium text-slate-400 hover:text-emerald-600 transition-colors"
-                                  onClick={() => saveSecCaes([...secCaes, { codigo: '', descricao: '' }])}>
-                                  + Adicionar CAE secundário
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                      <div className="md:col-span-4">
-                        {/* Pasta de documentos — bloqueada por defeito, botão Editar para desbloquear */}
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <label className="text-xs font-medium text-slate-500">Pasta de documentos (caminho)</label>
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => { void openCustomerDocumentsFolder(); }}
-                                disabled={!String(formData.documentsFolder || '').trim() || typeof window.waDesktop?.openFolder !== 'function'}
-                                className="inline-flex items-center gap-1 rounded border border-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-500 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
-                                title={
-                                  !String(formData.documentsFolder || '').trim()
-                                    ? 'Pasta não definida'
-                                    : typeof window.waDesktop?.openFolder === 'function'
-                                      ? 'Abrir pasta no explorador'
-                                      : 'Atualize o WA PRO desktop para ativar'
-                                }
-                              >
-                                <FolderOpen size={12} /> Abrir pasta
-                              </button>
-                              <button type="button"
-                                onClick={() => setFolderEditMode(m => !m)}
-                                className={`text-xs font-semibold px-2 py-0.5 rounded transition-colors ${folderEditMode ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'text-slate-400 hover:text-slate-600 border border-slate-200 hover:border-slate-300'}`}>
-                                {folderEditMode ? 'Bloquear' : '✎ Editar'}
-                              </button>
-                            </div>
-                          </div>
-                          <div className="relative">
-                            <FolderOpen size={14} className="absolute left-3 top-2.5 text-slate-400" />
-                            <input type="text"
-                              readOnly={!folderEditMode}
-                              className={`w-full rounded-lg border pl-9 pr-3 py-2 text-sm font-mono focus:outline-none ${folderEditMode ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-200' : 'border-slate-200 bg-slate-50 text-slate-600 cursor-default select-all'}`}
-                              value={formData.documentsFolder}
-                              onChange={(e) => folderEditMode && setFormData({ ...formData, documentsFolder: e.target.value })}
-                              placeholder="\\10.0.0.6\OneDrive - MPR\Documentos\Contabilidades\Empresas\Cliente" />
-                          </div>
-                          {!formData.documentsFolder && pickImportedValue(importedLookup, ['pasta_documentos', 'documents_folder']) && (
-                            <p className="mt-1 text-xs text-blue-600 break-all">Pasta importada: {pickImportedValue(importedLookup, ['pasta_documentos', 'documents_folder'])}</p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="md:col-span-4">
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Notas</label>
-                        <textarea className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-[80px] resize-y" placeholder="Notas internas do cliente..." value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} />
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* ── Enquadramento Fiscal ──────────────────────── */}
-                  <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                    <div className="flex items-center gap-2.5 border-b border-slate-100 px-5 py-3.5">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100"><Shield size={14} className="text-emerald-600" /></span>
-                      <h3 className="text-sm font-bold text-slate-800">Enquadramento Fiscal</h3>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-x-4 gap-y-3 px-5 py-4">
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Tipo de entidade</label>
-                        <select className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.type} onChange={(e) => setFormData({ ...formData, type: e.target.value as CustomerType })}>
-                          {Object.values(CustomerType).map((t) => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Regime de IVA</label>
-                        <select className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.tipoIva} onChange={(e) => setFormData({ ...formData, tipoIva: e.target.value })}>
-                          <option value="">-- Selecionar --</option>
-                          <option value="MENSAL">MENSAL</option>
-                          <option value="TRIMESTRAL">TRIMESTRAL</option>
-                          <option value="ANUAL">ANUAL</option>
-                          <option value="ISENTO">ISENTO</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Tipo de contabilidade</label>
-                        <select className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.tipoContabilidade} onChange={(e) => setFormData({ ...formData, tipoContabilidade: e.target.value })}>
-                          <option value="">-- Selecionar --</option>
-                          <option value="ORGANIZADA">ORGANIZADA</option>
-                          <option value="SIMPLIFICADO">SIMPLIFICADA</option>
-                          <option value="NAO_ORGANIZADA">NÃO ORGANIZADA</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Estado</label>
-                        <select className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.estadoCliente} onChange={(e) => setFormData({ ...formData, estadoCliente: e.target.value })}>
-                          <option value="">-- Selecionar --</option>
-                          <option value="ACTIVA">ACTIVA</option>
-                          <option value="SUSPENSA">SUSPENSA</option>
-                          <option value="INATIVA">INATIVA</option>
-                          <option value="ENCERRADA">ENCERRADA</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Responsável interno</label>
-                        <select className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.ownerId} onChange={(e) => setFormData({ ...formData, ownerId: e.target.value })}>
-                          <option value="">-- Selecionar --</option>
-                          {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Contabilista Certificado</label>
-                        <input type="text" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={formData.contabilistaCertificado} onChange={(e) => setFormData({ ...formData, contabilistaCertificado: e.target.value })} />
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* ── Gerência / Administração ──────────────────── */}
-                  <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                    <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
-                      <div className="flex items-center gap-2.5">
-                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100"><Users size={14} className="text-emerald-600" /></span>
-                        <div>
-                          <h3 className="text-sm font-bold text-slate-800">Gerência / Administração</h3>
-                          <p className="text-[11px] text-slate-400">Adicionar gerentes com NIF, nome, email e telefone.</p>
-                        </div>
-                      </div>
-                      <button type="button" onClick={addManager} className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 hover:text-emerald-700">
-                        <Plus size={13} /> Adicionar gerente
-                      </button>
-                    </div>
-                    <div className="px-5 py-3">
-                      {formData.managers.length > 0 && (
-                        <div
-                          className="mb-1 hidden min-w-[920px] grid-cols-[130px_minmax(260px,1.25fr)_minmax(220px,1fr)_150px_86px] gap-2 px-2 text-[10px] font-bold uppercase tracking-wide text-slate-400 lg:grid"
-                        >
-                          <span>NIF</span>
-                          <span>Nome</span>
-                          <span>Email</span>
-                          <span>Telefone</span>
-                          <span className="text-right">Ações</span>
-                        </div>
-                      )}
-                      <div className="space-y-1.5 overflow-x-auto">
-                      {formData.managers.map((manager, index) => (
-                        <div
-                          key={`manager-${index}`}
-                          className="grid min-w-[920px] grid-cols-[130px_minmax(260px,1.25fr)_minmax(220px,1fr)_150px_86px] items-center gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-2 py-1.5"
-                        >
-                          <input type="text" placeholder="NIF" className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" value={manager.nif || ''} onChange={(e) => updateManager(index, 'nif', e.target.value)} />
-                          <input type="text" placeholder="Nome" className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" value={manager.name || ''} onChange={(e) => updateManager(index, 'name', e.target.value)} />
-                          <input type="email" placeholder="Email" className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" value={manager.email || ''} onChange={(e) => updateManager(index, 'email', e.target.value)} />
-                          <input type="text" placeholder="Telefone" className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" value={manager.phone || ''} onChange={(e) => updateManager(index, 'phone', e.target.value)} />
-                          <button type="button" onClick={() => removeManager(index)} className="justify-self-end rounded-md px-2 py-1 text-xs font-semibold text-red-500 hover:bg-red-50 hover:text-red-700">Remover</button>
-                        </div>
-                      ))}
-                      </div>
-                      {formData.managers.length === 0 && (
-                        <p className="text-xs text-slate-400 italic py-1">Sem gerentes definidos nesta ficha.</p>
-                      )}
-                    </div>
-                  </section>
-
-                  {/* ── Campos importados ─────────────────────────── */}
-                  {editingCustomer && (
-                    <details className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                      <summary className="cursor-pointer px-5 py-3.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors list-none flex items-center gap-2">
-                        <span className="flex h-5 w-5 items-center justify-center rounded text-slate-400 text-xs">▶</span>
-                        Campos importados do Supabase
-                      </summary>
-                      <div className="border-t border-slate-100 px-5 py-4">
-                        {importedFields.length > 0 ? (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            {importedFields.map((field) => (
-                              <div key={field.label} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                                <div className="text-[10px] uppercase tracking-wider text-slate-400">{field.label}</div>
-                                <div className="text-sm text-slate-700 break-words mt-0.5">{field.value}</div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-slate-400 italic">Sem campos extra importados para este cliente.</p>
-                        )}
-                      </div>
-                    </details>
-                  )}
-                </div>
+                <CustomerDadosTab
+                  formData={formData}
+                  setFormData={setFormData}
+                  isNifLocked={isNifLocked}
+                  folderEditMode={folderEditMode}
+                  setFolderEditMode={setFolderEditMode}
+                  users={users}
+                  editingCustomer={editingCustomer}
+                  importedLookup={importedLookup}
+                  importedFields={importedFields}
+                  copyCustomerNif={copyCustomerNif}
+                  openCustomerDocumentsFolder={openCustomerDocumentsFolder}
+                  addManager={addManager}
+                  updateManager={updateManager}
+                  removeManager={removeManager}
+                />
               )}
 
               {activeTab === 'acessos' && (
@@ -4991,461 +3924,80 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
               )}
 
               {activeTab === 'contactos' && (
-                <div className="border rounded-lg p-4 space-y-3">
-                  <div className="flex justify-between items-center mb-2">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-800">Contactos Associados</label>
-                      <p className="text-xs text-gray-500">Estes contactos podem existir só nesta aplicação (não precisam existir no Supabase).</p>
-                    </div>
-                    <button type="button" onClick={addSubContact} className="text-xs text-whatsapp-600 font-medium hover:underline flex items-center gap-1">
-                      <Plus size={14} /> Adicionar Contacto
-                    </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    {formData.contacts.map((contact, idx) => (
-                      <div key={idx} className="flex gap-2 items-center">
-                        <input
-                          type="text"
-                          placeholder="Nome (ex: Secretaria)"
-                          className="flex-1 text-sm border rounded-md p-2"
-                          value={contact.name}
-                          onChange={(e) => updateSubContact(idx, 'name', e.target.value)}
-                        />
-                        <input
-                          type="text"
-                          placeholder="Telefone"
-                          className="w-40 text-sm border rounded-md p-2"
-                          value={contact.phone}
-                          onChange={(e) => updateSubContact(idx, 'phone', e.target.value)}
-                        />
-                        <button type="button" onClick={() => removeSubContact(idx)} className="text-gray-400 hover:text-red-500" title="Remover contacto">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    ))}
-                    {formData.contacts.length === 0 && <p className="text-xs text-gray-400 italic">Nenhum contacto extra associado.</p>}
-                  </div>
-                </div>
+                <CustomerContactosTab
+                  contacts={formData.contacts}
+                  onAdd={addSubContact}
+                  onUpdate={updateSubContact}
+                  onRemove={removeSubContact}
+                />
               )}
 
               {activeTab === 'relacoes' && (
-                <div className="space-y-4">
-                  <div className="rounded-lg border border-slate-200 p-4 space-y-3 bg-white">
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-800">Agregado Familiar</h3>
-                      <p className="text-xs text-gray-500">
-                        Relacione esta ficha com cônjuge, filho ou outro elemento do agregado.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      {formData.agregadoFamiliar.map((entry, index) => {
-                        const resolved = resolveLinkedCustomerByEntry(entry);
-                        const baseLabel = buildEntryRelationLabel(entry, resolved);
-                        const hasTypedValue = Object.prototype.hasOwnProperty.call(agregadoSearchTerms, index);
-                        const typedValue = hasTypedValue ? String(agregadoSearchTerms[index] || '') : '';
-                        const searchValue = hasTypedValue ? typedValue : baseLabel;
-                        const suggestions = hasTypedValue && typedValue.trim().length > 0
-                          ? filterRelationCustomers(typedValue)
-                          : [];
-                        return (
-                          <div key={`agregado-${index}`} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border rounded-md p-2 bg-slate-50">
-                            <div className="md:col-span-5 space-y-1">
-                              <input
-                                type="text"
-                                className="w-full text-sm border rounded-md p-2 bg-white"
-                                placeholder="Escreva para sugerir ficha..."
-                                value={searchValue}
-                                onChange={(e) => {
-                                  const nextValue = String(e.target.value || '');
-                                  setAgregadoSearchTerms((prev) => ({ ...prev, [index]: nextValue }));
-                                  if (!nextValue.trim()) {
-                                    updateAgregadoFamiliar(index, 'customerId', '');
-                                  }
-                                }}
-                                onBlur={() => {
-                                  window.setTimeout(() => {
-                                    setAgregadoSearchTerms((prev) => {
-                                      const next = { ...prev };
-                                      delete next[index];
-                                      return next;
-                                    });
-                                  }, 120);
-                                }}
-                              />
-                              {hasTypedValue && typedValue.trim().length > 0 && suggestions.length > 0 && (
-                                <div className="max-h-40 overflow-auto rounded-md border border-slate-200 bg-white shadow-sm">
-                                  {suggestions.map((customer) => (
-                                    <button
-                                      key={`agf-suggestion-${index}-${customer.id}`}
-                                      type="button"
-                                      onMouseDown={(e) => {
-                                        e.preventDefault();
-                                        updateAgregadoFamiliar(index, 'customerId', customer.id);
-                                        setAgregadoSearchTerms((prev) => {
-                                          const next = { ...prev };
-                                          delete next[index];
-                                          return next;
-                                        });
-                                      }}
-                                      className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-100"
-                                    >
-                                      {buildRelationCustomerLabel(customer)}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                              {resolved && (
-                                <button
-                                  type="button"
-                                  onClick={() => openRelatedCustomerProfile(resolved)}
-                                  className="text-xs text-blue-700 hover:underline"
-                                >
-                                  {buildRelationCustomerLabel(resolved)}
-                                </button>
-                              )}
-                            </div>
-                            <select
-                              className="md:col-span-2 text-sm border rounded-md p-2 bg-white"
-                              value={entry.relationType || 'outro'}
-                              onChange={(e) => updateAgregadoFamiliar(index, 'relationType', e.target.value)}
-                            >
-                              {HOUSEHOLD_RELATION_OPTIONS.map((option) => (
-                                <option key={`agf-rel-${option.value}`} value={option.value}>{option.label}</option>
-                              ))}
-                            </select>
-                            <input
-                              type="text"
-                              placeholder="Nota (opcional)"
-                              className="md:col-span-4 text-sm border rounded-md p-2"
-                              value={entry.note || ''}
-                              onChange={(e) => updateAgregadoFamiliar(index, 'note', e.target.value)}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => removeAgregadoFamiliar(index)}
-                              className="md:col-span-1 text-red-600 text-xs hover:underline justify-self-start md:justify-self-end"
-                            >
-                              Remover
-                            </button>
-                          </div>
-                        );
-                      })}
-                      {formData.agregadoFamiliar.length === 0 && <p className="text-xs text-gray-400 italic">Sem relações de agregado familiar definidas.</p>}
-                      <button
-                        type="button"
-                        onClick={addAgregadoFamiliar}
-                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center gap-1"
-                      >
-                        <Plus size={14} /> Adicionar linha
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border border-slate-200 p-4 space-y-3 bg-white">
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-800">Fichas Relacionadas</h3>
-                      <p className="text-xs text-gray-500">
-                        Relacione com funcionário, amigo, familiar, gerente, sócio ou outro.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      {formData.fichasRelacionadas.length > 0 && (
-                        <div className="hidden md:grid grid-cols-12 gap-2 px-1 text-xs font-semibold text-slate-600">
-                          <div className="col-span-5">Ficha relacionada</div>
-                          <div className="col-span-2">Tipo de relação</div>
-                          <div className="col-span-4">Nota</div>
-                          <div className="col-span-1" />
-                        </div>
-                      )}
-                      {formData.fichasRelacionadas.map((entry, index) => {
-                        const resolved = resolveLinkedCustomerByEntry(entry);
-                        const baseLabel = buildEntryRelationLabel(entry, resolved);
-                        const hasTypedValue = Object.prototype.hasOwnProperty.call(fichasSearchTerms, index);
-                        const typedValue = hasTypedValue ? String(fichasSearchTerms[index] || '') : '';
-                        const searchValue = hasTypedValue ? typedValue : baseLabel;
-                        const suggestions = hasTypedValue && typedValue.trim().length > 0
-                          ? filterRelationCustomers(typedValue)
-                          : [];
-                        return (
-                          <div key={`relacionada-${index}`} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border rounded-md p-2 bg-slate-50">
-                            <div className="md:col-span-5 space-y-1">
-                              <input
-                                type="text"
-                                className="w-full text-sm border rounded-md p-2 bg-white"
-                                placeholder="Escreva para sugerir ficha..."
-                                value={searchValue}
-                                onChange={(e) => {
-                                  const nextValue = String(e.target.value || '');
-                                  setFichasSearchTerms((prev) => ({ ...prev, [index]: nextValue }));
-                                  if (!nextValue.trim()) {
-                                    updateFichaRelacionada(index, 'customerId', '');
-                                  }
-                                }}
-                                onBlur={() => {
-                                  window.setTimeout(() => {
-                                    setFichasSearchTerms((prev) => {
-                                      const next = { ...prev };
-                                      delete next[index];
-                                      return next;
-                                    });
-                                  }, 120);
-                                }}
-                              />
-                              {hasTypedValue && typedValue.trim().length > 0 && suggestions.length > 0 && (
-                                <div className="max-h-40 overflow-auto rounded-md border border-slate-200 bg-white shadow-sm">
-                                  {suggestions.map((customer) => (
-                                    <button
-                                      key={`rel-suggestion-${index}-${customer.id}`}
-                                      type="button"
-                                      onMouseDown={(e) => {
-                                        e.preventDefault();
-                                        updateFichaRelacionada(index, 'customerId', customer.id);
-                                        setFichasSearchTerms((prev) => {
-                                          const next = { ...prev };
-                                          delete next[index];
-                                          return next;
-                                        });
-                                      }}
-                                      className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-100"
-                                    >
-                                      {buildRelationCustomerLabel(customer)}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                              {resolved && (
-                                <button
-                                  type="button"
-                                  onClick={() => openRelatedCustomerProfile(resolved)}
-                                  className="text-xs text-blue-700 hover:underline"
-                                >
-                                  {buildRelationCustomerLabel(resolved)}
-                                </button>
-                              )}
-                            </div>
-                            <select
-                              className="md:col-span-2 text-sm border rounded-md p-2 bg-white"
-                              value={entry.relationType || 'outro'}
-                              onChange={(e) => updateFichaRelacionada(index, 'relationType', e.target.value)}
-                            >
-                              {RELATED_RECORD_OPTIONS.map((option) => (
-                                <option key={`rel-type-${option.value}`} value={option.value}>{option.label}</option>
-                              ))}
-                            </select>
-                            <input
-                              type="text"
-                              placeholder="Nota (opcional)"
-                              className="md:col-span-4 text-sm border rounded-md p-2"
-                              value={entry.note || ''}
-                              onChange={(e) => updateFichaRelacionada(index, 'note', e.target.value)}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => removeFichaRelacionada(index)}
-                              className="md:col-span-1 text-red-600 text-xs hover:underline justify-self-start md:justify-self-end"
-                            >
-                              Remover
-                            </button>
-                          </div>
-                        );
-                      })}
-                      {formData.fichasRelacionadas.length === 0 && <p className="text-xs text-gray-400 italic">Sem fichas relacionadas definidas.</p>}
-                      <button
-                        type="button"
-                        onClick={addFichaRelacionada}
-                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center gap-1"
-                      >
-                        <Plus size={14} /> Adicionar linha
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <CustomerRelacoesTab
+                  agregadoFamiliar={formData.agregadoFamiliar}
+                  fichasRelacionadas={formData.fichasRelacionadas}
+                  agregadoSearchTerms={agregadoSearchTerms}
+                  fichasSearchTerms={fichasSearchTerms}
+                  setAgregadoSearchTerms={setAgregadoSearchTerms}
+                  setFichasSearchTerms={setFichasSearchTerms}
+                  updateAgregadoFamiliar={updateAgregadoFamiliar}
+                  updateFichaRelacionada={updateFichaRelacionada}
+                  removeAgregadoFamiliar={removeAgregadoFamiliar}
+                  removeFichaRelacionada={removeFichaRelacionada}
+                  addAgregadoFamiliar={addAgregadoFamiliar}
+                  addFichaRelacionada={addFichaRelacionada}
+                  resolveLinkedCustomerByEntry={resolveLinkedCustomerByEntry}
+                  buildEntryRelationLabel={buildEntryRelationLabel}
+                  filterRelationCustomers={filterRelationCustomers}
+                  buildRelationCustomerLabel={buildRelationCustomerLabel}
+                  openRelatedCustomerProfile={openRelatedCustomerProfile}
+                />
               )}
 
               {activeTab === 'atividade' && (
-                <div className="space-y-4">
-                  {!editingCustomer?.id ? (
-                    <p className="text-sm text-gray-500">Guarde primeiro o cliente para consultar tarefas e ocorrências.</p>
-                  ) : (
-                    <>
-                      <div className="rounded-lg border border-slate-200 bg-white p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <div className="text-sm font-semibold text-slate-800">Histórico operacional do cliente</div>
-                            <div className="text-xs text-slate-500">Inclui abertas e fechadas.</div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => void loadCustomerActivity(editingCustomer.id)}
-                            disabled={customerActivityLoading}
-                            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                          >
-                            <RefreshCw size={13} />
-                            {customerActivityLoading ? 'A atualizar...' : 'Atualizar'}
-                          </button>
-                        </div>
-                        <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
-                          <div className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-xs text-blue-700">
-                            Tarefas abertas: <span className="font-semibold">{taskOpenCount}</span>
-                          </div>
-                          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs text-emerald-700">
-                            Tarefas fechadas: <span className="font-semibold">{taskClosedCount}</span>
-                          </div>
-                          <div className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-xs text-blue-700">
-                            Ocorrências abertas: <span className="font-semibold">{occurrenceOpenCount}</span>
-                          </div>
-                          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs text-emerald-700">
-                            Ocorrências fechadas: <span className="font-semibold">{occurrenceClosedCount}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {customerActivityError && (
-                        <div className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">
-                          {customerActivityError}
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                        <section className="rounded-lg border border-slate-200 bg-white p-3">
-                          <h3 className="text-sm font-semibold text-slate-800">Tarefas ({customerTasksSummary.length})</h3>
-                          <div className="mt-2 max-h-80 space-y-2 overflow-y-auto">
-                            {!customerActivityLoading && customerTasksSummary.length === 0 && (
-                              <p className="text-xs text-slate-500">Sem tarefas para este cliente.</p>
-                            )}
-                            {customerTasksSummary.map((task) => (
-                              <button
-                                key={`task-${task.id}`}
-                                type="button"
-                                onClick={() => {
-                                  const taskId = String(task.id || '').trim();
-                                  if (!taskId) return;
-                                  setShowModal(false);
-                                  navigate(`/tasks?taskId=${encodeURIComponent(taskId)}`);
-                                }}
-                                className="w-full rounded-md border border-slate-200 bg-slate-50 p-2 text-left hover:border-blue-200 hover:bg-blue-50/40"
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <div className="truncate text-sm font-semibold text-slate-800" title={task.title}>{task.title}</div>
-                                    <div className="mt-0.5 text-xs text-slate-600">
-                                      Prazo: {formatDateOnly(task.dueDate)} • Resp: {task.assignedUserName}
-                                    </div>
-                                  </div>
-                                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${getTaskStatusBadgeClass(task.status)}`}>
-                                    {formatTaskStatus(task.status)}
-                                  </span>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        </section>
-
-                        <section className="rounded-lg border border-slate-200 bg-white p-3">
-                          <h3 className="text-sm font-semibold text-slate-800">Ocorrências ({customerOccurrencesSummary.length})</h3>
-                          <div className="mt-2 max-h-80 space-y-2 overflow-y-auto">
-                            {!customerActivityLoading && customerOccurrencesSummary.length === 0 && (
-                              <p className="text-xs text-slate-500">Sem ocorrências para este cliente.</p>
-                            )}
-                            {customerOccurrencesSummary.map((occurrence) => (
-                              <button
-                                key={`occ-${occurrence.id}`}
-                                type="button"
-                                onClick={() => {
-                                  const occurrenceId = String(occurrence.id || '').trim();
-                                  if (!occurrenceId) return;
-                                  setShowModal(false);
-                                  navigate(`/occurrences?occurrenceId=${encodeURIComponent(occurrenceId)}`);
-                                }}
-                                className="w-full rounded-md border border-slate-200 bg-slate-50 p-2 text-left hover:border-blue-200 hover:bg-blue-50/40"
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <div className="truncate text-sm font-semibold text-slate-800" title={occurrence.title}>{occurrence.title}</div>
-                                    <div className="mt-0.5 text-xs text-slate-600">
-                                      Tipo: {occurrence.typeName} • Data: {formatDateOnly(occurrence.date)} • Prazo: {formatDateOnly(occurrence.dueDate)}
-                                    </div>
-                                    <div className="mt-0.5 text-xs text-slate-600">Resp: {occurrence.responsibleNames}</div>
-                                  </div>
-                                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${getOccurrenceStatusBadgeClass(occurrence.state)}`}>
-                                    {formatOccurrenceStatus(occurrence.state)}
-                                  </span>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        </section>
-                      </div>
-                    </>
-                  )}
-                </div>
+                <CustomerAtividadeTab
+                  customerId={editingCustomer?.id || ''}
+                  loading={customerActivityLoading}
+                  error={customerActivityError}
+                  taskOpenCount={taskOpenCount}
+                  taskClosedCount={taskClosedCount}
+                  occurrenceOpenCount={occurrenceOpenCount}
+                  occurrenceClosedCount={occurrenceClosedCount}
+                  tasks={customerTasksSummary}
+                  occurrences={customerOccurrencesSummary}
+                  onReload={() => { if (editingCustomer?.id) void loadCustomerActivity(editingCustomer.id); }}
+                  onOpenTask={(taskId) => { setShowModal(false); navigate(`/tasks?taskId=${encodeURIComponent(taskId)}`); }}
+                  onOpenOccurrence={(occurrenceId) => { setShowModal(false); navigate(`/occurrences?occurrenceId=${encodeURIComponent(occurrenceId)}`); }}
+                />
               )}
 
               {activeTab === 'sociedade' && (
-                <div className="border rounded-lg p-4 space-y-3">
-                  {!editingCustomer?.id ? (
-                    <p className="text-sm text-gray-500">Guarde primeiro o cliente para ativar os documentos da sociedade.</p>
-                  ) : (
-                    <>
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
-                        <div className="text-sm font-semibold text-slate-800">Documentos da Sociedade</div>
-                        <div className="text-xs text-slate-500">
-                          Guarda nesta vista os documentos societários, sempre dentro de <span className="font-mono">{SOCIEDADE_BASE_PATH}</span>.
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {SOCIEDADE_DOCUMENT_CATEGORIES.map((category) => {
-                            const isSelected = sociedadeCategoryKey === category.key;
-                            return (
-                              <button
-                                key={category.key}
-                                type="button"
-                                onClick={() => {
-                                  void openSociedadeCategory(category.key);
-                                }}
-                                className={`rounded-md border px-2.5 py-1 text-xs font-semibold transition ${
-                                  isSelected
-                                    ? 'border-blue-200 bg-white text-blue-700 shadow-sm'
-                                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-                                }`}
-                              >
-                                {category.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <CustomerDocumentBrowser
-                        title="Pasta da sociedade"
-                        folderPath={sociedadeDocsPath}
-                        fallbackFolderPath={formData.documentsFolder}
-                        currentPath={sociedadeCurrentPath}
-                        rootPathLabel={SOCIEDADE_BASE_PATH}
-                        configured={sociedadeDocsConfigured}
-                        loading={sociedadeDocsLoading}
-                        uploading={sociedadeUploadingDoc}
-                        error={sociedadeDocsError}
-                        entries={sociedadeDocs}
-                        canGoUp={sociedadeCanGoUp}
-                        fileInputRef={sociedadeFileInputRef}
-                        itemKeyPrefix="sociedade"
-                        onRefresh={() => loadSociedadeDocuments(editingCustomer.id, sociedadeCurrentPath || SOCIEDADE_BASE_PATH)}
-                        onGoUp={goUpSociedadeFolder}
-                        onTriggerUpload={triggerSociedadeDocumentPicker}
-                        onUpload={handleSociedadeDocumentUpload}
-                        onOpenDirectory={(relativePath) => {
-                          void openSociedadeFolder(relativePath);
-                        }}
-                        onOpenFile={(relativePath) => {
-                          openCustomerDocument(editingCustomer.id, relativePath, sociedadeDocsPath || formData.documentsFolder);
-                        }}
-                      />
-                    </>
-                  )}
-                </div>
+                <CustomerSociedadeTab
+                  customerId={editingCustomer?.id || ''}
+                  categoryKey={sociedadeCategoryKey}
+                  onSelectCategory={(key) => { void openSociedadeCategory(key); }}
+                  browser={{
+                    title: 'Pasta da sociedade',
+                    folderPath: sociedadeDocsPath,
+                    fallbackFolderPath: formData.documentsFolder,
+                    currentPath: sociedadeCurrentPath,
+                    rootPathLabel: SOCIEDADE_BASE_PATH,
+                    configured: sociedadeDocsConfigured,
+                    loading: sociedadeDocsLoading,
+                    uploading: sociedadeUploadingDoc,
+                    error: sociedadeDocsError,
+                    entries: sociedadeDocs,
+                    canGoUp: sociedadeCanGoUp,
+                    fileInputRef: sociedadeFileInputRef,
+                    itemKeyPrefix: 'sociedade',
+                    onRefresh: () => loadSociedadeDocuments(editingCustomer?.id || '', sociedadeCurrentPath || SOCIEDADE_BASE_PATH),
+                    onGoUp: goUpSociedadeFolder,
+                    onTriggerUpload: triggerSociedadeDocumentPicker,
+                    onUpload: handleSociedadeDocumentUpload,
+                    onOpenDirectory: (relativePath) => { void openSociedadeFolder(relativePath); },
+                    onOpenFile: (relativePath) => { openCustomerDocument(editingCustomer?.id || '', relativePath, sociedadeDocsPath || formData.documentsFolder); },
+                  }}
+                />
               )}
 
               {activeTab === 'documentos' && (
@@ -5540,12 +4092,14 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         configured={modalDocsConfigured}
                         loading={modalDocsLoading}
                         uploading={modalUploadingDoc}
+                        organizing={modalOrganizingDocs}
                         error={modalDocsError}
                         entries={modalDocs}
                         canGoUp={modalCanGoUp}
                         fileInputRef={modalFileInputRef}
                         onRefresh={() => loadModalDocuments(editingCustomer.id, modalDocsCurrentPath)}
                         onGoUp={goUpModalDocumentsFolder}
+                        onOrganize={modalOrganizerPreview ? undefined : () => { void organizeModalDocumentsWithAi(); }}
                         onTriggerUpload={triggerModalDocumentPicker}
                         onUpload={handleModalDocumentUpload}
                         onOpenDirectory={(relativePath) => {
@@ -5553,6 +4107,72 @@ const formStateFromCustomer = (customer: Customer): CustomerFormState => ({
                         }}
                         onOpenFile={openModalDocument}
                       />
+                      {modalOrganizerPreview && (
+                        <div className="rounded-md border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-slate-700 space-y-2">
+                          <div className="font-semibold text-violet-800">{modalOrganizerStatus}</div>
+                          <div className="max-h-48 overflow-y-auto space-y-0.5">
+                            {modalOrganizerPreview.slice(0, 50).map((m, i) => (
+                              <div key={`preview-${i}`} className="font-mono text-[11px] text-slate-600">
+                                <span className="text-red-500">{m.from}</span>
+                                {' → '}
+                                <span className="text-green-700">{m.to}</span>
+                                {m.reason ? <span className="ml-1 text-slate-400">({m.reason})</span> : null}
+                              </div>
+                            ))}
+                            {modalOrganizerPreview.length > 50 && (
+                              <div className="text-slate-400">… e mais {modalOrganizerPreview.length - 50} ficheiro(s)</div>
+                            )}
+                          </div>
+                          {modalOrganizerWarnings.length > 0 && (
+                            <div className="space-y-0.5 text-amber-700">
+                              {modalOrganizerWarnings.slice(0, 4).map((w, i) => (
+                                <div key={`pw-${i}`}>- {w}</div>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => { void confirmOrganizeModalDocuments(); }}
+                              className="px-3 py-1 text-xs rounded-md bg-violet-600 text-white hover:bg-violet-700"
+                            >
+                              Confirmar e organizar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setModalOrganizerPreview(null); setModalOrganizerStatus(''); setModalOrganizerWarnings([]); }}
+                              className="px-3 py-1 text-xs rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-50"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {!modalOrganizerPreview && (modalOrganizerStatus || modalOrganizerWarnings.length > 0) && (
+                        <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 space-y-1">
+                          {modalOrganizerStatus && <div className="font-medium text-slate-800">{modalOrganizerStatus}</div>}
+                          {modalOrganizerUndoAvailable && (
+                            <button
+                              type="button"
+                              disabled={modalOrganizerUndoing}
+                              onClick={() => { void undoOrganizeModalDocuments(); }}
+                              className="px-2 py-0.5 text-xs rounded border border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                            >
+                              {modalOrganizerUndoing ? 'A anular...' : 'Anular organização'}
+                            </button>
+                          )}
+                          {modalOrganizerWarnings.length > 0 && (
+                            <div className="space-y-0.5 text-amber-700">
+                              {modalOrganizerWarnings.slice(0, 6).map((warning, index) => (
+                                <div key={`organizer-warning-${index}`}>- {warning}</div>
+                              ))}
+                              {modalOrganizerWarnings.length > 6 && (
+                                <div>- Mais {modalOrganizerWarnings.length - 6} aviso(s).</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </>
                   )}
                 </div>

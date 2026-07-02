@@ -82,6 +82,7 @@ function normalizeCustomerType(value) {
     if (text.includes('particular')) return 'particular';
     if (text.includes('independente')) return 'particular';
     if (text.includes('empresa')) return 'empresa';
+    if (text.includes('assoc')) return 'empresa';
     return '';
 }
 

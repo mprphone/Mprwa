@@ -8,6 +8,21 @@ const path = require('path');
 const { spawn } = require('child_process');
 const portalCredentials = require('../services/autologin/portalCredentials');
 
+const STANDARD_CUSTOMER_DOCUMENT_FOLDERS = [
+    'Documentos Oficiais',
+    'Resumo Fiscal',
+    'Obrigações Fiscais',
+    'Encerramento de contas',
+    'Ocorrencias',
+    'Livro de Actas',
+    'Recursos Humanos',
+    'Bancos',
+    'SAFT',
+    'Correspondência',
+    'Pagamentos',
+    'Outros Documentos',
+];
+
 function cleanText(value) {
     return String(value || '').replace(/\s+/g, ' ').trim();
 }
@@ -216,6 +231,7 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
         app, dbGetAsync, dbAllAsync, parseSourceId, sanitizeRoleValue, upsertLocalUser,
         writeAuditLog, parseCustomerSourceId, getLocalCustomerById,
         upsertLocalCustomer, fetchSupabaseTableColumns,
+        resolveCustomerDocumentsFolder,
         SUPABASE_CLIENTS_SOURCE,
     } = context;
     const {
@@ -223,10 +239,24 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
         getLocalCustomerBySourceId, findSupabaseCustomerRow,
         normalizeSupabaseTimestamp, materializeSupabaseRowLocally,
         pushLocalCustomerToSupabase, syncBidirectionalCustomerLinksLocal,
-        pullCustomersFromSupabaseIncremental, resolveSupabaseCustomerColumns,
+        resolveSupabaseCustomerColumns,
         bumpCustomersSyncWatermark,
         syncLocalCustomerCredentialsToSupabase,
     } = helpers;
+
+    async function ensureStandardCustomerDocumentFolders(customer) {
+        const configuredFolder = cleanText(customer?.documentsFolder || customer?.documents_folder || '');
+        if (!configuredFolder || typeof resolveCustomerDocumentsFolder !== 'function') {
+            return { created: false, folderPath: '' };
+        }
+
+        const rootFolder = resolveCustomerDocumentsFolder(customer?.id, configuredFolder);
+        await fs.promises.mkdir(rootFolder, { recursive: true });
+        for (const folderName of STANDARD_CUSTOMER_DOCUMENT_FOLDERS) {
+            await fs.promises.mkdir(path.join(rootFolder, folderName), { recursive: true });
+        }
+        return { created: true, folderPath: rootFolder };
+    }
 
     app.post('/api/users/sync', async (req, res) => {
         const body = req.body || {};
@@ -515,6 +545,12 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
                         warnings.push(...mirroredPush.warnings.map((item) => `[${mirrorLabel}] ${item}`));
                     }
                 }
+            }
+
+            try {
+                await ensureStandardCustomerDocumentFolders(canonicalCustomer || normalized);
+            } catch (folderError) {
+                warnings.push(`Cliente guardado, mas não foi possível criar/validar subpastas padrão: ${folderError?.message || folderError}`);
             }
 
             await writeAuditLog({
@@ -835,39 +871,78 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
         }
     });
 
-    // Fix #3: lock para evitar race condition entre auto-pull e sync manual simultâneos
-    let _pullSyncRunning = false;
+    // Lock para push-all (evita duplicação se chamado várias vezes seguidas)
+    let _pushAllRunning = false;
 
-    app.post('/api/customers/sync/pull', async (req, res) => {
-        const body = req.body || {};
-        const full = !!body.full;
-        const limit = Number(body.limit || 5000);
-        try {
-            if (!hasSupabaseCustomersSync()) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Supabase não configurado para clientes.',
-                });
-            }
-            if (_pullSyncRunning) {
-                return res.status(409).json({
-                    success: false,
-                    error: 'Sincronização já em curso. Aguarde o final antes de iniciar nova sincronização.',
-                });
-            }
-            _pullSyncRunning = true;
-            try {
-                const result = await pullCustomersFromSupabaseIncremental({ full, limit });
-                return res.json({ success: true, ...result });
-            } finally {
-                _pullSyncRunning = false;
-            }
-        } catch (error) {
-            _pullSyncRunning = false;
-            const details = error?.message || error;
-            console.error('[Sync] Erro no pull incremental de clientes:', details);
-            return res.status(500).json({ success: false, error: details });
+    app.post('/api/customers/sync/push-all', async (_req, res) => {
+        if (!hasSupabaseCustomersSync()) {
+            return res.status(400).json({ success: false, error: 'Supabase não configurado para clientes.' });
         }
+        if (_pushAllRunning) {
+            return res.status(409).json({ success: false, error: 'Push-all já em curso. Aguarde.' });
+        }
+        _pushAllRunning = true;
+        const startedAt = new Date().toISOString();
+        let synced = 0;
+        let failed = 0;
+        let skipped = 0;
+        const allWarnings = [];
+        const errors = [];
+        const isValidNif = (nif) => /^\d{9}$/.test(String(nif || '').trim());
+        try {
+            const tableColumns = await fetchSupabaseTableColumns(SUPABASE_CLIENTS_SOURCE);
+            const rows = await dbAllAsync('SELECT id, nif FROM customers ORDER BY COALESCE(company, name, nif, id)');
+            const total = rows.length;
+            for (const row of rows) {
+                const id = String(row?.id || '').trim();
+                if (!id) continue;
+                // Clientes sem NIF válido (contactos WA, internos, etc.) nunca sincronizam com Supabase.
+                if (!isValidNif(row?.nif)) {
+                    skipped++;
+                    continue;
+                }
+                try {
+                    const customer = await getLocalCustomerById(id);
+                    if (!customer) continue;
+                    const result = await pushLocalCustomerToSupabase(customer, tableColumns);
+                    const realWarnings = (result?.warnings || []).filter(
+                        (w) => !String(w).includes('Credenciais não sincronizadas')
+                    );
+                    if (realWarnings.length > 0) {
+                        allWarnings.push(...realWarnings.map((w) => `[${customer.nif || id}] ${w}`));
+                        failed++;
+                    } else {
+                        synced++;
+                    }
+                } catch (err) {
+                    failed++;
+                    errors.push(`[${id}] ${String(err?.message || err)}`);
+                }
+            }
+            await writeAuditLog({
+                actorUserId: null,
+                entityType: 'customers_push_all',
+                entityId: startedAt,
+                action: 'completed',
+                details: { startedAt, finishedAt: new Date().toISOString(), total, synced, skipped, failed },
+            });
+            return res.json({ success: true, total, synced, skipped, failed, warnings: allWarnings, errors });
+        } catch (error) {
+            const details = String(error?.message || error);
+            console.error('[Sync] Erro no push-all de clientes:', details);
+            return res.status(500).json({ success: false, error: details, synced, failed, warnings: allWarnings, errors });
+        } finally {
+            _pushAllRunning = false;
+        }
+    });
+
+    app.post('/api/customers/sync/pull', (_req, res) => {
+        // Pull do Supabase desativado: WA PRO é a única fonte de verdade.
+        // Supabase recebe dados DESTE programa — nunca o contrário.
+        return res.status(410).json({
+            success: false,
+            error: 'Pull de clientes do Supabase desativado. O WA PRO é a única fonte de verdade; os dados fluem apenas daqui para o Supabase.',
+        });
     });
 }
 

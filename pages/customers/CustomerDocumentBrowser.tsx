@@ -1,8 +1,8 @@
 import React from 'react';
-import { FileText, Folder, RefreshCw, Upload } from 'lucide-react';
+import { FileText, Folder, RefreshCw, Sparkles, Upload } from 'lucide-react';
 import type { CustomerDocumentEntry } from './hooks/useCustomerDocuments';
 
-type CustomerDocumentBrowserProps = {
+export type CustomerDocumentBrowserProps = {
   title: string;
   folderPath: string;
   fallbackFolderPath: string;
@@ -11,6 +11,7 @@ type CustomerDocumentBrowserProps = {
   configured: boolean;
   loading: boolean;
   uploading: boolean;
+  organizing?: boolean;
   error: string | null;
   entries: CustomerDocumentEntry[];
   canGoUp: boolean;
@@ -19,6 +20,7 @@ type CustomerDocumentBrowserProps = {
   itemKeyPrefix?: string;
   onRefresh: () => void;
   onGoUp: () => void;
+  onOrganize?: () => void;
   onTriggerUpload: () => void;
   onUpload: React.ChangeEventHandler<HTMLInputElement>;
   onOpenDirectory: (relativePath: string) => void;
@@ -42,6 +44,7 @@ export function CustomerDocumentBrowser({
   configured,
   loading,
   uploading,
+  organizing = false,
   error,
   entries,
   canGoUp,
@@ -50,6 +53,7 @@ export function CustomerDocumentBrowser({
   itemKeyPrefix = 'document',
   onRefresh,
   onGoUp,
+  onOrganize,
   onTriggerUpload,
   onUpload,
   onOpenDirectory,
@@ -80,10 +84,22 @@ export function CustomerDocumentBrowser({
           >
             ..
           </button>
+          {onOrganize && (
+            <button
+              type="button"
+              onClick={onOrganize}
+              disabled={organizing || loading}
+              className="px-2 py-1 text-xs border rounded-md bg-violet-50 text-violet-700 hover:bg-violet-100 disabled:opacity-40 inline-flex items-center gap-1"
+              title="Organizar pastas com IA"
+            >
+              <Sparkles size={13} />
+              {organizing ? 'A organizar...' : 'Organizar pastas'}
+            </button>
+          )}
           <button
             type="button"
             onClick={onTriggerUpload}
-            disabled={uploading}
+            disabled={uploading || organizing}
             className="px-2 py-1 text-xs border rounded-md bg-whatsapp-50 text-whatsapp-700 hover:bg-whatsapp-100 disabled:opacity-40 inline-flex items-center gap-1"
             title="Adicionar ficheiro"
           >

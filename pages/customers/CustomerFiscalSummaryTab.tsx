@@ -193,6 +193,8 @@ function fiscalFileUrl(customer: Customer, filePath?: string) {
   // Bug #12: rejeitar paths com traversal (../) para prevenir path injection
   if (raw.includes('..') || raw.includes('\0')) return '';
   const params = new URLSearchParams({ path: raw });
+  const nif = String((customer as any).nif || '').replace(/\D+/g, '').slice(-9);
+  if (nif) params.set('nif', nif);
   return `/api/customers/${encodeURIComponent((customer as any).id)}/fiscal-summary/file?${params.toString()}`;
 }
 

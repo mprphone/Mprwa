@@ -2,6 +2,8 @@
  * Obrigações Core Routes — extracted from importObrigacoesRoutes.js
  * Routes: DRI, DMR, SAFT core import + GOFF proxies (SAFT/DMR/DRI/IVA)
  */
+const { internalApiHeaders } = require('../../src/server/utils/internalApi');
+
 function registerObrigacoesCoreRoutes(context) {
     const {
         app, axios, DRI_OBRIGACAO_ID, DMR_OBRIGACAO_ID, SAFT_OBRIGACAO_ID,
@@ -1199,7 +1201,7 @@ function registerObrigacoesCoreRoutes(context) {
                 `http://127.0.0.1:${PORT}/api/import/obrigacoes/saft`,
                 payload,
                 {
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: internalApiHeaders({ 'Content-Type': 'application/json' }),
                     timeout: 10 * 60 * 1000,
                     validateStatus: () => true,
                 }
@@ -1230,7 +1232,7 @@ function registerObrigacoesCoreRoutes(context) {
                 `http://127.0.0.1:${PORT}/api/import/obrigacoes/dmr`,
                 payload,
                 {
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: internalApiHeaders({ 'Content-Type': 'application/json' }),
                     timeout: 10 * 60 * 1000,
                     validateStatus: () => true,
                 }
@@ -1261,7 +1263,7 @@ function registerObrigacoesCoreRoutes(context) {
                 `http://127.0.0.1:${PORT}/api/import/obrigacoes/dri`,
                 payload,
                 {
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: internalApiHeaders({ 'Content-Type': 'application/json' }),
                     timeout: 10 * 60 * 1000,
                     validateStatus: () => true,
                 }

@@ -1154,7 +1154,8 @@ Regras:
         if (raw.includes('empre') || raw.includes('socied')) return 'SOCIEDADE';
         if (raw.includes('particular') || raw.includes('private')) return 'PARTICULAR';
         // Evita enviar valor inválido para enum do Supabase (ex.: ENI quando não existe no enum remoto).
-        if (raw.includes('indep') || raw.includes('eni') || raw.includes('nome individual')) return '';
+        if (raw.includes('indep') || raw.includes('eni') || raw.includes('nome individual')) return 'INDEPENDENTE';
+        if (raw.includes('assoc')) return 'ASSOCIACAO';
         if (raw.includes('public')) return 'ENTIDADE_PUBLICA';
         if (raw.includes('fornec') || raw.includes('supplier')) return 'FORNECEDOR';
         if (raw.includes('spam')) return 'SPAM';
@@ -1814,6 +1815,15 @@ Regras:
             if (!col) return;
             payload[col] = value;
         };
+        // Escreve para TODOS os candidatos que existam na tabela (para campos com nomes alternativos em sistemas distintos).
+        const setAllMatchingColumns = (candidates, value) => {
+            if (value === undefined) return;
+            for (const candidate of candidates) {
+                if (Array.isArray(tableColumns) && tableColumns.includes(candidate)) {
+                    payload[candidate] = value;
+                }
+            }
+        };
 
         setIfColumnExists(['name', 'nome', 'cliente', 'full_name'], localCustomer?.name || '');
         setIfColumnExists(['company', 'empresa', 'organization', 'entidade'], localCustomer?.company || localCustomer?.name || '');
@@ -1861,7 +1871,8 @@ Regras:
         setIfColumnExists(['password_viactt', 'senha_viactt'], viaCttCredential?.password || null);
         setIfColumnExists(['utilizador_iapmei', 'username_iapmei', 'user_iapmei'], iapmeiCredential?.username || null);
         setIfColumnExists(['password_iapmei', 'senha_iapmei'], iapmeiCredential?.password || null);
-        setIfColumnExists(
+        // Escreve para todos os nomes possíveis do campo IVA (regime_iva para WA PRO, periodicidade_iva para AEF).
+        setAllMatchingColumns(
             ['tipo_iva', 'tipoiva', 'iva_tipo', 'regime_iva', 'periodicidade_iva', 'iva_periodicidade'],
             normalizeLocalTipoIvaToSupabase(localCustomer?.tipoIva)
         );
@@ -1881,8 +1892,9 @@ Regras:
         setIfColumnExists(['cae_principal', 'cae'], localCustomer?.caePrincipal || null);
         setIfColumnExists(['cae_descricao'], localCustomer?.caeDescricao || null);
         setIfColumnExists(['codigo_reparticao_financas', 'reparticao_financas'], localCustomer?.codigoReparticaoFinancas || null);
-        setIfColumnExists(
-            ['tipo_contabilidade'],
+        // Escreve para tipo_contabilidade (Supabase nativo) e regime_fiscal (usado pelo AEF).
+        setAllMatchingColumns(
+            ['tipo_contabilidade', 'regime_fiscal'],
             normalizeLocalTipoContabilidadeToSupabase(localCustomer?.tipoContabilidade)
         );
         setIfColumnExists(

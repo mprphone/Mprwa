@@ -24,6 +24,7 @@ export enum TaskPriority {
 export enum CustomerType {
   ENTERPRISE = 'Empresa',
   INDEPENDENT = 'Independente',
+  ASSOCIATION = 'Associação',
   SUPPLIER = 'Fornecedor',
   PRIVATE = 'Particular',
   PUBLIC_SERVICE = 'Serviços Públicos',

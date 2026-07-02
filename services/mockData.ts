@@ -1128,6 +1128,31 @@ class MockService {
   }
 
   async authenticateUser(email: string, password: string): Promise<{ success: boolean; error?: string }> {
+    if (this.isBrowser()) {
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const payload = await response.json().catch(() => ({})) as {
+          success?: boolean;
+          error?: string;
+          user?: { id?: string };
+        };
+        if (response.ok && payload.success) {
+          const userId = String(payload.user?.id || '').trim();
+          if (userId) this.setSessionUserId(userId);
+          return { success: true };
+        }
+        if (response.status === 401) {
+          return { success: false, error: payload.error || 'Não foi possível autenticar.' };
+        }
+      } catch {
+        // Compatibilidade com servidores antigos/desktop offline: cai no fluxo legado abaixo.
+      }
+    }
+
     await this.ensureSupabaseImport();
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -1158,6 +1183,9 @@ class MockService {
   }
 
   logoutUser() {
+    if (this.isBrowser()) {
+      fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
+    }
     this.setSessionUserId('');
   }
 
@@ -1701,15 +1729,9 @@ class MockService {
               this.customers[idx] = nextCustomer;
             }
 
-            // Recarrega após guardar para refletir atualizações espelho (relações bidirecionais)
-            // feitas no backend em outras fichas além da que foi editada.
-            try {
-              this.supabaseImportDone = false;
-              this.supabaseImportPromise = null;
-              await this.ensureSupabaseImport();
-            } catch (refreshError) {
-              console.warn('[Customers] Falha ao recarregar lista após update:', refreshError);
-            }
+            // Marca para recarregar da SQLite local na próxima navegação.
+            this.supabaseImportDone = false;
+            this.supabaseImportPromise = null;
           } else {
             this.customers[idx] = nextCustomer;
           }
@@ -1857,6 +1879,201 @@ class MockService {
       folderPath: String(payload.folderPath || ''),
       relativePath: String(payload.relativePath || file.name),
       fullPath: String(payload.fullPath || ''),
+    };
+  }
+
+  async organizeCustomerDocuments(customerId: string, options: {
+    maxAiDocuments?: number;
+    maxFiles?: number;
+    maxLegacyFolders?: number;
+    maxEmptyFolders?: number;
+    maxFilesPerLegacyFolder?: number;
+    compareExistingDuplicates?: boolean;
+    dryRun?: boolean;
+    renameOnly?: boolean;
+  } = {}): Promise<{
+    dryRun: boolean;
+    scannedCount: number;
+    truncated: boolean;
+    movedCount: number;
+    repeatedCount: number;
+    expiredCount: number;
+    aiReadCount: number;
+    aiCacheHitCount: number;
+    aiRenamedCount: number;
+    movedLegacyFoldersCount: number;
+    movedLegacyFolders: string[];
+    removedEmptyFoldersCount: number;
+    removedEmptyFolders: string[];
+    fiscalUpdates: Array<{ file: string; fields: string[] }>;
+    moved: Array<{ from: string; to: string; reason: string; type: string }>;
+    wouldMove: Array<{ from: string; to: string; reason: string; type: string }>;
+    undoAvailable: boolean;
+    warnings: string[];
+  }> {
+    if (!this.isBrowser()) {
+      throw new Error('Organização disponível apenas no browser.');
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 120000);
+    let response: Response;
+    try {
+      response = await fetch(`/api/customers/${encodeURIComponent(customerId)}/documents/organize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          maxAiDocuments: Math.max(0, Math.min(25, Number(options.maxAiDocuments ?? 3) || 0)),
+          maxFiles: Math.max(1, Math.min(500, Number(options.maxFiles ?? 40) || 40)),
+          maxLegacyFolders: Math.max(0, Math.min(10, Number(options.maxLegacyFolders ?? 2) || 0)),
+          maxEmptyFolders: Math.max(0, Math.min(200, Number(options.maxEmptyFolders ?? 25) || 0)),
+          maxFilesPerLegacyFolder: Math.max(1, Math.min(40, Number(options.maxFilesPerLegacyFolder ?? 10) || 10)),
+          compareExistingDuplicates: options.compareExistingDuplicates !== false,
+          dryRun: options.dryRun === true,
+          renameOnly: options.renameOnly === true,
+        }),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw new Error('A organização demorou demasiado e foi interrompida. Tenta novamente; os documentos já analisados ficam em cache.');
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+    const payload = await response.json().catch(() => ({})) as {
+      success?: boolean;
+      dryRun?: boolean;
+      scannedCount?: number;
+      truncated?: boolean;
+      movedCount?: number;
+      wouldMoveCount?: number;
+      repeatedCount?: number;
+      expiredCount?: number;
+      aiReadCount?: number;
+      aiCacheHitCount?: number;
+      aiRenamedCount?: number;
+      movedLegacyFoldersCount?: number;
+      movedLegacyFolders?: Array<{ from?: string; to?: string; reason?: string } | string>;
+      removedEmptyFoldersCount?: number;
+      removedEmptyFolders?: string[];
+      fiscalUpdates?: Array<{ file?: string; fields?: string[] }>;
+      moved?: Array<{ from?: string; to?: string; reason?: string; type?: string }>;
+      wouldMove?: Array<{ from?: string; to?: string; reason?: string; type?: string }>;
+      undoAvailable?: boolean;
+      warnings?: string[];
+      error?: unknown;
+    };
+
+    if (!response.ok || !payload.success) {
+      const errorText =
+        typeof payload.error === 'string'
+          ? payload.error
+          : payload.error
+            ? JSON.stringify(payload.error)
+            : `Falha ao organizar documentos (${response.status}).`;
+      throw new Error(errorText);
+    }
+
+    const normalizeMovements = (arr: unknown): Array<{ from: string; to: string; reason: string; type: string }> =>
+      Array.isArray(arr)
+        ? arr.map((item) => ({
+            from: String((item as { from?: string }).from || ''),
+            to: String((item as { to?: string }).to || ''),
+            reason: String((item as { reason?: string }).reason || ''),
+            type: String((item as { type?: string }).type || ''),
+          })).filter((m) => m.from || m.to)
+        : [];
+
+    return {
+      dryRun: Boolean(payload.dryRun),
+      scannedCount: Number(payload.scannedCount || 0),
+      truncated: Boolean(payload.truncated),
+      movedCount: Number(payload.movedCount ?? payload.wouldMoveCount ?? 0),
+      repeatedCount: Number(payload.repeatedCount || 0),
+      expiredCount: Number(payload.expiredCount || 0),
+      aiReadCount: Number(payload.aiReadCount || 0),
+      aiCacheHitCount: Number(payload.aiCacheHitCount || 0),
+      aiRenamedCount: Number(payload.aiRenamedCount || 0),
+      movedLegacyFoldersCount: Number(payload.movedLegacyFoldersCount || 0),
+      movedLegacyFolders: Array.isArray(payload.movedLegacyFolders)
+        ? payload.movedLegacyFolders.map((item) => {
+            if (typeof item === 'string') return item;
+            return `${String(item.from || '')} → ${String(item.to || '')}`.trim();
+          }).filter(Boolean)
+        : [],
+      removedEmptyFoldersCount: Number(payload.removedEmptyFoldersCount || 0),
+      removedEmptyFolders: Array.isArray(payload.removedEmptyFolders) ? payload.removedEmptyFolders.map((item) => String(item || '')).filter(Boolean) : [],
+      fiscalUpdates: Array.isArray(payload.fiscalUpdates)
+        ? payload.fiscalUpdates.map((item) => ({
+            file: String(item.file || ''),
+            fields: Array.isArray(item.fields) ? item.fields.map((field) => String(field || '')).filter(Boolean) : [],
+          }))
+        : [],
+      moved: normalizeMovements(payload.moved),
+      wouldMove: normalizeMovements(payload.wouldMove ?? payload.moved),
+      undoAvailable: Boolean(payload.undoAvailable),
+      warnings: Array.isArray(payload.warnings) ? payload.warnings.map((item) => String(item || '')).filter(Boolean) : [],
+    };
+  }
+
+  async undoOrganizeCustomerDocuments(customerId: string): Promise<{
+    revertedCount: number;
+    skippedCount: number;
+    reverted: Array<{ from: string; to: string }>;
+    skipped: Array<{ from?: string; to?: string; reason: string }>;
+    warnings: string[];
+  }> {
+    if (!this.isBrowser()) {
+      throw new Error('Anulação disponível apenas no browser.');
+    }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 60000);
+    let response: Response;
+    try {
+      response = await fetch(`/api/customers/${encodeURIComponent(customerId)}/documents/organize/undo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({}),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw new Error('A anulação demorou demasiado e foi interrompida.');
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+    const payload = await response.json().catch(() => ({})) as {
+      success?: boolean;
+      revertedCount?: number;
+      skippedCount?: number;
+      reverted?: Array<{ from?: string; to?: string }>;
+      skipped?: Array<{ from?: string; to?: string; reason?: string }>;
+      warnings?: string[];
+      error?: unknown;
+    };
+    if (!response.ok || !payload.success) {
+      const errorText =
+        typeof payload.error === 'string'
+          ? payload.error
+          : payload.error
+            ? JSON.stringify(payload.error)
+            : `Falha ao anular organização (${response.status}).`;
+      throw new Error(errorText);
+    }
+    return {
+      revertedCount: Number(payload.revertedCount || 0),
+      skippedCount: Number(payload.skippedCount || 0),
+      reverted: Array.isArray(payload.reverted)
+        ? payload.reverted.map((r) => ({ from: String(r.from || ''), to: String(r.to || '') }))
+        : [],
+      skipped: Array.isArray(payload.skipped)
+        ? payload.skipped.map((s) => ({ from: String(s.from || ''), to: String(s.to || ''), reason: String(s.reason || '') }))
+        : [],
+      warnings: Array.isArray(payload.warnings) ? payload.warnings.map((w) => String(w || '')).filter(Boolean) : [],
     };
   }
 

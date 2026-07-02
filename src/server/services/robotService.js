@@ -39,12 +39,17 @@ function createRobotService(deps) {
             String(month),
             '--email',
             saftEmail,
-            '--password',
-            saftPassword,
         ];
 
         const rawResult = await new Promise((resolve, reject) => {
-            const child = spawn('node', args, { cwd: baseDir });
+            const child = spawn('node', args, {
+                cwd: baseDir,
+                env: {
+                    ...process.env,
+                    SAFT_PASSWORD: saftPassword,
+                    Senha_saft: saftPassword,
+                },
+            });
             let stdout = '';
             let stderr = '';
 
@@ -97,8 +102,6 @@ function createRobotService(deps) {
             normalizedMode,
             '--email',
             goffEmail,
-            '--password',
-            goffPassword,
         ];
         if (year !== undefined && year !== null) {
             args.push('--year', String(year));
@@ -114,7 +117,14 @@ function createRobotService(deps) {
         }
 
         const rawResult = await new Promise((resolve, reject) => {
-            const child = spawn('node', args, { cwd: baseDir });
+            const child = spawn('node', args, {
+                cwd: baseDir,
+                env: {
+                    ...process.env,
+                    SENHA_GOFF: goffPassword,
+                    Senha_goff: goffPassword,
+                },
+            });
             let stdout = '';
             let stderr = '';
             child.stdout.on('data', (chunk) => {

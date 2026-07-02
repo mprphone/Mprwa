@@ -17,7 +17,6 @@ function createConversationRepository(deps) {
         isBaileysProviderEnabled,
         BAILEYS_ACCOUNTS_BY_ID,
         ACTIVE_BAILEYS_DEFAULT_ACCOUNT_ID,
-        ACTIVE_BAILEYS_NAME_CONFLICT_ACCOUNT_ID,
     } = deps;
 
     function normalizeConversationStatus(value) {
@@ -336,21 +335,12 @@ function createConversationRepository(deps) {
         return false;
     }
 
-    async function resolveOutboundAccountIdForPhone(rawPhone, preferredAccountId = '') {
+    async function resolveOutboundAccountIdForPhone(_rawPhone, preferredAccountId = '') {
         const baseAccountId = resolveConversationAccountId(preferredAccountId);
         if (!isBaileysProviderEnabled()) return baseAccountId;
-
-        try {
-            const hasNameConflict = await hasDifferentCustomerNamesForPhone(rawPhone);
-            if (!hasNameConflict) return baseAccountId;
-            return ACTIVE_BAILEYS_NAME_CONFLICT_ACCOUNT_ID;
-        } catch (error) {
-            logChatCore('name_conflict_account_resolve_error', {
-                phone: String(rawPhone || '').replace(/\D/g, ''),
-                error: String(error?.message || error),
-            });
-            return baseAccountId;
-        }
+        // Em caso de dúvida usa sempre o número 1 (default).
+        // O accountId explícito da conversa é respeitado; sem ele, nunca desviar para outro número.
+        return baseAccountId;
     }
 
     async function setConversationWhatsAppAccount(conversationId, rawAccountId) {

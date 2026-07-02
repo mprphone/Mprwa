@@ -7,7 +7,7 @@ const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
 
-const { cleanText, normalizeDateToIso } = require('../../shared/textHelpers');
+const { cleanText, normalizeDateToIso, certidaoValidUntil } = require('../../shared/textHelpers');
 const { buildFiscalDownloadPath, uniquePath } = require('../../documents/documentNamingService');
 
 async function extractPdfText(filePath) {
@@ -427,9 +427,7 @@ async function collectCertidaoAtAfterFinancasLogin(page, customer, options = {})
         const semDivida = detectSemDivida(pdfText);
         const comDivida = detectComDivida(pdfText);
         trace('PDF text semDivida:', semDivida, 'comDivida:', comDivida);
-        const validUntil = new Date();
-        validUntil.setMonth(validUntil.getMonth() + 4);
-        const dataValidade = validUntil.toISOString().slice(0, 10);
+        const dataValidade = certidaoValidUntil(pdfText, 4);
         return {
             status: 'completed',
             ficheiroPdf: consultaPdf,
@@ -464,12 +462,10 @@ async function collectCertidaoAtAfterFinancasLogin(page, customer, options = {})
             const pdfText = await extractPdfText(retryPdf);
             const semDivida = detectSemDivida(pdfText);
             const comDivida = detectComDivida(pdfText);
-            const validUntilRetry = new Date();
-            validUntilRetry.setMonth(validUntilRetry.getMonth() + 4);
             return {
                 status: 'completed',
                 ficheiroPdf: retryPdf,
-                dataValidade: validUntilRetry.toISOString().slice(0, 10),
+                dataValidade: certidaoValidUntil(pdfText, 4),
                 valida: true,
                 semDivida,
                 comDivida,

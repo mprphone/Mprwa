@@ -151,6 +151,14 @@ function formatEuroCompact(value: number): string {
   return new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(value || 0);
 }
 
+function formatEuroFull(value: number): string {
+  return new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value || 0);
+}
+
+function normalizeMoneyText(value: string): string {
+  return String(value || '').replace(/[€]/g, '').trimStart();
+}
+
 function formatDateShort(value: string): string {
   if (!value) return '--';
   const date = new Date(`${value}T00:00:00`);
@@ -2090,14 +2098,15 @@ const SimpleListEditor: React.FC<{
             type="text"
             placeholder="Valor"
             value={row.valor}
-            onChange={(e) => onChange(index, 'valor', e.target.value)}
-            className="md:col-span-2 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            onChange={(e) => onChange(index, 'valor', normalizeMoneyText(e.target.value))}
+            onBlur={(e) => onChange(index, 'valor', e.target.value ? formatEuroFull(parseAmountText(e.target.value)) : '')}
+            className="md:col-span-2 rounded-lg border border-slate-300 px-3 py-2 text-right text-sm"
           />
           <input
             type="date"
             value={row.data}
             onChange={(e) => onChange(index, 'data', e.target.value)}
-            className="md:col-span-3 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="md:col-span-3 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm"
           />
           <button type="button" onClick={() => onRemove(index)} className="md:col-span-1 rounded-lg border border-red-200 px-2 py-2 text-xs text-red-700 hover:bg-red-50">
             Remover
@@ -2105,6 +2114,15 @@ const SimpleListEditor: React.FC<{
         </div>
       ))}
       {rows.length === 0 && <p className="text-xs text-slate-500">Sem linhas.</p>}
+      {rows.length > 0 && (
+        <div className="grid grid-cols-1 gap-2 border-t border-slate-200 pt-2 md:grid-cols-12">
+          <div className="md:col-span-6 px-3 py-2 text-right text-sm font-semibold text-slate-700">Total</div>
+          <div className="md:col-span-2 rounded-lg bg-slate-50 px-3 py-2 text-right text-sm font-semibold text-slate-800">
+            {formatEuroFull(rows.reduce((sum, row) => sum + parseAmountText(row.valor), 0))}
+          </div>
+          <div className="md:col-span-4" />
+        </div>
+      )}
     </div>
   </div>
 );
@@ -2120,18 +2138,36 @@ const TrackedListView: React.FC<{
       {rows.map((row, index) => (
         <div key={`${title}-${index}`} className="grid grid-cols-1 gap-2 md:grid-cols-12">
           <input type="text" value={row.designacao} readOnly className="md:col-span-5 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm" />
-          <input type="text" value={row.valor} readOnly className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm" />
-          <input type="date" value={row.data} readOnly className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm" />
+          <input
+            type="text"
+            value={row.valor ? formatEuroFull(parseAmountText(row.valor)) : ''}
+            readOnly
+            className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-right text-sm"
+          />
+          <input type="date" value={row.data} readOnly className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-center text-sm" />
           <input
             type="text"
             placeholder="Realizado"
             value={row.realizado}
-            onChange={(e) => onChangeRealizado(index, e.target.value)}
-            className="md:col-span-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            onChange={(e) => onChangeRealizado(index, normalizeMoneyText(e.target.value))}
+            onBlur={(e) => onChangeRealizado(index, e.target.value ? formatEuroFull(parseAmountText(e.target.value)) : '')}
+            className="md:col-span-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-right text-sm"
           />
         </div>
       ))}
       {rows.length === 0 && <p className="text-xs text-slate-500">Sem linhas importadas da candidatura.</p>}
+      {rows.length > 0 && (
+        <div className="grid grid-cols-1 gap-2 border-t border-slate-200 pt-2 md:grid-cols-12">
+          <div className="md:col-span-5 px-3 py-2 text-right text-sm font-semibold text-slate-700">Total</div>
+          <div className="md:col-span-2 rounded-lg bg-slate-50 px-3 py-2 text-right text-sm font-semibold text-slate-800">
+            {formatEuroFull(rows.reduce((sum, row) => sum + parseAmountText(row.valor), 0))}
+          </div>
+          <div className="md:col-span-2" />
+          <div className="md:col-span-3 rounded-lg bg-slate-50 px-3 py-2 text-right text-sm font-semibold text-slate-800">
+            {formatEuroFull(rows.reduce((sum, row) => sum + parseAmountText(row.realizado), 0))}
+          </div>
+        </div>
+      )}
     </div>
   </div>
 );

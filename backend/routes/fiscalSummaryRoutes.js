@@ -238,16 +238,62 @@ function registerFiscalSummaryRoutes({ app, dbRunAsync, dbGetAsync, dbAllAsync, 
         return mergeFiscalSummaryData(safeJsonParse(row?.data, {}));
     }
 
-    async function readCustomer(customerId) {
+    async function readCustomer(customerId, fallbackNif = '') {
         await tablesReady;
-        const row = await dbGetAsync(
+        let row = await dbGetAsync(
             'SELECT id, name, nif, niss, type, documents_folder AS documentsFolder, customer_profile_json AS customerProfileJson FROM customers WHERE id = ?',
             [customerId]
         ).catch(() => null);
+        const nifDigits = String(fallbackNif || '').replace(/\D+/g, '').slice(-9);
+        if (!row && nifDigits) {
+            row = await dbGetAsync(
+                `SELECT id, name, nif, niss, type, documents_folder AS documentsFolder, customer_profile_json AS customerProfileJson
+                 FROM customers
+                 WHERE replace(replace(replace(coalesce(nif, ''), ' ', ''), '-', ''), '.', '') = ?
+                 LIMIT 1`,
+                [nifDigits]
+            ).catch(() => null);
+        }
         if (!row) return null;
         let profile = {};
         try { profile = JSON.parse(row.customerProfileJson || '{}'); } catch (_) {}
         return { ...row, certidaoPermanenteNumero: profile.certidaoPermanenteNumero || '', customerProfileJson: undefined };
+    }
+
+    async function findFiscalFileByBasename(rootFolder, requestedPath) {
+        const wanted = path.basename(String(requestedPath || '').trim());
+        if (!wanted || wanted === '.' || wanted === path.sep) return null;
+        const root = path.resolve(rootFolder);
+        const preferredFolders = ['Resumo Fiscal', 'Documentos Oficiais', 'Obrigações Fiscais', 'Documentos Caducados', 'Documentos Repetidos'];
+        const visited = new Set();
+
+        async function walk(currentFolder, depth = 0) {
+            const resolvedFolder = path.resolve(currentFolder);
+            if (visited.has(resolvedFolder) || depth > 6) return null;
+            visited.add(resolvedFolder);
+            let entries = [];
+            try {
+                entries = await fs.promises.readdir(resolvedFolder, { withFileTypes: true });
+            } catch (_) {
+                return null;
+            }
+            for (const entry of entries) {
+                const fullPath = path.join(resolvedFolder, entry.name);
+                if (entry.isFile() && entry.name === wanted) return fullPath;
+            }
+            for (const entry of entries) {
+                if (!entry.isDirectory()) continue;
+                const found = await walk(path.join(resolvedFolder, entry.name), depth + 1);
+                if (found) return found;
+            }
+            return null;
+        }
+
+        for (const folder of preferredFolders) {
+            const found = await walk(path.join(root, folder), 0);
+            if (found) return found;
+        }
+        return walk(root, 0);
     }
 
     async function writeSummary(customerId, updater) {
@@ -499,17 +545,34 @@ function registerFiscalSummaryRoutes({ app, dbRunAsync, dbGetAsync, dbAllAsync, 
                 return res.status(400).json({ success: false, error: 'Ficheiro fiscal inválido.' });
             }
 
-            const customer = await readCustomer(customerId);
+            const customer = await readCustomer(customerId, req.query.nif);
             if (!customer) {
                 return res.status(404).json({ success: false, error: 'Cliente não encontrado.' });
             }
 
-            const fullPath = resolveFiscalFilePath(customer, requestedPath);
+            const rootFolder = resolveCustomerDocumentsFolder(customer);
+            let fullPath = resolveFiscalFilePath(customer, requestedPath);
+            let stat = null;
             if (!fullPath) {
-                return res.status(400).json({ success: false, error: 'Ficheiro fora da pasta do cliente.' });
+                const fallbackPath = await findFiscalFileByBasename(rootFolder, requestedPath);
+                if (fallbackPath) {
+                    fullPath = fallbackPath;
+                    stat = await fs.promises.stat(fullPath).catch(() => null);
+                } else {
+                    return res.status(400).json({ success: false, error: 'Ficheiro fora da pasta do cliente.' });
+                }
             }
 
-            const stat = await fs.promises.stat(fullPath).catch(() => null);
+            if (!stat) {
+                stat = await fs.promises.stat(fullPath).catch(() => null);
+            }
+            if (!stat || !stat.isFile()) {
+                const fallbackPath = await findFiscalFileByBasename(rootFolder, requestedPath);
+                if (fallbackPath) {
+                    fullPath = fallbackPath;
+                    stat = await fs.promises.stat(fullPath).catch(() => null);
+                }
+            }
             if (!stat || !stat.isFile()) {
                 return res.status(404).json({ success: false, error: 'Ficheiro não encontrado.' });
             }

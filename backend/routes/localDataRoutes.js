@@ -2748,6 +2748,11 @@ function registerLocalDataRoutes(context) {
         if (supabasePedidosStatusWatcherBootstrapped) return;
         supabasePedidosStatusWatcherBootstrapped = true;
         if (!SUPABASE_URL || !SUPABASE_KEY) return;
+        const pollEnabled = String(process.env.SUPABASE_PEDIDOS_STATUS_POLL_ENABLED ?? 'true').trim().toLowerCase();
+        if (pollEnabled === 'false' || pollEnabled === '0') {
+            console.log('[Pedidos Sync] Polling desativado (SUPABASE_PEDIDOS_STATUS_POLL_ENABLED=false).');
+            return;
+        }
 
         const intervalRaw = Number(process.env.SUPABASE_PEDIDOS_STATUS_POLL_MS || 45000);
         const intervalMs = Number.isFinite(intervalRaw)

@@ -425,8 +425,6 @@ function createSaftService(deps) {
             scriptPath,
             '--email',
             SAFT_EMAIL,
-            '--password',
-            SAFT_PASSWORD,
             '--nif',
             String(customer?.nif || ''),
             '--document',
@@ -436,7 +434,14 @@ function createSaftService(deps) {
         ];
 
         const result = await new Promise((resolve, reject) => {
-            const child = spawn('node', args, { cwd: baseDir });
+            const child = spawn('node', args, {
+                cwd: baseDir,
+                env: {
+                    ...process.env,
+                    SAFT_PASSWORD,
+                    Senha_saft: SAFT_PASSWORD,
+                },
+            });
             let stdout = '';
             let stderr = '';
 
@@ -501,8 +506,6 @@ function createSaftService(deps) {
             scriptPath,
             '--email',
             SAFT_EMAIL,
-            '--password',
-            SAFT_PASSWORD,
             '--nif',
             String(customer?.nif || ''),
             '--document',
@@ -514,7 +517,14 @@ function createSaftService(deps) {
         ];
 
         const result = await new Promise((resolve, reject) => {
-            const child = spawn('node', args, { cwd: baseDir });
+            const child = spawn('node', args, {
+                cwd: baseDir,
+                env: {
+                    ...process.env,
+                    SAFT_PASSWORD,
+                    Senha_saft: SAFT_PASSWORD,
+                },
+            });
             let stdout = '';
             let stderr = '';
 

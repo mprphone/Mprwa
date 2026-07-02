@@ -73,6 +73,7 @@ const {
 } = require('./src/server/utils/obrigacoes');
 const { getCustomerSecretsKey, encryptCustomerSecret, decryptCustomerSecret } = require('./src/server/utils/crypto');
 const { createMappers } = require('./src/server/utils/mappers');
+const { internalApiHeaders } = require('./src/server/utils/internalApi');
 const { createTaskRepository } = require('./src/server/repositories/taskRepository');
 const { createConversationRepository } = require('./src/server/repositories/conversationRepository');
 const { createMessageService } = require('./src/server/services/messageService');
@@ -210,6 +211,7 @@ const SAFT_BUNKER_FALLBACK_ROOT = path.resolve(path.join(LOCAL_DOCS_ROOT, '_saft
 const CUSTOMER_TYPES = {
     ENTERPRISE: 'Empresa',
     INDEPENDENT: 'Independente',
+    ASSOCIATION: 'Associação',
     SUPPLIER: 'Fornecedor',
     PRIVATE: 'Particular',
     PUBLIC_SERVICE: 'Serviços Públicos',
@@ -249,6 +251,7 @@ async function proxyToChatCore(req, res) {
     delete requestHeaders.host;
     delete requestHeaders.connection;
     delete requestHeaders['content-length'];
+    Object.assign(requestHeaders, internalApiHeaders());
 
     const isStreamRequest = req.path === '/api/chat/stream';
     const isMediaProxyRequest =
@@ -385,6 +388,181 @@ const {
     normalizeRole,
     defaultAvatar: DEFAULT_AVATAR,
 });
+
+const AUTH_SESSION_TTL_MS = Math.max(
+    5 * 60 * 1000,
+    Number(process.env.AUTH_SESSION_TTL_HOURS || 12) * 60 * 60 * 1000
+);
+const AUTH_COOKIE_NAME = String(process.env.AUTH_COOKIE_NAME || 'wa_pro_session').trim() || 'wa_pro_session';
+const AUTH_SECRET = String(process.env.AUTH_SECRET || process.env.SESSION_SECRET || '').trim() ||
+    crypto.createHash('sha256').update(`${dbPath}:${process.cwd()}:wa-pro-auth`).digest('hex');
+const INTERNAL_API_KEY = String(process.env.INTERNAL_API_KEY || process.env.WA_INTERNAL_API_KEY || '').trim();
+const REQUIRE_API_AUTH = String(process.env.REQUIRE_API_AUTH || 'true').trim().toLowerCase() !== 'false';
+const ALLOW_LOCAL_API_WITHOUT_AUTH = String(process.env.ALLOW_LOCAL_API_WITHOUT_AUTH || 'true').trim().toLowerCase() !== 'false';
+const authSessions = new Map();
+
+function parseCookies(headerValue) {
+    const cookies = {};
+    String(headerValue || '').split(';').forEach((part) => {
+        const index = part.indexOf('=');
+        if (index < 0) return;
+        const key = part.slice(0, index).trim();
+        if (!key) return;
+        cookies[key] = decodeURIComponent(part.slice(index + 1).trim());
+    });
+    return cookies;
+}
+
+function signAuthValue(value) {
+    return crypto.createHmac('sha256', AUTH_SECRET).update(String(value || '')).digest('base64url');
+}
+
+function createSessionToken(user) {
+    const sessionId = crypto.randomBytes(24).toString('base64url');
+    const expiresAt = Date.now() + AUTH_SESSION_TTL_MS;
+    authSessions.set(sessionId, {
+        userId: String(user.id || '').trim(),
+        email: String(user.email || '').trim().toLowerCase(),
+        role: String(user.role || '').trim(),
+        expiresAt,
+    });
+    return `${sessionId}.${signAuthValue(sessionId)}`;
+}
+
+function getSessionFromToken(rawToken) {
+    const token = String(rawToken || '').trim();
+    const [sessionId, signature] = token.split('.');
+    if (!sessionId || !signature || signAuthValue(sessionId) !== signature) return null;
+    const session = authSessions.get(sessionId);
+    if (!session) return null;
+    if (Date.now() > Number(session.expiresAt || 0)) {
+        authSessions.delete(sessionId);
+        return null;
+    }
+    return { ...session, sessionId };
+}
+
+function clearSessionToken(rawToken) {
+    const token = String(rawToken || '').trim();
+    const [sessionId] = token.split('.');
+    if (sessionId) authSessions.delete(sessionId);
+}
+
+function readAuthToken(req) {
+    const authHeader = String(req.headers.authorization || '').trim();
+    if (/^Bearer\s+/i.test(authHeader)) return authHeader.replace(/^Bearer\s+/i, '').trim();
+    return parseCookies(req.headers.cookie || '')[AUTH_COOKIE_NAME] || '';
+}
+
+function isLocalRequest(req) {
+    const candidates = [
+        req.ip,
+        req.socket?.remoteAddress,
+        req.connection?.remoteAddress,
+    ].map((value) => String(value || '').trim());
+    return candidates.some((value) => (
+        value === '127.0.0.1' ||
+        value === '::1' ||
+        value === '::ffff:127.0.0.1' ||
+        value === 'localhost'
+    ));
+}
+
+function isPublicApiPath(pathname) {
+    const pathValue = String(pathname || '');
+    if (pathValue === '/api/auth/login' || pathValue === '/api/auth/logout' || pathValue === '/api/auth/me') return true;
+    if (pathValue === '/api/webhook' || pathValue === '/api/chat/health' || pathValue === '/api/health') return true;
+    if (pathValue.startsWith('/api/desktop/updates') || pathValue.startsWith('/api/desktop/download')) return true;
+    if (pathValue.startsWith('/api/fiscal-email-track/') || pathValue.startsWith('/api/simulators/email-track/')) return true;
+    if (pathValue === '/api/notify/imi' || pathValue === '/api/notify/iuc') return true;
+    return false;
+}
+
+async function authenticateUserForSession(email, password) {
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const normalizedPassword = String(password || '').trim();
+    if (!normalizedEmail || !normalizedPassword) {
+        return { success: false, error: 'Email e palavra-passe sao obrigatorios.' };
+    }
+
+    const users = await getAllLocalUsers();
+    const matches = users.filter((user) => String(user.email || '').trim().toLowerCase() === normalizedEmail);
+    if (matches.length === 0) return { success: false, error: 'Email nao encontrado.' };
+    const user = matches.find((candidate) => String(candidate.role || '').toUpperCase() === 'ADMIN') || matches[0];
+    const storedPassword = String(user.password || '').trim();
+    if (!storedPassword) return { success: false, error: 'Este funcionario nao tem palavra-passe definida.' };
+    if (storedPassword !== normalizedPassword) return { success: false, error: 'Palavra-passe incorreta.' };
+    return { success: true, user };
+}
+
+function registerAuthRoutes() {
+    app.post('/api/auth/login', async (req, res) => {
+        try {
+            const result = await authenticateUserForSession(req.body?.email, req.body?.password);
+            if (!result.success) return res.status(401).json(result);
+            const token = createSessionToken(result.user);
+            const maxAgeSeconds = Math.floor(AUTH_SESSION_TTL_MS / 1000);
+            const secure = String(req.headers['x-forwarded-proto'] || req.protocol || '').includes('https');
+            res.setHeader(
+                'Set-Cookie',
+                `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${secure ? '; Secure' : ''}`
+            );
+            return res.json({
+                success: true,
+                token,
+                user: {
+                    id: result.user.id,
+                    name: result.user.name,
+                    email: result.user.email,
+                    role: result.user.role,
+                },
+            });
+        } catch (error) {
+            return res.status(500).json({ success: false, error: String(error?.message || error) });
+        }
+    });
+
+    app.post('/api/auth/logout', (req, res) => {
+        clearSessionToken(readAuthToken(req));
+        res.setHeader('Set-Cookie', `${AUTH_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+        return res.json({ success: true });
+    });
+
+    app.get('/api/auth/me', (req, res) => {
+        const session = getSessionFromToken(readAuthToken(req));
+        return res.json({ success: true, authenticated: Boolean(session), session: session || null });
+    });
+}
+
+function apiAuthMiddleware(req, res, next) {
+    if (!REQUIRE_API_AUTH) return next();
+    if (!String(req.path || '').startsWith('/api/')) return next();
+    if (req.method === 'OPTIONS') return next();
+    if (isPublicApiPath(req.path)) return next();
+
+    const providedInternalKey = String(req.headers['x-internal-api-key'] || req.headers['x-api-key'] || '').trim();
+    if (INTERNAL_API_KEY && providedInternalKey && providedInternalKey === INTERNAL_API_KEY) {
+        req.auth = { type: 'internal_key' };
+        return next();
+    }
+
+    const session = getSessionFromToken(readAuthToken(req));
+    if (session) {
+        req.auth = { type: 'session', session };
+        return next();
+    }
+
+    if (ALLOW_LOCAL_API_WITHOUT_AUTH && isLocalRequest(req)) {
+        req.auth = { type: 'local_compat' };
+        return next();
+    }
+
+    return res.status(401).json({
+        success: false,
+        error: 'Autenticacao necessaria.',
+        code: 'AUTH_REQUIRED',
+    });
+}
 
 const {
     sanitizeCustomerId,
@@ -1276,6 +1454,7 @@ function normalizeCustomerType(rawValue) {
     ) {
         return CUSTOMER_TYPES.INDEPENDENT;
     }
+    if (value.includes('assoc')) return CUSTOMER_TYPES.ASSOCIATION;
     if (value.includes('outro') || value.includes('other')) return CUSTOMER_TYPES.OTHER;
     return CUSTOMER_TYPES.ENTERPRISE;
 }
@@ -1881,7 +2060,7 @@ async function runCustomersAutoPull(localPort, options = {}) {
         const response = await axios({
             method: 'POST',
             url: `http://127.0.0.1:${localPort}/api/customers/sync/pull`,
-            headers: { 'Content-Type': 'application/json' },
+            headers: internalApiHeaders({ 'Content-Type': 'application/json' }),
             data: { full, limit },
             timeout: 5 * 60 * 1000,
             validateStatus: () => true,
@@ -2059,6 +2238,9 @@ if (IS_BACKOFFICE_ONLY) {
         void proxyToChatCore(req, res);
     });
 }
+
+registerAuthRoutes();
+app.use(apiAuthMiddleware);
 
 // --- 3. Rotas da API ---
 
@@ -2716,7 +2898,7 @@ app.post('/api/notify/imi', async (req, res) => {
 
         const sendBase = { to: phone, type: 'text', createdBy: null };
         const r1 = await fetch(`http://localhost:${PORT}/api/chat/send`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: internalApiHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ ...sendBase, message }),
         }).then(r => r.json());
         if (!r1.success) throw new Error(r1.error || 'Falha ao enviar texto WA');
@@ -2738,7 +2920,7 @@ app.post('/api/notify/imi', async (req, res) => {
             // PNG → type 'image'; PDF → type 'document'
             const msgType = isPng ? 'image' : 'document';
             const r2 = await fetch(`http://localhost:${PORT}/api/chat/send`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: internalApiHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({ ...sendBase, message: isPng ? fileName : fileName, type: msgType, mediaPath: tmpFile, mediaMimeType: mime, mediaFileName: fileName }),
             }).then(r => r.json());
             setTimeout(() => fs.unlink(tmpFile, () => {}), 60000);
@@ -2778,7 +2960,7 @@ app.post('/api/notify/iuc', async (req, res) => {
 
         // 1. Enviar texto
         const r1 = await fetch(`http://localhost:${PORT}/api/chat/send`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: internalApiHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ ...sendBase, message }),
         }).then(r => r.json());
         if (!r1.success) throw new Error(r1.error || 'Falha ao enviar texto WA');
@@ -2794,7 +2976,7 @@ app.post('/api/notify/iuc', async (req, res) => {
             fs.writeFileSync(tmpFile, Buffer.from(raw, 'base64'));
             const fileName = pdfFileName || `IUC_${matricula}_${ano || ''}.pdf`;
             const r2 = await fetch(`http://localhost:${PORT}/api/chat/send`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: internalApiHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({ ...sendBase, message: fileName, type: 'document', mediaPath: tmpFile, mediaMimeType: 'application/pdf', mediaFileName: fileName }),
             }).then(r => r.json());
             // Limpar ficheiro temporário após 60s

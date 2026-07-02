@@ -5,7 +5,7 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
 
-const { cleanText } = require('../../shared/textHelpers');
+const { cleanText, certidaoValidUntil } = require('../../shared/textHelpers');
 const { buildFiscalDownloadPath, uniquePath } = require('../../documents/documentNamingService');
 
 async function extractPdfText(filePath) {
@@ -224,12 +224,10 @@ async function collectCertidaoSsAfterSegSocialLogin(page, customer) {
             };
         }
         const semDivida = detectSemDivida(pdfText) || semDividaPage;
-        const validUntil = new Date();
-        validUntil.setMonth(validUntil.getMonth() + 4);
         return {
             status: 'completed',
             ficheiroPdf,
-            dataValidade: validUntil.toISOString().slice(0, 10),
+            dataValidade: certidaoValidUntil(pdfText, 4),
             valida: true,
             semDivida,
             numeroDeclaracao: numeroMatch?.[1] || '',

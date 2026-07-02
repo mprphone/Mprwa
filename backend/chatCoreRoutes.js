@@ -1348,12 +1348,13 @@ function registerChatCoreRoutes(app, deps) {
   app.get(['/api/contacts', '/api/chat/contacts'], async (_req, res) => {
     try {
       await ensureBlockedContactsTable();
-      await repairOrphanConversationCustomers();
 
       const cachedContacts = readContactsCache();
       if (cachedContacts) {
         return res.json({ data: cachedContacts });
       }
+
+      await repairOrphanConversationCustomers();
 
       let rows = [];
       if (contactsQueryV2Enabled) {

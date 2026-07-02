@@ -8,7 +8,7 @@ function createApp() {
     app.use((req, res, next) => {
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-API-Key');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-API-Key,X-Internal-API-Key');
         if (req.method === 'OPTIONS') { res.status(204).end(); return; }
         next();
     });

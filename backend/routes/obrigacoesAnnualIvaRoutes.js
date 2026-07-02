@@ -2,6 +2,8 @@
  * Obrigações Annual & IVA Routes — extracted from importObrigacoesRoutes.js
  * Routes: M22, IES, M10, Inventário, Relatório Único, IVA robot, IVA jobs
  */
+const { internalApiHeaders } = require('../../src/server/utils/internalApi');
+
 function registerObrigacoesAnnualIvaRoutes(context) {
     const {
         app, axios,
@@ -565,7 +567,7 @@ function registerObrigacoesAnnualIvaRoutes(context) {
                         `http://127.0.0.1:${PORT}/api/import/obrigacoes/iva`,
                         { ...body, async: false },
                         {
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: internalApiHeaders({ 'Content-Type': 'application/json' }),
                             timeout: 0,
                             validateStatus: () => true,
                         }

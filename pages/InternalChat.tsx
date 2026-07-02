@@ -10,7 +10,6 @@ import {
   FileText,
   Forward,
   Info,
-  MessageSquarePlus,
   Paperclip,
   Pencil,
   Pin,
@@ -51,7 +50,6 @@ import {
   markInternalConversationAsRead,
   sendInternalMessage,
   toggleInternalMessageReaction,
-  importInternalChatHistorySupabase,
   uploadInternalFileMessage,
 } from '../services/internalChatApi';
 
@@ -74,6 +72,7 @@ const QUICK_CHAT_EMOJIS = ['😀', '😂', '🙂', '😉', '😍', '🙏', '👍
 const QUICK_REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '🙏', '🔥', '🎉', '✅', '👏', '👀'];
 const INTERNAL_CHAT_HIDDEN_CONVERSATIONS_KEY = 'wa_pro_internal_chat_hidden_conversations_v1';
 const INTERNAL_CHAT_SELECTED_CONV_KEY = 'wa_pro_internal_chat_selected_conv';
+const INTERNAL_CHAT_REFRESH_MS = 5_000;
 
 function chatIsoDate(date: Date) {
   return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
@@ -573,12 +572,6 @@ const InternalChat: React.FC = () => {
   const loadBase = async () => {
     if (!currentUserId) return;
     try {
-      try {
-        await importInternalChatHistorySupabase({ actorUserId: currentUserId });
-      } catch (syncError) {
-        console.warn('[Internal Chat] Falha no sync de histórico Supabase:', syncError);
-      }
-
       const [loadedUsers, loadedConversations] = await Promise.all([
         mockService.getUsers(),
         fetchInternalConversations(currentUserId),
@@ -694,7 +687,7 @@ const InternalChat: React.FC = () => {
       if (selectedConversationId) {
         void loadConversationMessages(selectedConversationId);
       }
-    }, 2000);
+    }, INTERNAL_CHAT_REFRESH_MS);
 
     return () => window.clearInterval(interval);
   }, [currentUserId, selectedConversationId, hiddenConversationIds]);
@@ -1419,68 +1412,61 @@ const InternalChat: React.FC = () => {
 
   return (
     <div className="h-[calc(100vh-4rem)] w-full bg-gray-100 p-4 md:p-6 space-y-4 flex flex-col">
-      <div className="rounded-2xl border border-slate-700/20 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-900 p-4 text-white shadow-sm md:p-5">
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(240px,300px)_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)_360px] lg:items-center">
-          <div>
-            <h1 className="text-xl font-bold md:text-2xl">Chat Interno</h1>
-            <p className="text-xs text-slate-200 md:text-sm">Comunicação entre funcionários e equipas.</p>
+      <div className="rounded-lg border border-slate-700/20 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-900 px-3 py-2.5 text-white shadow-sm md:px-4 md:py-3">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(190px,260px)_minmax(0,1fr)] xl:grid-cols-[minmax(210px,280px)_minmax(0,1fr)_auto] md:items-center">
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold leading-tight md:text-xl">Chat Interno</h1>
+            <p className="truncate text-[11px] text-slate-200 md:text-xs">Comunicação entre funcionários e equipas.</p>
           </div>
           <div className="min-w-0">
-            <p className="text-xs text-slate-200">{currentUser ? `Ligado como ${currentUser.name}` : 'Sem utilizador ativo'}</p>
-            <p className="truncate text-base font-semibold text-white md:text-lg">
+            <p className="truncate text-[11px] text-slate-200">{currentUser ? `Ligado como ${currentUser.name}` : 'Sem utilizador ativo'}</p>
+            <p className="truncate text-sm font-semibold leading-tight text-white md:text-base">
               {selectedConversation?.title || 'Selecione ou crie uma conversa'}
             </p>
             {selectedConversation?.type === 'direct' && selectedConversationPeer && (
-              <p className="mt-0.5 text-[11px] text-slate-200">
+              <p className="mt-0.5 truncate text-[10px] text-slate-200">
                 {formatPresenceLabel(getPresence(selectedConversationPeer.id))}
               </p>
             )}
           </div>
-          <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap lg:items-center lg:justify-end">
+          <div className="grid w-full grid-cols-2 gap-1.5 sm:grid-cols-4 md:col-span-2 xl:col-span-1 xl:flex xl:flex-wrap xl:items-center xl:justify-end">
             <button
               onClick={() => void openAgendaModal()}
-              className="inline-flex items-center justify-center gap-1 rounded-lg border border-sky-200 bg-sky-500 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-sky-400"
+              className="inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-md border border-sky-200 bg-sky-500 px-2 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-sky-400 xl:px-2.5"
               title="Abrir agenda para criar reunião"
             >
-              <CalendarDays size={14} />
-              Nova Reunião
+              <CalendarDays size={13} className="shrink-0" />
+              <span className="truncate">Nova Reunião</span>
             </button>
             <button
               onClick={() => void openTaskModal()}
-              className="inline-flex items-center justify-center gap-1 rounded-lg border border-amber-200 bg-amber-500 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-amber-400"
+              className="inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-md border border-amber-200 bg-amber-500 px-2 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-amber-400 xl:px-2.5"
               title="Abrir tarefas para criar nova tarefa"
             >
-              <CheckSquare size={14} />
-              Nova Tarefa
+              <CheckSquare size={13} className="shrink-0" />
+              <span className="truncate">Nova Tarefa</span>
             </button>
             <button
               onClick={openPedidoModal}
-              className="inline-flex items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-500 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-emerald-400"
+              className="inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-md border border-emerald-200 bg-emerald-500 px-2 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-emerald-400 xl:px-2.5"
             >
-              <Plus size={14} />
-              Criar Pedido
-            </button>
-            <button
-              onClick={toggleGroupComposer}
-              className="inline-flex items-center justify-center gap-1 rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20"
-            >
-              <Users size={14} />
-              {isCreatingGroup ? 'Fechar Grupo' : 'Novo Grupo'}
+              <Plus size={13} className="shrink-0" />
+              <span className="truncate">Criar Pedido</span>
             </button>
             <button
               onClick={() => void handleDeleteSelectedConversation()}
               disabled={!selectedConversationId || isDeletingConversation}
-              className="col-span-2 inline-flex items-center justify-center gap-1 rounded-lg border border-red-300/60 bg-red-500/15 px-3 py-2 text-xs font-semibold text-red-100 hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-1"
+              className="inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-md border border-red-300/60 bg-red-500/15 px-2 text-[11px] font-semibold text-red-100 hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50 xl:px-2.5"
               title="Eliminar conversa selecionada"
             >
-              <Trash2 size={14} />
-              {isDeletingConversation ? 'A eliminar...' : 'Eliminar conversa'}
+              <Trash2 size={13} className="shrink-0" />
+              <span className="truncate">{isDeletingConversation ? 'A eliminar...' : 'Eliminar'}</span>
             </button>
           </div>
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 grid grid-cols-1 lg:grid-cols-[minmax(240px,300px)_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)_380px]">
+      <div className="min-h-0 flex-1 grid grid-cols-1 lg:grid-cols-[minmax(230px,300px)_minmax(0,1fr)] 2xl:grid-cols-[310px_minmax(0,1fr)_340px]">
         <aside className="border-r border-gray-200 bg-white flex flex-col min-h-0">
           <div className="p-3 border-b border-gray-200">
             <label className="relative block">
@@ -1596,120 +1582,6 @@ const InternalChat: React.FC = () => {
               {!isLoading && filteredConversations.length === 0 && (
                 <div className="p-6 text-sm text-gray-500">Sem conversas internas.</div>
               )}
-            </div>
-
-            <div className="border-t border-gray-200">
-              {isCreatingGroup && (
-                <div className="border-b border-gray-200 bg-whatsapp-50/50 px-3 py-3">
-                  <div className="text-sm font-semibold text-slate-900">Novo grupo</div>
-                  <input
-                    value={groupTitle}
-                    onChange={(event) => setGroupTitle(event.target.value)}
-                    placeholder="Nome do grupo (opcional)"
-                    className="mt-2 w-full rounded border border-gray-200 bg-white px-2 py-2 text-sm"
-                  />
-                  <p className="mt-2 text-[11px] text-gray-500">
-                    Selecionados: {groupMemberIds.length}
-                  </p>
-                  {groupMemberIds.length === 0 && (
-                    <p className="mt-1 text-[11px] text-amber-700">
-                      Selecione pelo menos 1 funcionário na lista abaixo.
-                    </p>
-                  )}
-                  <div className="mt-2 flex items-center gap-2">
-                    <button
-                      onClick={() => void handleCreateGroup()}
-                      disabled={isSubmittingGroup}
-                      className="flex-1 rounded bg-whatsapp-500 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                    >
-                      {isSubmittingGroup ? 'A criar...' : 'Criar Grupo'}
-                    </button>
-                    <button
-                      onClick={toggleGroupComposer}
-                      disabled={isSubmittingGroup}
-                      className="rounded border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Funcionários
-              </div>
-              <div className="max-h-64 overflow-auto">
-                {availableUsers.map((user) => {
-                  const isSelected = selectedConversation?.otherUserId === user.id;
-                  const isSelfUser = user.id === currentUserId;
-                  const selectedInGroupDraft = groupMemberIds.includes(user.id);
-                  const alreadyInSelectedGroup = selectedConversation?.type === 'group' && memberIdSet.has(user.id);
-                  const userPresence = getPresence(user.id);
-                  const avatarUrl = resolveAvatarUrl(user.name, user.avatarUrl || '', 56);
-
-                  return (
-                    <div key={user.id} className={`px-3 py-2 border-t border-gray-100 ${isSelected ? 'bg-whatsapp-50' : ''}`}>
-                      <div className="flex items-start gap-2">
-                        <div className="relative mt-0.5 h-9 w-9 shrink-0 overflow-hidden rounded-full border border-slate-200 bg-slate-100">
-                          <img src={avatarUrl} alt={user.name || 'Funcionário'} className="h-full w-full object-cover" />
-                          <span
-                            className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${
-                              userPresence?.isOnline ? 'bg-emerald-500' : 'bg-slate-300'
-                            }`}
-                          />
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm font-medium text-gray-900 truncate" title={user.name || ''}>
-                            {user.name}
-                            {isSelfUser ? (
-                              <span className="ml-2 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">
-                                Eu
-                              </span>
-                            ) : null}
-                          </div>
-                          <div className="text-xs text-gray-500 truncate">{user.email}</div>
-                          <div className="mt-0.5 text-[11px] text-slate-500">{formatPresenceLabel(userPresence)}</div>
-                        </div>
-                      </div>
-                      <div className="mt-2 flex items-center gap-1 flex-wrap">
-                        <button
-                          onClick={() => void openConversationWithUser(user)}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded border border-gray-200 text-xs text-gray-700 hover:bg-gray-50"
-                        >
-                          <MessageSquarePlus size={12} />
-                          {isSelfUser ? 'Notas/Avisos' : 'Direto'}
-                        </button>
-
-                        {isCreatingGroup && !isSelfUser && (
-                          <button
-                            onClick={() => toggleGroupMember(user.id)}
-                            className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs border ${
-                              selectedInGroupDraft
-                                ? 'bg-whatsapp-100 border-whatsapp-300 text-whatsapp-800'
-                                : 'border-gray-200 text-gray-700 hover:bg-gray-50'
-                            }`}
-                          >
-                            {selectedInGroupDraft ? <Check size={12} /> : <Plus size={12} />}
-                            {selectedInGroupDraft ? 'Selecionado' : 'Selecionar'}
-                          </button>
-                        )}
-
-                        {selectedConversation?.type === 'group' && !isSelfUser && !alreadyInSelectedGroup && (
-                          <button
-                            onClick={() => void handleAddMemberToSelectedGroup(user.id)}
-                            disabled={isAddingMember}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded border border-blue-200 text-xs text-blue-700 hover:bg-blue-50 disabled:opacity-50"
-                          >
-                            <Plus size={12} />
-                            Adicionar
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           </div>
         </aside>

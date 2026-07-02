@@ -27,7 +27,10 @@ import type { OccurrenceRow } from '../services/occurrencesApi';
 const MESSAGE_UI_META_STORAGE_KEY = 'wa_pro_message_ui_meta_v1';
 const OPEN_CUSTOMER_PROFILE_STORAGE_KEY = 'wa_pro_open_customer_id';
 const DEFAULT_CUSTOMER_BY_PHONE_STORAGE_KEY = 'wa_pro_default_customer_by_phone_v1';
-const WHATSAPP_SEND_COOLDOWN_MS = 10_000;
+const WHATSAPP_SEND_COOLDOWN_MS = 0;
+const INBOX_BACKGROUND_REFRESH_MS = 30_000;
+const INBOX_REALTIME_REFRESH_DEBOUNCE_MS = 120;
+const INBOX_SAFT_JOB_REFRESH_MS = 15_000;
 const LOCAL_FINANCAS_AUTOMATION_BRIDGE_URL = String(
   import.meta.env?.VITE_LOCAL_AUTOMATION_BRIDGE_URL || 'http://127.0.0.1:30777/financas-autologin'
 ).trim();
@@ -349,6 +352,7 @@ const Inbox: React.FC = () => {
   const requestedConversationAppliedRef = useRef<string | null>(null);
   const lastDocumentsCustomerIdRef = useRef<string | null>(null);
   const loadDataRequestRef = useRef(0);
+  const isLoadingDataRef = useRef(false);
   const loadMessagesRequestRef = useRef(0);
   const loadTasksRequestRef = useRef(0);
   const realtimeRefreshTimerRef = useRef<number | null>(null);
@@ -365,7 +369,7 @@ const Inbox: React.FC = () => {
 
   const selectedConversation = conversations.find(c => c.id === selectedConvId);
   const isChatSendBusy = isSendingMessage || isSendingAttachment || isSendingImage;
-  const isSendCooldownActive = sendCooldownRemainingSec > 0;
+  const isSendCooldownActive = WHATSAPP_SEND_COOLDOWN_MS > 0 && sendCooldownRemainingSec > 0;
   const selectedCustomerId = selectedCustomerIdOverride || selectedConversation?.customerId || null;
   const selectedCustomer = selectedCustomerId
     ? customers.find(c => c.id === selectedCustomerId) || null
@@ -385,6 +389,13 @@ const Inbox: React.FC = () => {
   }, []);
 
   const startSendCooldown = useCallback(() => {
+    if (WHATSAPP_SEND_COOLDOWN_MS <= 0) {
+      sendCooldownUntilRef.current = 0;
+      setSendCooldownRemainingSec(0);
+      clearSendCooldownTimer();
+      return;
+    }
+
     sendCooldownUntilRef.current = Date.now() + WHATSAPP_SEND_COOLDOWN_MS;
     const updateRemaining = () => {
       const remainingMs = Math.max(0, sendCooldownUntilRef.current - Date.now());
@@ -793,7 +804,7 @@ const Inbox: React.FC = () => {
       if (activeConversationId) {
         void loadMessages(activeConversationId);
       }
-    }, 1500);
+    }, INBOX_BACKGROUND_REFRESH_MS);
     return () => clearInterval(interval);
   }, []);
 
@@ -1016,7 +1027,7 @@ const Inbox: React.FC = () => {
           void loadMessages(activeConversationId);
           void markSelectedConversationReadIfActive();
         }
-      }, 120);
+      }, INBOX_REALTIME_REFRESH_DEBOUNCE_MS);
     };
 
     const notifyDesktopInbound = (ssePayload: Record<string, unknown>) => {
@@ -1171,7 +1182,7 @@ const Inbox: React.FC = () => {
     void loadJobs();
     const interval = setInterval(() => {
       void loadJobs();
-    }, 5000);
+    }, INBOX_SAFT_JOB_REFRESH_MS);
 
     return () => {
       cancelled = true;
@@ -1282,50 +1293,59 @@ const Inbox: React.FC = () => {
   }, []);
 
   const loadData = async (): Promise<Conversation[]> => {
+    if (isLoadingDataRef.current) return [];
+    isLoadingDataRef.current = true;
     const requestId = ++loadDataRequestRef.current;
-    const [convs, custs, tCount, contacts, allTasksData, whatsappHealth, whatsappAccountsList] = await Promise.all([
-      mockService.getConversations(),
-      mockService.getCustomers(),
-      mockService.getTemplateCountMonth(),
-      fetchChatContacts().catch(() => []),
-      mockService.getTasks(),
-      fetchWhatsAppHealth().catch(() => null),
-      fetchWhatsAppAccounts().catch(() => []),
-    ]);
-    if (requestId !== loadDataRequestRef.current) return [];
+    try {
+      const [convs, custs, tCount, contacts, allTasksData, whatsappHealth, whatsappAccountsList] = await Promise.all([
+        mockService.getConversations(),
+        mockService.getCustomers(),
+        mockService.getTemplateCountMonth(),
+        fetchChatContacts().catch(() => []),
+        mockService.getTasks(),
+        fetchWhatsAppHealth().catch(() => null),
+        fetchWhatsAppAccounts().catch(() => []),
+      ]);
+      if (requestId !== loadDataRequestRef.current) return [];
 
-    syncConversationSnapshotAndNotify(convs);
-    setConversations(convs);
-    setCustomers(custs);
-    setTemplateCount(tCount);
-    setChatContacts(Array.isArray(contacts) ? contacts : []);
-    setAllTasks(Array.isArray(allTasksData) ? allTasksData : []);
-    const providerRaw = String(whatsappHealth?.provider || '').trim().toLowerCase();
-    if (providerRaw === 'cloud') {
-      setWhatsappProviderMode('cloud');
-    } else if (providerRaw === 'baileys') {
-      setWhatsappProviderMode('baileys');
+      syncConversationSnapshotAndNotify(convs);
+      setConversations(convs);
+      setCustomers(custs);
+      setTemplateCount(tCount);
+      setChatContacts(Array.isArray(contacts) ? contacts : []);
+      setAllTasks(Array.isArray(allTasksData) ? allTasksData : []);
+      const providerRaw = String(whatsappHealth?.provider || '').trim().toLowerCase();
+      if (providerRaw === 'cloud') {
+        setWhatsappProviderMode('cloud');
+      } else if (providerRaw === 'baileys') {
+        setWhatsappProviderMode('baileys');
+      }
+      const healthAccounts = Array.isArray(whatsappHealth?.accounts) ? whatsappHealth.accounts : [];
+      const normalizedAccounts = (healthAccounts.length > 0 ? healthAccounts : whatsappAccountsList)
+        .map((account) => ({
+          accountId: String(account?.accountId || '').trim(),
+          label: String(account?.label || account?.accountId || '').trim(),
+          isDefault: account?.isDefault === true,
+          provider: String(account?.provider || '').trim() || undefined,
+          configured: account?.configured === true,
+          status: String(account?.status || '').trim() || undefined,
+          connected: account?.connected === true,
+          connecting: account?.connecting === true,
+          qrAvailable: account?.qrAvailable === true,
+          qrUpdatedAt: String(account?.qrUpdatedAt || '').trim() || null,
+          lastError: String(account?.lastError || '').trim() || null,
+          meId: String(account?.meId || '').trim() || null,
+          meName: String(account?.meName || '').trim() || null,
+        }))
+        .filter((account) => account.accountId);
+      setWhatsAppAccounts(normalizedAccounts);
+      return Array.isArray(convs) ? convs : [];
+    } catch (error) {
+      console.error('[Inbox] Erro ao carregar dados:', error);
+      return [];
+    } finally {
+      isLoadingDataRef.current = false;
     }
-    const healthAccounts = Array.isArray(whatsappHealth?.accounts) ? whatsappHealth.accounts : [];
-    const normalizedAccounts = (healthAccounts.length > 0 ? healthAccounts : whatsappAccountsList)
-      .map((account) => ({
-        accountId: String(account?.accountId || '').trim(),
-        label: String(account?.label || account?.accountId || '').trim(),
-        isDefault: account?.isDefault === true,
-        provider: String(account?.provider || '').trim() || undefined,
-        configured: account?.configured === true,
-        status: String(account?.status || '').trim() || undefined,
-        connected: account?.connected === true,
-        connecting: account?.connecting === true,
-        qrAvailable: account?.qrAvailable === true,
-        qrUpdatedAt: String(account?.qrUpdatedAt || '').trim() || null,
-        lastError: String(account?.lastError || '').trim() || null,
-        meId: String(account?.meId || '').trim() || null,
-        meName: String(account?.meName || '').trim() || null,
-      }))
-      .filter((account) => account.accountId);
-    setWhatsAppAccounts(normalizedAccounts);
-    return Array.isArray(convs) ? convs : [];
   };
 
 
@@ -1821,7 +1841,13 @@ const Inbox: React.FC = () => {
 
   const loadMessages = async (id: string) => {
     const requestId = ++loadMessagesRequestRef.current;
-    const msgs = await mockService.getMessages(id);
+    let msgs: Message[];
+    try {
+      msgs = await mockService.getMessages(id);
+    } catch (error) {
+      console.error('[Inbox] Erro ao carregar mensagens:', error);
+      return;
+    }
     if (requestId !== loadMessagesRequestRef.current) return;
     if (selectedConvRef.current !== id) return;
     syncMessageSnapshotAndNotify(id, msgs);
@@ -1848,7 +1874,13 @@ const Inbox: React.FC = () => {
 
   const loadTasks = async (convId: string) => {
     const requestId = ++loadTasksRequestRef.current;
-    const tasksData = await mockService.getTasks(convId);
+    let tasksData: Task[];
+    try {
+      tasksData = await mockService.getTasks(convId);
+    } catch (error) {
+      console.error('[Inbox] Erro ao carregar tarefas:', error);
+      return;
+    }
     if (requestId !== loadTasksRequestRef.current) return;
     if (selectedConvRef.current !== convId) return;
     setTasks(tasksData);

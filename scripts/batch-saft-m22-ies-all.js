@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+try { require('dotenv').config(); } catch (_) { /* dotenv opcional */ }
 const fs = require('fs');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
+const { internalApiHeaders } = require('../src/server/utils/internalApi');
 
 const DB_PATH = process.env.DB_PATH || 'whatsapp.db';
 const API_BASE = process.env.API_BASE || 'http://127.0.0.1:3010';
@@ -44,7 +46,7 @@ async function postJson(urlPath, body) {
   try {
     const res = await fetch(`${API_BASE}${urlPath}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: internalApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
       signal: ctrl.signal,
     });

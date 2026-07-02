@@ -1,3 +1,5 @@
+const { internalApiHeaders } = require('../utils/internalApi');
+
 function createAutoPullWorker(deps) {
     const {
         axios,
@@ -45,7 +47,7 @@ function createAutoPullWorker(deps) {
             const response = await axios({
                 method: 'POST',
                 url: `http://127.0.0.1:${localPort}/api/customers/sync/pull`,
-                headers: { 'Content-Type': 'application/json' },
+                headers: internalApiHeaders({ 'Content-Type': 'application/json' }),
                 data: { full, limit },
                 timeout: 5 * 60 * 1000,
                 validateStatus: () => true,

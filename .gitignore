@@ -34,6 +34,8 @@ backups/
 backups.bak-*/
 
 # Media & user data (runtime)
+storage
+storage/
 chat_media
 chat_media/
 chat_media.bak-*/
@@ -50,6 +52,15 @@ exports.bak-*/
 # Logs
 *.log
 .pm2/
+logs
+logs/
+logs/at-profile/
+
+# Extension packages
+wa-pro-autologin-*.zip
+
+# Perf tooling snapshots (artefactos de medição)
+scripts/perf/.snapshots/
 
 # OS / Editor
 .DS_Store
