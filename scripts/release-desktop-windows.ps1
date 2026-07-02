@@ -58,7 +58,7 @@ Write-Host "Pasta: $Root"
 if (-not $SkipGitPull -and (Test-Path '.git')) {
   Write-Step 'A atualizar codigo pelo Git'
   # Guardar qualquer alteracao local (bump de versao anterior nao commitado, etc.)
-  & git stash 2>$null | Out-Null
+  Run-Cmd 'git' @('stash', 'push', '-u', '-m', 'wa-pro-release-auto-stash')
   Run-Cmd 'git' @('pull', '--ff-only')
 }
 
