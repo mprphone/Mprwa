@@ -213,6 +213,57 @@ function customerSearchText(customer: Customer): string {
     .join(' ');
 }
 
+function normalizeLooseKey(value: string): string {
+  return String(value || '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toLowerCase();
+}
+
+function pickCustomerPayloadValue(customer: Customer, keys: string[]): string {
+  const payload = (customer as Customer & { supabasePayload?: Record<string, unknown> }).supabasePayload;
+  if (!payload || typeof payload !== 'object') return '';
+  const lookup = new Map<string, unknown>();
+  Object.entries(payload).forEach(([key, value]) => lookup.set(normalizeLooseKey(key), value));
+  for (const key of keys) {
+    const value = lookup.get(normalizeLooseKey(key));
+    if (value === undefined || value === null) continue;
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number') return String(value);
+    if (typeof value === 'boolean') return value ? 'Sim' : 'Nao';
+  }
+  return '';
+}
+
+function displayCustomerType(customer: Customer): string {
+  const rawType = String(customer.type || '').trim();
+  const normalizedType = normalizeSearch(rawType);
+  const importedType = normalizeSearch(pickCustomerPayloadValue(customer, ['tipo_entidade', 'tipo', 'type', 'categoria']));
+  const nif = String(customer.nif || '').replace(/\D+/g, '');
+  const companyText = normalizeSearch(`${customer.company || ''} ${customer.name || ''}`).replace(/[^a-z0-9]+/g, ' ');
+  const hasCorporateNumber = /^[569]/.test(nif);
+  const hasCorporateName = /\b(lda|limitada|unipessoal|sa|s a|sgps|sociedade|sucursal|associacao|fundacao|cooperativa)\b/.test(companyText);
+  const hasCorporateFields = Boolean(
+    customer.dataConstituicao ||
+    customer.certidaoPermanenteNumero ||
+    customer.certidaoPermanenteValidade ||
+    customer.rcbeNumero ||
+    customer.rcbeData
+  );
+
+  if (importedType.includes('empresa') || importedType.includes('coletiv') || importedType.includes('colectiv') || importedType.includes('nipc')) return 'Empresa';
+  if (hasCorporateNumber || hasCorporateName || hasCorporateFields) return 'Empresa';
+  if (normalizedType.includes('empresa')) return 'Empresa';
+  if (normalizedType.includes('independente')) return 'Independente';
+  if (normalizedType.includes('assoc')) return 'Associacao';
+  if (normalizedType.includes('fornecedor')) return 'Fornecedor';
+  if (normalizedType.includes('particular')) return 'Particular';
+  if (importedType.includes('particular')) return 'Particular';
+  return rawType || '--';
+}
+
 function createEmptyDocumentsState(customer: Customer | null = null): CustomerDocumentsState {
   return {
     customer,
@@ -1530,7 +1581,7 @@ function CustomerDetail({
         <InfoCard icon={<Building2 size={18} />} label="Empresa" value={customer.company || customer.name} />
         <InfoCard icon={<User size={18} />} label="Contacto" value={customer.contactName || customer.name} />
         <InfoCard icon={<Copy size={18} />} label="NIF" value={customer.nif || '--'} onClick={() => onCopy(customer.nif || '')} />
-        <InfoCard icon={<CalendarDays size={18} />} label="Tipo" value={customer.type || '--'} />
+        <InfoCard icon={<CalendarDays size={18} />} label="Tipo" value={displayCustomerType(customer)} />
         {(customer.morada || customer.codigoPostal) && <InfoCard icon={<Building2 size={18} />} label="Morada" value={`${customer.morada || ''} ${customer.codigoPostal || ''}`.trim()} />}
         <CustomerFiscalSummaryCard
           customer={customer}
