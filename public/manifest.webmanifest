@@ -1,0 +1,19 @@
+{
+  "name": "WA PRO",
+  "short_name": "WA PRO",
+  "description": "WA PRO Mobile",
+  "start_url": "/mobile/chat",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f1f5f9",
+  "theme_color": "#059669",
+  "icons": [
+    {
+      "src": "/icon-256.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
