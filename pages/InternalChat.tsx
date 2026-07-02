@@ -1429,44 +1429,44 @@ const InternalChat: React.FC = () => {
               </p>
             )}
           </div>
-          <div className="grid w-full grid-cols-2 gap-1.5 sm:grid-cols-4 md:col-span-2 xl:col-span-1 xl:flex xl:flex-wrap xl:items-center xl:justify-end">
+          <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 md:col-span-2 xl:col-span-1 xl:flex xl:flex-wrap xl:items-center xl:justify-end">
             <button
               onClick={() => void openAgendaModal()}
-              className="inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-md border border-sky-200 bg-sky-500 px-2 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-sky-400 xl:px-2.5"
+              className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border border-sky-200 bg-sky-500 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-sky-400"
               title="Abrir agenda para criar reunião"
             >
-              <CalendarDays size={13} className="shrink-0" />
+              <CalendarDays size={14} className="shrink-0" />
               <span className="truncate">Nova Reunião</span>
             </button>
             <button
               onClick={() => void openTaskModal()}
-              className="inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-md border border-amber-200 bg-amber-500 px-2 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-amber-400 xl:px-2.5"
+              className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-500 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-400"
               title="Abrir tarefas para criar nova tarefa"
             >
-              <CheckSquare size={13} className="shrink-0" />
+              <CheckSquare size={14} className="shrink-0" />
               <span className="truncate">Nova Tarefa</span>
             </button>
             <button
               onClick={openPedidoModal}
-              className="inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-md border border-emerald-200 bg-emerald-500 px-2 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-emerald-400 xl:px-2.5"
+              className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-500 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-400"
             >
-              <Plus size={13} className="shrink-0" />
+              <Plus size={14} className="shrink-0" />
               <span className="truncate">Criar Pedido</span>
             </button>
             <button
               onClick={() => void handleDeleteSelectedConversation()}
               disabled={!selectedConversationId || isDeletingConversation}
-              className="inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-md border border-red-300/60 bg-red-500/15 px-2 text-[11px] font-semibold text-red-100 hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50 xl:px-2.5"
+              className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border border-red-300/60 bg-red-500/15 px-3 text-sm font-semibold text-red-100 hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50"
               title="Eliminar conversa selecionada"
             >
-              <Trash2 size={13} className="shrink-0" />
+              <Trash2 size={14} className="shrink-0" />
               <span className="truncate">{isDeletingConversation ? 'A eliminar...' : 'Eliminar'}</span>
             </button>
           </div>
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 grid grid-cols-1 lg:grid-cols-[minmax(230px,300px)_minmax(0,1fr)] 2xl:grid-cols-[310px_minmax(0,1fr)_340px]">
+      <div className="min-h-0 flex-1 grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)_360px] 2xl:grid-cols-[300px_minmax(0,1fr)_390px]">
         <aside className="border-r border-gray-200 bg-white flex flex-col min-h-0">
           <div className="p-3 border-b border-gray-200">
             <label className="relative block">
@@ -1562,7 +1562,7 @@ const InternalChat: React.FC = () => {
                             {formatPresenceLabel(directPresence)}
                           </p>
                         )}
-                        <p className="text-xs text-gray-500 truncate mt-1">{conversation.lastMessageBody || 'Sem mensagens ainda.'}</p>
+                        <p className="mt-1 truncate text-sm text-gray-500">{conversation.lastMessageBody || 'Sem mensagens ainda.'}</p>
                         {conversation.type === 'group' && (
                           <p className="text-[11px] text-gray-400 mt-1">{Math.max(0, Number(conversation.memberCount || 0))} membros</p>
                         )}
@@ -1722,7 +1722,7 @@ const InternalChat: React.FC = () => {
                       </div>
                     )}
 
-                    <p className="text-sm text-gray-900 whitespace-pre-wrap break-words">
+                    <p className="text-[15px] leading-relaxed text-gray-900 whitespace-pre-wrap break-words">
                       {message.deletedAt ? 'Mensagem apagada.' : message.body}
                     </p>
                     <div className="mt-1 flex items-center justify-end gap-1 text-[11px] text-gray-500">
@@ -1866,7 +1866,7 @@ const InternalChat: React.FC = () => {
                 }}
                 placeholder={selectedConversationId ? 'Escreva uma mensagem interna... (Ctrl+V para colar imagem)' : 'Selecione uma conversa'}
                 disabled={!selectedConversationId || isSending || isUploading}
-                className="flex-1 resize-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-whatsapp-200 disabled:bg-gray-100"
+                className="flex-1 resize-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[15px] focus:outline-none focus:ring-2 focus:ring-whatsapp-200 disabled:bg-gray-100"
               />
 
               <button
@@ -1892,10 +1892,10 @@ const InternalChat: React.FC = () => {
           </footer>
         </section>
 
-        <aside className="hidden 2xl:flex border-l border-gray-200 bg-white min-h-0 flex-col p-3 gap-3 overflow-hidden">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <div className="text-xs uppercase tracking-wide text-slate-500">Atalhos</div>
-            <div className="mt-2 flex gap-2">
+        <aside className="hidden xl:flex border-l border-gray-200 bg-white min-h-0 flex-col gap-4 overflow-hidden p-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+            <div className="text-sm uppercase tracking-wide text-slate-500">Atalhos</div>
+            <div className="mt-3 grid grid-cols-3 gap-2">
               {([
                 { url: 'https://controle.mpr.pt/', icon: '/icone_mprcontrol.png', label: 'MPR Control' },
                 { url: 'https://cmrmpr.vercel.app/', icon: '/icone_CMRMPR.png', label: 'MPR CMR' },
@@ -1915,16 +1915,16 @@ const InternalChat: React.FC = () => {
                   title={label}
                   className="rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-300"
                 >
-                  <img src={icon} alt={label} className="h-20 w-20 rounded-lg object-contain" />
+                  <img src={icon} alt={label} className="h-20 w-full rounded-lg object-contain" />
                 </a>
               ))}
             </div>
             {pedidoFeedback && <div className="mt-2 rounded-lg border border-green-200 bg-green-50 px-2 py-1.5 text-xs text-green-700">{pedidoFeedback}</div>}
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="text-sm font-semibold text-slate-900">Registo de Ponto</div>
-            <p className="mt-1 text-xs text-slate-500">Introduza o PIN pessoal para registar entrada ou saída.</p>
+            <p className="mt-1 text-sm text-slate-500">Introduza o PIN pessoal para registar entrada ou saída.</p>
             <input
               type="password"
               value={pontoPin}
@@ -1933,20 +1933,20 @@ const InternalChat: React.FC = () => {
                 if (pontoError) setPontoError('');
               }}
               placeholder="PIN"
-              className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-whatsapp-200"
+              className="mt-3 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-whatsapp-200"
             />
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
                 onClick={() => void submitPonto('ENTRADA')}
                 disabled={!!pontoSubmittingType}
-                className="rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-60"
+                className="rounded-lg bg-emerald-500 px-3 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-60"
               >
                 {pontoSubmittingType === 'ENTRADA' ? 'A registar...' : 'ENTRADA'}
               </button>
               <button
                 onClick={() => void submitPonto('SAIDA')}
                 disabled={!!pontoSubmittingType}
-                className="rounded-lg bg-rose-500 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-600 disabled:opacity-60"
+                className="rounded-lg bg-rose-500 px-3 py-2.5 text-sm font-semibold text-white hover:bg-rose-600 disabled:opacity-60"
               >
                 {pontoSubmittingType === 'SAIDA' ? 'A registar...' : 'SAÍDA'}
               </button>
@@ -2006,15 +2006,15 @@ const InternalChat: React.FC = () => {
             </div>
           )}
 
-          <div className="rounded-xl border border-slate-200 bg-white p-3 flex-1 min-h-0 flex flex-col">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 flex-1 min-h-0 flex flex-col shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <div className="text-xs uppercase tracking-wide text-slate-500">Tarefas</div>
-                <div className="text-sm font-semibold text-slate-900 truncate">
+                <div className="text-sm uppercase tracking-wide text-slate-500">Tarefas</div>
+                <div className="text-base font-semibold text-slate-900 truncate">
                   {taskTargetUser ? taskTargetUser.name : 'Sem funcionário selecionado'}
                 </div>
               </div>
-              <span className="text-[11px] rounded-full bg-slate-100 px-2 py-1 text-slate-600">
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-sm font-medium text-slate-600">
                 {employeeTasks.length}
               </span>
             </div>
@@ -2025,10 +2025,10 @@ const InternalChat: React.FC = () => {
               </div>
             )}
 
-            <div className="mt-2 flex-1 min-h-0 overflow-auto space-y-2">
-              {employeeTasksLoading && <div className="text-xs text-slate-500">A carregar tarefas...</div>}
+            <div className="mt-3 flex-1 min-h-0 overflow-auto space-y-2.5 pr-1">
+              {employeeTasksLoading && <div className="text-sm text-slate-500">A carregar tarefas...</div>}
               {!employeeTasksLoading && employeeTasks.length === 0 && (
-                <div className="text-xs text-slate-500">Sem tarefas em aberto.</div>
+                <div className="text-sm text-slate-500">Sem tarefas em aberto.</div>
               )}
               {!employeeTasksLoading &&
                 employeeTasks.map((task) => (
@@ -2044,20 +2044,20 @@ const InternalChat: React.FC = () => {
                       }
                       navigate('/tasks');
                     }}
-                    className={`w-full text-left rounded-lg border px-2 py-2 transition-colors ${getInternalTaskCardTone(
+                    className={`w-full text-left rounded-xl border px-3 py-3 shadow-sm transition-colors hover:shadow-md ${getInternalTaskCardTone(
                       String(task.id || ''),
                       task.status
                     )}`}
                   >
-                    <div className="text-xs font-semibold text-slate-900 truncate">{task.title || 'Tarefa sem título'}</div>
-                    <div className="text-[11px] text-slate-600 truncate mt-0.5">{task.customerName || 'Sem cliente'}</div>
-                    <div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
+                    <div className="text-sm font-semibold leading-snug text-slate-900">{task.title || 'Tarefa sem título'}</div>
+                    <div className="mt-1 text-[13px] leading-snug text-slate-600">{task.customerName || 'Sem cliente'}</div>
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[13px]">
                       <span
-                        className={`rounded-full border px-1.5 py-0.5 font-medium ${getInternalTaskStatusBadgeClass(task.status)}`}
+                        className={`rounded-full border px-2 py-0.5 font-medium ${getInternalTaskStatusBadgeClass(task.status)}`}
                       >
                         {formatInternalTaskStatus(task.status)}
                       </span>
-                      <span className="text-slate-500">{formatTaskDate(task.dueDate)}</span>
+                      <span className="font-medium text-slate-500">{formatTaskDate(task.dueDate)}</span>
                     </div>
                   </button>
                 ))}
