@@ -9,8 +9,13 @@ import {
   ChevronRight,
   ClipboardList,
   Copy,
+  Download,
+  ExternalLink,
+  FileText,
+  FolderOpen,
   Mail,
   MessageCircle,
+  Paperclip,
   Phone,
   Plus,
   RefreshCw,
@@ -59,6 +64,64 @@ type EnrichedTask = Task & {
   assignedUserName?: string;
 };
 
+type CustomerDocumentEntry = {
+  type: 'file' | 'directory';
+  name: string;
+  relativePath: string;
+  size?: number;
+  updatedAt: string;
+};
+
+type CustomerDocumentsState = {
+  customer: Customer | null;
+  folderPath: string;
+  storageFolderPath: string;
+  configured: boolean;
+  currentRelativePath: string;
+  canGoUp: boolean;
+  entries: CustomerDocumentEntry[];
+  loading: boolean;
+  error: string;
+};
+
+type FiscalFiling = {
+  ano?: string;
+  situacao?: string;
+  dataRecepcao?: string;
+  comprovativoPath?: string;
+};
+
+type FiscalCertidao = {
+  tipo?: string;
+  dataValidade?: string;
+  valida?: boolean;
+  ficheiroPdf?: string;
+};
+
+type FiscalDocumento = {
+  tipo?: string;
+  label?: string;
+  dataValidade?: string;
+  valida?: boolean;
+  ficheiroPdf?: string;
+  notas?: string;
+};
+
+type FiscalDivida = {
+  entidade?: 'at' | 'ss' | string;
+  montante?: number;
+  semDivida?: boolean;
+};
+
+type MobileFiscalSummary = {
+  ies: FiscalFiling[];
+  modelo22: FiscalFiling[];
+  certidoes: FiscalCertidao[];
+  documentos: FiscalDocumento[];
+  dividas: FiscalDivida[];
+  updatedAt?: string;
+};
+
 const MOBILE_TABS: Array<{ id: MobileTab; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }> = [
   { id: 'chat', label: 'Chat', icon: MessageCircle },
   { id: 'tasks', label: 'Tarefas', icon: CheckCircle2 },
@@ -88,6 +151,33 @@ function formatTime(value: string | null | undefined): string {
   const parsed = new Date(raw);
   if (!Number.isFinite(parsed.getTime())) return '';
   return parsed.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDateTime(value: string | null | undefined): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '--';
+  const parsed = new Date(raw);
+  if (!Number.isFinite(parsed.getTime())) return raw;
+  return parsed.toLocaleString('pt-PT', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatCurrency(value: number | null | undefined): string {
+  const amount = Number(value || 0);
+  return amount.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' });
+}
+
+function formatFileSize(value: number | null | undefined): string {
+  const size = Number(value || 0);
+  if (!Number.isFinite(size) || size <= 0) return '';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(size >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
 }
 
 function todayIso(): string {
@@ -121,6 +211,78 @@ function customerSearchText(customer: Customer): string {
   ]
     .filter(Boolean)
     .join(' ');
+}
+
+function createEmptyDocumentsState(customer: Customer | null = null): CustomerDocumentsState {
+  return {
+    customer,
+    folderPath: '',
+    storageFolderPath: '',
+    configured: false,
+    currentRelativePath: '',
+    canGoUp: false,
+    entries: [],
+    loading: false,
+    error: '',
+  };
+}
+
+function normalizeFiscalSummary(raw: unknown): MobileFiscalSummary {
+  const data = (raw && typeof raw === 'object' ? raw : {}) as Partial<MobileFiscalSummary>;
+  return {
+    ies: Array.isArray(data.ies) ? data.ies : [],
+    modelo22: Array.isArray(data.modelo22) ? data.modelo22 : [],
+    certidoes: Array.isArray(data.certidoes) ? data.certidoes : [],
+    documentos: Array.isArray(data.documentos) ? data.documentos : [],
+    dividas: Array.isArray(data.dividas) ? data.dividas : [],
+    updatedAt: String(data.updatedAt || '').trim() || undefined,
+  };
+}
+
+function hasFiscalSummaryData(summary: MobileFiscalSummary | null | undefined): boolean {
+  if (!summary) return false;
+  return summary.ies.length > 0 || summary.modelo22.length > 0 || summary.certidoes.length > 0 || summary.documentos.length > 0 || summary.dividas.length > 0;
+}
+
+function parentDocumentPath(relativePath: string): string {
+  const parts = String(relativePath || '')
+    .split('/')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  parts.pop();
+  return parts.join('/');
+}
+
+function fiscalFileUrl(customer: Customer, filePath: string | null | undefined): string {
+  const raw = String(filePath || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw) || raw.startsWith('/api/')) return raw;
+  if (raw.includes('..') || raw.includes('\0')) return '';
+  const params = new URLSearchParams({ path: raw });
+  const nif = String((customer as any).nif || '').replace(/\D+/g, '').slice(-9);
+  if (nif) params.set('nif', nif);
+  return `/api/customers/${encodeURIComponent(customer.id)}/fiscal-summary/file?${params.toString()}`;
+}
+
+function formatDetailValue(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'boolean') return value ? 'Sim' : 'Nao';
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
+  if (typeof value === 'string') return value.trim();
+  if (Array.isArray(value)) return value.map(formatDetailValue).filter(Boolean).join(', ');
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function humanizeDetailKey(value: string): string {
+  return String(value || '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .trim()
+    .replace(/^./, (letter) => letter.toUpperCase());
 }
 
 function taskStatusLabel(status: TaskStatus | string): string {
@@ -210,6 +372,12 @@ const MobileWorkspace: React.FC = () => {
 
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [fiscalSummaryByCustomerId, setFiscalSummaryByCustomerId] = useState<Record<string, MobileFiscalSummary | null>>({});
+  const [fiscalErrorsByCustomerId, setFiscalErrorsByCustomerId] = useState<Record<string, string>>({});
+  const [fiscalLoadingCustomerId, setFiscalLoadingCustomerId] = useState('');
+  const [documentsState, setDocumentsState] = useState<CustomerDocumentsState>(() => createEmptyDocumentsState());
+  const [occurrenceDetailsById, setOccurrenceDetailsById] = useState<Record<string, OccurrenceRow>>({});
+  const [occurrenceDetailLoadingId, setOccurrenceDetailLoadingId] = useState('');
 
   const customerById = useMemo(() => new Map(customers.map((customer) => [customer.id, customer])), [customers]);
   const userById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
@@ -227,8 +395,8 @@ const MobileWorkspace: React.FC = () => {
     [tasks, selectedTaskId]
   );
   const selectedOccurrence = useMemo(
-    () => occurrences.find((occurrence) => occurrence.id === selectedOccurrenceId) || null,
-    [occurrences, selectedOccurrenceId]
+    () => occurrenceDetailsById[selectedOccurrenceId] || occurrences.find((occurrence) => occurrence.id === selectedOccurrenceId) || null,
+    [occurrenceDetailsById, occurrences, selectedOccurrenceId]
   );
   const selectedCustomer = useMemo(
     () => customers.find((customer) => customer.id === selectedCustomerId) || null,
@@ -307,6 +475,84 @@ const MobileWorkspace: React.FC = () => {
     }
   }, [currentUserId]);
 
+  const loadFiscalSummary = useCallback(async (customerId: string) => {
+    const id = String(customerId || '').trim();
+    if (!id) return;
+    setFiscalLoadingCustomerId(id);
+    setFiscalErrorsByCustomerId((prev) => ({ ...prev, [id]: '' }));
+    try {
+      const response = await fetch(`/api/customers/${encodeURIComponent(id)}/fiscal-summary?_=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      const payload = await response.json().catch(() => ({})) as { success?: boolean; data?: unknown; error?: unknown };
+      if (!response.ok || !payload.success) {
+        const message = typeof payload.error === 'string' ? payload.error : `Falha ao carregar resumo fiscal (${response.status}).`;
+        throw new Error(message);
+      }
+      setFiscalSummaryByCustomerId((prev) => ({ ...prev, [id]: normalizeFiscalSummary(payload.data) }));
+    } catch (loadError) {
+      const message = loadError instanceof Error ? loadError.message : 'Falha ao carregar resumo fiscal.';
+      setFiscalSummaryByCustomerId((prev) => ({ ...prev, [id]: null }));
+      setFiscalErrorsByCustomerId((prev) => ({ ...prev, [id]: message }));
+    } finally {
+      setFiscalLoadingCustomerId((current) => (current === id ? '' : current));
+    }
+  }, []);
+
+  const openOccurrenceDetail = useCallback(async (occurrenceId: string) => {
+    const id = String(occurrenceId || '').trim();
+    if (!id) return;
+    setSelectedOccurrenceId(id);
+    setOccurrenceDetailLoadingId(id);
+    try {
+      const detail = await fetchOccurrenceById(id);
+      setOccurrenceDetailsById((prev) => ({ ...prev, [id]: detail }));
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Falha ao carregar detalhe da ocorrencia.');
+    } finally {
+      setOccurrenceDetailLoadingId((current) => (current === id ? '' : current));
+    }
+  }, []);
+
+  const openCustomerDocuments = useCallback(async (customer: Customer, relativePath = '') => {
+    setDocumentsState((prev) => ({
+      ...prev,
+      customer,
+      loading: true,
+      error: '',
+      currentRelativePath: relativePath,
+    }));
+    try {
+      const documents = await mockService.getCustomerDocumentsAtPath(customer.id, relativePath);
+      setDocumentsState({
+        customer,
+        folderPath: documents.folderPath,
+        storageFolderPath: documents.storageFolderPath,
+        configured: documents.configured,
+        currentRelativePath: documents.currentRelativePath,
+        canGoUp: documents.canGoUp,
+        entries: documents.entries,
+        loading: false,
+        error: '',
+      });
+    } catch (loadError) {
+      setDocumentsState((prev) => ({
+        ...prev,
+        customer,
+        loading: false,
+        error: loadError instanceof Error ? loadError.message : 'Falha ao abrir pasta do cliente.',
+      }));
+    }
+  }, []);
+
+  const openDocumentFile = useCallback((entry: CustomerDocumentEntry) => {
+    const customer = documentsState.customer;
+    if (!customer || !entry.relativePath) return;
+    const query = new URLSearchParams({ path: entry.relativePath });
+    window.open(`/api/customers/${encodeURIComponent(customer.id)}/documents/download?${query.toString()}`, '_blank', 'noopener,noreferrer');
+  }, [documentsState.customer]);
+
   useEffect(() => {
     if (location.pathname === '/mobile' || location.pathname === '/mobile/') {
       navigate('/mobile/chat', { replace: true });
@@ -321,6 +567,12 @@ const MobileWorkspace: React.FC = () => {
     if (!selectedInternalConversationId) return;
     void loadInternalMessages(selectedInternalConversationId);
   }, [selectedInternalConversationId, loadInternalMessages]);
+
+  useEffect(() => {
+    if (!selectedCustomerId) return;
+    if (fiscalSummaryByCustomerId[selectedCustomerId] !== undefined || fiscalLoadingCustomerId === selectedCustomerId) return;
+    void loadFiscalSummary(selectedCustomerId);
+  }, [fiscalLoadingCustomerId, fiscalSummaryByCustomerId, loadFiscalSummary, selectedCustomerId]);
 
   useEffect(() => {
     if (activeTab !== 'chat') return;
@@ -512,7 +764,7 @@ const MobileWorkspace: React.FC = () => {
   const markOccurrenceResolved = async (occurrence: OccurrenceRow) => {
     try {
       const detail = await fetchOccurrenceById(occurrence.id).catch(() => occurrence);
-      await saveOccurrence({
+      const saved = await saveOccurrence({
         id: detail.id,
         customerId: detail.customerId,
         date: detail.date || todayIso(),
@@ -526,6 +778,7 @@ const MobileWorkspace: React.FC = () => {
         resolution: detail.resolution || '',
         actorUserId: currentUserId,
       });
+      setOccurrenceDetailsById((prev) => ({ ...prev, [saved.id]: saved }));
       const loaded = await fetchOccurrences({ limit: 600 });
       setOccurrences(loaded);
     } catch (saveError) {
@@ -680,6 +933,7 @@ const MobileWorkspace: React.FC = () => {
           selectedOccurrence ? (
             <OccurrenceDetail
               occurrence={selectedOccurrence}
+              loading={occurrenceDetailLoadingId === selectedOccurrence.id}
               onBack={() => setSelectedOccurrenceId('')}
               onToggleResolved={() => void markOccurrenceResolved(selectedOccurrence)}
             />
@@ -701,7 +955,7 @@ const MobileWorkspace: React.FC = () => {
               />
               <div className="space-y-3 px-4 pb-4 pt-3">
                 {filteredOccurrences.map((occurrence) => (
-                  <OccurrenceCard key={occurrence.id} occurrence={occurrence} onClick={() => setSelectedOccurrenceId(occurrence.id)} />
+                  <OccurrenceCard key={occurrence.id} occurrence={occurrence} onClick={() => void openOccurrenceDetail(occurrence.id)} />
                 ))}
                 {filteredOccurrences.length === 0 && <EmptyState label="Sem ocorrencias neste filtro." />}
               </div>
@@ -714,6 +968,11 @@ const MobileWorkspace: React.FC = () => {
             onCopy={copyText}
             onNewTask={() => openTaskSheet(selectedCustomer)}
             onNewOccurrence={() => openOccurrenceSheet(selectedCustomer)}
+            onOpenDocuments={() => void openCustomerDocuments(selectedCustomer)}
+            fiscalSummary={fiscalSummaryByCustomerId[selectedCustomer.id]}
+            fiscalLoading={fiscalLoadingCustomerId === selectedCustomer.id || fiscalSummaryByCustomerId[selectedCustomer.id] === undefined}
+            fiscalError={fiscalErrorsByCustomerId[selectedCustomer.id] || ''}
+            onReloadFiscal={() => void loadFiscalSummary(selectedCustomer.id)}
           />
         ) : (
           <ListScreen
@@ -874,6 +1133,17 @@ const MobileWorkspace: React.FC = () => {
             {occurrenceSaving ? 'A guardar...' : 'Guardar ocorrencia'}
           </button>
         </BottomSheet>
+      )}
+
+      {documentsState.customer && (
+        <CustomerDocumentsSheet
+          state={documentsState}
+          onClose={() => setDocumentsState(createEmptyDocumentsState())}
+          onOpenPath={(relativePath) => {
+            if (documentsState.customer) void openCustomerDocuments(documentsState.customer, relativePath);
+          }}
+          onOpenFile={openDocumentFile}
+        />
       )}
     </div>
   );
@@ -1087,25 +1357,98 @@ function OccurrenceCard({ occurrence, onClick }: { occurrence: OccurrenceRow; on
 
 function OccurrenceDetail({
   occurrence,
+  loading,
   onBack,
   onToggleResolved,
 }: {
   occurrence: OccurrenceRow;
+  loading: boolean;
   onBack: () => void;
   onToggleResolved: () => void;
 }) {
   const isResolved = normalizeSearch(occurrence.state).includes('resol');
+  const attachments = Array.isArray(occurrence.attachments) ? occurrence.attachments : [];
+  const apoioDetails = Object.entries(occurrence.projetoApoioDetalhe || {})
+    .map(([key, value]) => ({ key, value: formatDetailValue(value) }))
+    .filter((item) => item.value);
   return (
     <DetailShell title="Ocorrencia" subtitle={occurrence.customerCompany || occurrence.customerName || 'Sem cliente'} onBack={onBack}>
       <div className="space-y-4 p-4">
+        {loading && (
+          <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">
+            A carregar detalhe completo...
+          </div>
+        )}
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-xl font-bold leading-snug text-slate-950">{occurrence.title}</p>
           <div className="mt-4 flex flex-wrap gap-2">
             <span className={`rounded-full border px-3 py-1.5 text-sm font-semibold ${occurrenceStateClass(occurrence.state)}`}>{occurrence.state}</span>
             <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700">{formatDate(occurrence.dueDate || occurrence.date)}</span>
+            {occurrence.typeName && <span className="rounded-full bg-violet-100 px-3 py-1.5 text-sm font-semibold text-violet-800">{occurrence.typeName}</span>}
           </div>
           {occurrence.description && <p className="mt-4 whitespace-pre-wrap text-base leading-relaxed text-slate-700">{occurrence.description}</p>}
-          {occurrence.responsibleNames && <p className="mt-4 text-sm font-semibold text-slate-500">{occurrence.responsibleNames}</p>}
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-500">Detalhes</p>
+          <div className="space-y-2">
+            <DetailRow label="Cliente" value={occurrence.customerCompany || occurrence.customerName || '--'} />
+            <DetailRow label="NIF" value={occurrence.customerNif || '--'} />
+            <DetailRow label="Data" value={formatDate(occurrence.date)} />
+            <DetailRow label="Prazo" value={formatDate(occurrence.dueDate)} />
+            <DetailRow label="Responsavel" value={occurrence.responsibleNames || occurrence.responsibleUserName || '--'} />
+            <DetailRow label="Atualizada" value={formatDateTime(occurrence.updatedAt)} />
+            {occurrence.syncOrigin && <DetailRow label="Origem" value={occurrence.syncOrigin} />}
+          </div>
+        </div>
+
+        {(occurrence.resolution || isResolved) && (
+          <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-sm font-bold uppercase tracking-wide text-slate-500">Resolucao</p>
+            <p className="mt-2 whitespace-pre-wrap text-base leading-relaxed text-slate-700">{occurrence.resolution || 'Sem texto de resolucao.'}</p>
+          </div>
+        )}
+
+        {apoioDetails.length > 0 && (
+          <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-500">Projeto de apoio</p>
+            <div className="space-y-2">
+              {apoioDetails.slice(0, 12).map((item) => (
+                <DetailRow key={item.key} label={humanizeDetailKey(item.key)} value={item.value} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <p className="text-sm font-bold uppercase tracking-wide text-slate-500">Anexos</p>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+              {attachments.length || occurrence.attachmentsCount || 0}
+            </span>
+          </div>
+          {attachments.length > 0 ? (
+            <div className="space-y-2">
+              {attachments.map((attachment) => (
+                <a
+                  key={attachment.id}
+                  href={`/api/occurrences/attachments/${encodeURIComponent(attachment.id)}/preview`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex min-h-[48px] items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-left active:bg-slate-100"
+                >
+                  <Paperclip size={18} className="shrink-0 text-slate-500" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-slate-900">{attachment.originalName || attachment.kind || 'Anexo'}</p>
+                    <p className="truncate text-xs text-slate-500">{formatDateTime(attachment.createdAt)}</p>
+                  </div>
+                  <ExternalLink size={16} className="shrink-0 text-slate-400" />
+                </a>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">Sem anexos associados.</p>
+          )}
         </div>
         <button type="button" onClick={onToggleResolved} className="h-12 w-full rounded-2xl bg-emerald-600 text-base font-bold text-white">
           {isResolved ? 'Reabrir ocorrencia' : 'Marcar resolvida'}
@@ -1139,12 +1482,22 @@ function CustomerDetail({
   onCopy,
   onNewTask,
   onNewOccurrence,
+  onOpenDocuments,
+  fiscalSummary,
+  fiscalLoading,
+  fiscalError,
+  onReloadFiscal,
 }: {
   customer: Customer;
   onBack: () => void;
   onCopy: (value: string) => void;
   onNewTask: () => void;
   onNewOccurrence: () => void;
+  onOpenDocuments: () => void;
+  fiscalSummary?: MobileFiscalSummary | null;
+  fiscalLoading: boolean;
+  fiscalError: string;
+  onReloadFiscal: () => void;
 }) {
   return (
     <DetailShell title="Cliente" subtitle={customerLabel(customer)} onBack={onBack}>
@@ -1166,11 +1519,26 @@ function CustomerDetail({
             )}
           </div>
         </div>
+        <button
+          type="button"
+          onClick={onOpenDocuments}
+          className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-white text-sm font-bold text-slate-900 shadow-sm ring-1 ring-slate-200 active:bg-slate-50"
+        >
+          <FolderOpen size={18} />
+          Abrir pasta / documentos
+        </button>
         <InfoCard icon={<Building2 size={18} />} label="Empresa" value={customer.company || customer.name} />
         <InfoCard icon={<User size={18} />} label="Contacto" value={customer.contactName || customer.name} />
         <InfoCard icon={<Copy size={18} />} label="NIF" value={customer.nif || '--'} onClick={() => onCopy(customer.nif || '')} />
         <InfoCard icon={<CalendarDays size={18} />} label="Tipo" value={customer.type || '--'} />
         {(customer.morada || customer.codigoPostal) && <InfoCard icon={<Building2 size={18} />} label="Morada" value={`${customer.morada || ''} ${customer.codigoPostal || ''}`.trim()} />}
+        <CustomerFiscalSummaryCard
+          customer={customer}
+          summary={fiscalSummary}
+          loading={fiscalLoading}
+          error={fiscalError}
+          onReload={onReloadFiscal}
+        />
         {customer.notes && (
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Notas</p>
@@ -1187,6 +1555,237 @@ function CustomerDetail({
         </div>
       </div>
     </DetailShell>
+  );
+}
+
+function CustomerFiscalSummaryCard({
+  customer,
+  summary,
+  loading,
+  error,
+  onReload,
+}: {
+  customer: Customer;
+  summary?: MobileFiscalSummary | null;
+  loading: boolean;
+  error: string;
+  onReload: () => void;
+}) {
+  const hasData = hasFiscalSummaryData(summary);
+  const filings = [
+    ...(summary?.ies || []).map((item) => ({ ...item, label: 'IES' })),
+    ...(summary?.modelo22 || []).map((item) => ({ ...item, label: 'Modelo 22' })),
+  ]
+    .filter((item) => item.ano || item.situacao || item.dataRecepcao || item.comprovativoPath)
+    .sort((a, b) => String(b.ano || '').localeCompare(String(a.ano || '')))
+    .slice(0, 3);
+
+  const debts = ['at', 'ss'].map((entity) => {
+    const debt = (summary?.dividas || []).find((item) => normalizeSearch(item.entidade) === entity);
+    return {
+      entity: entity.toUpperCase(),
+      label: debt ? (debt.semDivida ? 'Sem divida' : formatCurrency(debt.montante || 0)) : '--',
+      clear: !!debt?.semDivida,
+    };
+  });
+
+  const documents = [
+    ...(summary?.certidoes || []).map((item) => ({
+      label: item.tipo || 'Certidao',
+      valid: item.valida,
+      date: item.dataValidade,
+      file: item.ficheiroPdf,
+    })),
+    ...(summary?.documentos || []).map((item) => ({
+      label: item.label || item.tipo || 'Documento',
+      valid: item.valida,
+      date: item.dataValidade,
+      file: item.ficheiroPdf,
+    })),
+  ]
+    .filter((item) => item.label || item.date || item.file)
+    .slice(0, 6);
+
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold uppercase tracking-wide text-slate-500">Resumo fiscal</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {summary?.updatedAt ? `Atualizado ${formatDateTime(summary.updatedAt)}` : 'Dados fiscais do cliente'}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onReload}
+          disabled={loading}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 disabled:opacity-50"
+        >
+          <RefreshCw size={17} className={loading ? 'animate-spin' : ''} />
+        </button>
+      </div>
+
+      {loading && !summary ? (
+        <p className="mt-4 rounded-2xl bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-500">A carregar resumo fiscal...</p>
+      ) : error ? (
+        <p className="mt-4 rounded-2xl border border-rose-100 bg-rose-50 px-3 py-3 text-sm font-semibold text-rose-700">{error}</p>
+      ) : !hasData ? (
+        <p className="mt-4 rounded-2xl bg-slate-50 px-3 py-3 text-sm text-slate-500">Sem resumo fiscal recolhido para este cliente.</p>
+      ) : (
+        <div className="mt-4 space-y-4">
+          <div className="grid grid-cols-2 gap-2">
+            {debts.map((debt) => (
+              <div key={debt.entity} className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+                <p className="text-xs font-bold text-slate-500">{debt.entity}</p>
+                <p className={`mt-1 text-sm font-bold ${debt.clear ? 'text-emerald-700' : 'text-slate-900'}`}>{debt.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {filings.length > 0 && (
+            <div className="space-y-2">
+              {filings.map((filing, index) => {
+                const fileUrl = fiscalFileUrl(customer, filing.comprovativoPath);
+                return (
+                  <div key={`${filing.label}-${filing.ano}-${index}`} className="rounded-2xl border border-slate-200 px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-900">{filing.label} {filing.ano || ''}</p>
+                        <p className="mt-0.5 text-xs text-slate-500">{filing.situacao || 'Sem estado'} {filing.dataRecepcao ? `- ${formatDate(filing.dataRecepcao)}` : ''}</p>
+                      </div>
+                      {fileUrl && (
+                        <a href={fileUrl} target="_blank" rel="noreferrer" className="shrink-0 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
+                          Abrir
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {documents.length > 0 && (
+            <div className="space-y-2">
+              {documents.map((document, index) => {
+                const fileUrl = fiscalFileUrl(customer, document.file);
+                const validClass = document.valid ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800';
+                return (
+                  <div key={`${document.label}-${index}`} className="flex items-center gap-3 rounded-2xl border border-slate-200 px-3 py-3">
+                    <FileText size={18} className="shrink-0 text-slate-400" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-slate-900">{document.label}</p>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${validClass}`}>{document.valid ? 'Valido' : 'A rever'}</span>
+                        {document.date && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">{formatDate(document.date)}</span>}
+                      </div>
+                    </div>
+                    {fileUrl && (
+                      <a href={fileUrl} target="_blank" rel="noreferrer" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+                        <ExternalLink size={16} />
+                      </a>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CustomerDocumentsSheet({
+  state,
+  onClose,
+  onOpenPath,
+  onOpenFile,
+}: {
+  state: CustomerDocumentsState;
+  onClose: () => void;
+  onOpenPath: (relativePath: string) => void;
+  onOpenFile: (entry: CustomerDocumentEntry) => void;
+}) {
+  const currentPath = state.currentRelativePath || 'Pasta principal';
+  const canOpenNative = typeof (window as any).waDesktop?.openFolder === 'function' && !!(state.storageFolderPath || state.folderPath);
+
+  return (
+    <BottomSheet title="Documentos" onClose={onClose}>
+      <div className="space-y-3">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Cliente</p>
+          <p className="mt-1 truncate text-sm font-bold text-slate-950">{state.customer ? customerLabel(state.customer) : 'Cliente'}</p>
+          <p className="mt-1 break-words text-xs text-slate-500">{currentPath}</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            disabled={!state.canGoUp || state.loading}
+            onClick={() => onOpenPath(parentDocumentPath(state.currentRelativePath))}
+            className="h-11 rounded-2xl border border-slate-200 bg-white text-sm font-bold text-slate-700 disabled:opacity-40"
+          >
+            Voltar pasta
+          </button>
+          <button
+            type="button"
+            disabled={!canOpenNative}
+            onClick={() => {
+              const opener = (window as any).waDesktop?.openFolder;
+              if (typeof opener === 'function') void opener(state.storageFolderPath || state.folderPath);
+            }}
+            className="h-11 rounded-2xl border border-slate-200 bg-white text-sm font-bold text-slate-700 disabled:opacity-40"
+          >
+            Abrir no PC
+          </button>
+        </div>
+      </div>
+
+      {state.loading ? (
+        <p className="rounded-2xl bg-slate-50 px-3 py-4 text-center text-sm font-semibold text-slate-500">A abrir pasta...</p>
+      ) : state.error ? (
+        <p className="rounded-2xl border border-rose-100 bg-rose-50 px-3 py-4 text-sm font-semibold text-rose-700">{state.error}</p>
+      ) : !state.configured ? (
+        <p className="rounded-2xl bg-slate-50 px-3 py-4 text-sm text-slate-500">Este cliente ainda nao tem pasta de documentos configurada.</p>
+      ) : state.entries.length === 0 ? (
+        <p className="rounded-2xl bg-slate-50 px-3 py-4 text-sm text-slate-500">Sem documentos nesta pasta.</p>
+      ) : (
+        <div className="space-y-2">
+          {state.entries.map((entry) => {
+            const isDirectory = entry.type === 'directory';
+            return (
+              <button
+                key={entry.relativePath}
+                type="button"
+                onClick={() => (isDirectory ? onOpenPath(entry.relativePath) : onOpenFile(entry))}
+                className="flex min-h-[58px] w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm active:bg-slate-50"
+              >
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${isDirectory ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                  {isDirectory ? <FolderOpen size={20} /> : <FileText size={20} />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-slate-950">{entry.name}</p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                    {isDirectory ? 'Pasta' : formatFileSize(entry.size)} {entry.updatedAt ? `- ${formatDate(entry.updatedAt)}` : ''}
+                  </p>
+                </div>
+                {isDirectory ? <ChevronRight size={18} className="shrink-0 text-slate-300" /> : <Download size={18} className="shrink-0 text-slate-400" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </BottomSheet>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-2.5">
+      <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-slate-500">{label}</span>
+      <span className="min-w-0 break-words text-right text-sm font-semibold text-slate-800">{value || '--'}</span>
+    </div>
   );
 }
 
