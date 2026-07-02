@@ -534,6 +534,51 @@ function registerAuthRoutes() {
     });
 }
 
+// ── Log de eventos de auth ─────────────────────────────────────────────────────
+// Regista, em logs/auth-events.log, dois casos úteis para a transição de segurança:
+//   [bypass] request que SÓ passou por causa do ALLOW_LOCAL_API_WITHOUT_AUTH
+//            (ou seja, o que ficaria BLOQUEADO se pusermos o flag a false — Fase 2)
+//   [reject] request efetivamente recusado com 401 (depois do flag a false)
+// Deduplica por (tipo+método+rota normalizada) durante alguns minutos para não
+// inundar o ficheiro com o polling. Nunca deixa o log partir a request.
+const AUTH_EVENTS_LOG_PATH = path.resolve(
+    process.env.AUTH_EVENTS_LOG || path.join(process.cwd(), 'logs', 'auth-events.log')
+);
+const AUTH_EVENT_DEDUPE_MS = Math.max(0, Number(process.env.AUTH_EVENTS_DEDUPE_MS || 10 * 60 * 1000));
+const authEventDedupe = new Map();
+
+function normalizeAuthEventPath(rawPath) {
+    return String(rawPath || '')
+        .split('?')[0]
+        .replace(/\/(ext|est)_[a-z]_[^/]+/gi, '/:id')
+        .replace(/\/local_[^/]+/gi, '/:id')
+        .replace(/\/[0-9a-fA-F]{8,}(?:-[0-9a-fA-F]{4,}){0,4}/g, '/:id')
+        .replace(/\/\d+/g, '/:id');
+}
+
+function logAuthEvent(kind, req) {
+    try {
+        const method = String(req.method || '');
+        const rawPath = String(req.path || req.originalUrl || '');
+        const signature = `${kind} ${method} ${normalizeAuthEventPath(rawPath)}`;
+        const now = Date.now();
+        if (now - (authEventDedupe.get(signature) || 0) < AUTH_EVENT_DEDUPE_MS) return;
+        if (authEventDedupe.size > 5000) authEventDedupe.clear();
+        authEventDedupe.set(signature, now);
+
+        const xff = String(req.headers['x-forwarded-for'] || '').trim();
+        const via = xff ? 'externo(nginx)' : 'interno(local)';
+        const hasInternalKey = Boolean(String(req.headers['x-internal-api-key'] || req.headers['x-api-key'] || '').trim());
+        const hasToken = /(?:^|;\s*)wa_pro_session=/.test(String(req.headers.cookie || ''))
+            || /^Bearer\s+/i.test(String(req.headers.authorization || ''));
+        const remote = String(req.socket?.remoteAddress || req.ip || '');
+        const line = `${new Date().toISOString()} [${kind}] ${method} ${rawPath} via=${via} remote=${remote} xff=${xff || '-'} internalKey=${hasInternalKey} sessionToken=${hasToken}\n`;
+        fs.appendFile(AUTH_EVENTS_LOG_PATH, line, () => {});
+    } catch (_) {
+        // um log nunca pode partir um pedido
+    }
+}
+
 function apiAuthMiddleware(req, res, next) {
     if (!REQUIRE_API_AUTH) return next();
     if (!String(req.path || '').startsWith('/api/')) return next();
@@ -554,9 +599,11 @@ function apiAuthMiddleware(req, res, next) {
 
     if (ALLOW_LOCAL_API_WITHOUT_AUTH && isLocalRequest(req)) {
         req.auth = { type: 'local_compat' };
+        logAuthEvent('bypass', req);
         return next();
     }
 
+    logAuthEvent('reject', req);
     return res.status(401).json({
         success: false,
         error: 'Autenticacao necessaria.',

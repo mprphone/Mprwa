@@ -37,6 +37,67 @@ Endpoints de controlo:
 - `POST /api/chat/whatsapp/connect`
 - `POST /api/chat/whatsapp/disconnect`
 
+## Autenticação da API (Segurança)
+
+A API tem autenticação por sessão (login server-side + cookie HttpOnly assinado com HMAC).
+Está desenhada em **duas fases** para poder ser ativada sem interromper o serviço.
+
+O acesso externo entra sempre pelo **nginx** (serviço systemd `mprwa-backend` →
+`proxy_pass http://127.0.0.1:3010`). Continua a poder abrir-se de qualquer parte do
+mundo pelo endereço público — a autenticação **só acrescenta o login, não retira acesso**.
+
+### Variáveis de ambiente (`.env`)
+- `REQUIRE_API_AUTH=true` — liga o middleware de auth (default no código: `true`).
+- `ALLOW_LOCAL_API_WITHOUT_AUTH` — se `true`, pedidos vindos de `127.0.0.1` saltam a auth.
+  **Como o nginx encaminha de localhost, com isto a `true` todo o tráfego externo continua
+  a passar sem login** (estado da Fase 1). Pôr a `false` é o que ativa a proteção real.
+- `AUTH_SECRET` — segredo que assina os tokens de sessão. Tem de ser aleatório, forte e
+  fixo (já definido). Sem ele, cai num fallback previsível e os tokens ficam forjáveis.
+- `INTERNAL_API_KEY` — chave para chamadas internas server→server (workers, obrigações,
+  notificações, proxy chat-core, script batch). Enviada no header `x-internal-api-key`
+  (helper `src/server/utils/internalApi.js`).
+
+### Fase 1 — CONCLUÍDA (deploy sem impacto)
+- Endpoints `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`.
+- `AUTH_SECRET` e `INTERNAL_API_KEY` no `.env`.
+- Todos os chamadores internos já enviam a `INTERNAL_API_KEY`.
+- `ALLOW_LOCAL_API_WITHOUT_AUTH=true` → nada mudou para os utilizadores; o login **ainda não
+  é obrigatório** e o leak anónimo (ex.: `/api/import/supabase` com senhas dos clientes)
+  ainda **não está fechado**.
+
+### Fase 2 — ATIVAR A PROTEÇÃO (só depois de testar a Fase 1)
+1. No `.env`: `ALLOW_LOCAL_API_WITHOUT_AUTH=false`
+2. `sudo systemctl restart mprwa-backend`
+3. A partir daqui o login passa a ser **obrigatório**. Testar:
+   - Login web/desktop de fora (deve funcionar após autenticar; acesso mundial mantém-se).
+   - Pedido sem sessão a um endpoint protegido (ex.: `/api/import/supabase`) → **401**.
+   - Fluxos internos: sincronização de clientes, obrigações (SAF-T/DMR/DRI/IVA),
+     notificações (`/api/chat/send`), proxy chat-core.
+   - Script `scripts/batch-saft-m22-ies-all.js` (precisa da `INTERNAL_API_KEY` no ambiente).
+
+Se um fluxo interno falhar com 401, confirmar que o processo tem a `INTERNAL_API_KEY`
+correta e que envia o header `x-internal-api-key`.
+
+### Log de eventos de auth (`logs/auth-events.log`)
+Registado automaticamente pelo middleware. Serve de rede de segurança para a transição:
+- `[bypass] ... via=interno(local) internalKey=false` → chamador interno que **partiria**
+  na Fase 2 (não está a enviar a `INTERNAL_API_KEY`). Corrigir **antes** de avançar.
+- `[bypass] ... via=externo(nginx) sessionToken=false` → utilizador externo que passará a
+  precisar de login (comportamento esperado).
+- Depois do flip da Fase 2, as linhas `[reject]` mostram os 401 reais.
+
+Verificação rápida antes de fechar o bypass (não deve devolver nada):
+```bash
+grep 'via=interno(local) internalKey=false' logs/auth-events.log
+```
+Se aparecer algum endpoint interno aqui, ainda não está pronto para a Fase 2.
+
+Configurável: `AUTH_EVENTS_LOG` (caminho do ficheiro) e `AUTH_EVENTS_DEDUPE_MS`
+(intervalo de deduplicação por rota; default 10 min).
+
+Complemento recomendado: ligar o `:3010` só a `127.0.0.1` (o nginx é a porta de entrada),
+removendo o acesso direto pela LAN que contornaria a auth.
+
 ## Como Rodar
 1. Compile o Frontend (necessário sempre que alterar arquivos em `src`):
    ```bash
