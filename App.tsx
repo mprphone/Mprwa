@@ -29,6 +29,12 @@ const RouteFallback: React.FC = () => (
   </div>
 );
 
+function isStandaloneMobileShell(): boolean {
+  if (typeof window === 'undefined') return false;
+  const navigatorStandalone = Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+  return navigatorStandalone || window.matchMedia('(display-mode: standalone)').matches;
+}
+
 const ProtectedApp: React.FC = () => {
   const location = useLocation();
   const [isCompactViewport, setIsCompactViewport] = useState(() =>
@@ -46,6 +52,10 @@ const ProtectedApp: React.FC = () => {
 
   if (!mockService.isAuthenticated()) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (isStandaloneMobileShell() && !location.pathname.startsWith('/mobile')) {
+    return <Navigate to="/mobile/chat" replace />;
   }
 
   if (location.pathname.startsWith('/mobile')) {

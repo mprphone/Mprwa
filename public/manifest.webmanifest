@@ -1,8 +1,9 @@
 {
-  "name": "WA PRO",
-  "short_name": "WA PRO",
+  "id": "/#/mobile/",
+  "name": "WA PRO Mobile",
+  "short_name": "WA Mobile",
   "description": "WA PRO Mobile",
-  "start_url": "/mobile/chat",
+  "start_url": "/#/mobile/chat",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
