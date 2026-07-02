@@ -1411,28 +1411,28 @@ const InternalChat: React.FC = () => {
   );
 
   return (
-    <div className="h-[calc(100vh-4rem)] w-full bg-gray-100 p-4 md:p-6 space-y-4 flex flex-col">
-      <div className="rounded-lg border border-slate-700/20 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-900 px-3 py-2.5 text-white shadow-sm md:px-4 md:py-3">
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(190px,260px)_minmax(0,1fr)] xl:grid-cols-[minmax(210px,280px)_minmax(0,1fr)_auto] md:items-center">
+    <div className="h-[calc(100vh-4rem)] w-full bg-gray-100 p-2 md:p-2.5 space-y-2 flex flex-col">
+      <div className="rounded-md border border-slate-700/20 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-900 px-3 py-1.5 text-white shadow-sm md:px-4">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(180px,240px)_minmax(0,1fr)] xl:grid-cols-[minmax(190px,250px)_minmax(0,1fr)_auto] md:items-center">
           <div className="min-w-0">
-            <h1 className="text-lg font-bold leading-tight md:text-xl">Chat Interno</h1>
-            <p className="truncate text-[11px] text-slate-200 md:text-xs">Comunicação entre funcionários e equipas.</p>
+            <h1 className="text-base font-bold leading-tight md:text-lg">Chat Interno</h1>
+            <p className="truncate text-[11px] text-slate-200">Comunicação entre funcionários e equipas.</p>
           </div>
           <div className="min-w-0">
             <p className="truncate text-[11px] text-slate-200">{currentUser ? `Ligado como ${currentUser.name}` : 'Sem utilizador ativo'}</p>
-            <p className="truncate text-sm font-semibold leading-tight text-white md:text-base">
+            <p className="truncate text-sm font-semibold leading-tight text-white">
               {selectedConversation?.title || 'Selecione ou crie uma conversa'}
             </p>
             {selectedConversation?.type === 'direct' && selectedConversationPeer && (
-              <p className="mt-0.5 truncate text-[10px] text-slate-200">
+              <p className="truncate text-[11px] text-slate-200">
                 {formatPresenceLabel(getPresence(selectedConversationPeer.id))}
               </p>
             )}
           </div>
-          <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 md:col-span-2 xl:col-span-1 xl:flex xl:flex-wrap xl:items-center xl:justify-end">
+          <div className="grid w-full grid-cols-2 gap-1.5 sm:grid-cols-4 md:col-span-2 xl:col-span-1 xl:flex xl:flex-wrap xl:items-center xl:justify-end">
             <button
               onClick={() => void openAgendaModal()}
-              className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border border-sky-200 bg-sky-500 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-sky-400"
+              className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-md border border-sky-200 bg-sky-500 px-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-sky-400"
               title="Abrir agenda para criar reunião"
             >
               <CalendarDays size={14} className="shrink-0" />
@@ -1440,7 +1440,7 @@ const InternalChat: React.FC = () => {
             </button>
             <button
               onClick={() => void openTaskModal()}
-              className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-500 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-400"
+              className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-500 px-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-amber-400"
               title="Abrir tarefas para criar nova tarefa"
             >
               <CheckSquare size={14} className="shrink-0" />
@@ -1448,7 +1448,7 @@ const InternalChat: React.FC = () => {
             </button>
             <button
               onClick={openPedidoModal}
-              className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-500 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-400"
+              className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-500 px-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-emerald-400"
             >
               <Plus size={14} className="shrink-0" />
               <span className="truncate">Criar Pedido</span>
@@ -1456,7 +1456,7 @@ const InternalChat: React.FC = () => {
             <button
               onClick={() => void handleDeleteSelectedConversation()}
               disabled={!selectedConversationId || isDeletingConversation}
-              className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border border-red-300/60 bg-red-500/15 px-3 text-sm font-semibold text-red-100 hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-md border border-red-300/60 bg-red-500/15 px-2.5 text-xs font-semibold text-red-100 hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50"
               title="Eliminar conversa selecionada"
             >
               <Trash2 size={14} className="shrink-0" />
@@ -1466,9 +1466,9 @@ const InternalChat: React.FC = () => {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)_380px] 2xl:grid-cols-[300px_minmax(0,1fr)_400px]">
+      <div className="min-h-0 flex-1 grid grid-cols-1 xl:grid-cols-[260px_minmax(0,1fr)_360px] 2xl:grid-cols-[280px_minmax(0,1fr)_380px]">
         <aside className="border-r border-gray-200 bg-white flex flex-col min-h-0">
-          <div className="p-3 border-b border-gray-200">
+          <div className="p-2.5 border-b border-gray-200">
             <label className="relative block">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
@@ -1484,7 +1484,7 @@ const InternalChat: React.FC = () => {
                 name={`internal_chat_search_${currentUserId || 'user'}`}
                 autoComplete="new-password"
                 spellCheck={false}
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-whatsapp-200"
+                className="h-9 w-full rounded-lg border border-gray-200 bg-gray-50 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-whatsapp-200"
               />
               {search.trim() && (
                 <button
@@ -1503,7 +1503,7 @@ const InternalChat: React.FC = () => {
           </div>
 
           <div className="min-h-0 flex-1 flex flex-col">
-            <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 border-b border-gray-100">
+            <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 border-b border-gray-100">
               Conversas
             </div>
             <div className="min-h-0 flex-1 overflow-auto">
@@ -1524,12 +1524,12 @@ const InternalChat: React.FC = () => {
                   <button
                     key={conversation.id}
                     onClick={() => setSelectedConversationId(conversation.id)}
-                    className={`w-full text-left px-4 py-3 border-b border-gray-100 transition ${
+                    className={`w-full text-left px-3 py-2.5 border-b border-gray-100 transition ${
                       isActive ? 'bg-whatsapp-50' : 'hover:bg-gray-50'
                     }`}
                   >
-                    <div className="flex items-start gap-3">
-                      <div className="relative mt-0.5 h-9 w-9 shrink-0 overflow-hidden rounded-full border border-slate-200 bg-slate-100">
+                    <div className="flex items-start gap-2.5">
+                      <div className="relative mt-0.5 h-8 w-8 shrink-0 overflow-hidden rounded-full border border-slate-200 bg-slate-100">
                         {conversation.type === 'group' ? (
                           <div className="flex h-full w-full items-center justify-center text-slate-600">
                             <Users size={14} />
@@ -1548,11 +1548,11 @@ const InternalChat: React.FC = () => {
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 truncate" title={conversation.title || 'Conversa interna'}>
+                          <p className="text-[13px] font-semibold text-gray-900 truncate" title={conversation.title || 'Conversa interna'}>
                             {conversation.title || 'Conversa interna'}
                           </p>
                           {conversation.type === 'group' && (
-                            <span className="text-[10px] font-semibold px-2 py-[2px] rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                            <span className="text-[11px] font-semibold px-2 py-[2px] rounded-full bg-blue-50 text-blue-700 border border-blue-200">
                               Grupo
                             </span>
                           )}
@@ -1562,7 +1562,7 @@ const InternalChat: React.FC = () => {
                             {formatPresenceLabel(directPresence)}
                           </p>
                         )}
-                        <p className="mt-1 truncate text-sm text-gray-500">{conversation.lastMessageBody || 'Sem mensagens ainda.'}</p>
+                        <p className="mt-1 truncate text-xs text-gray-500">{conversation.lastMessageBody || 'Sem mensagens ainda.'}</p>
                         {conversation.type === 'group' && (
                           <p className="text-[11px] text-gray-400 mt-1">{Math.max(0, Number(conversation.memberCount || 0))} membros</p>
                         )}
@@ -1570,7 +1570,7 @@ const InternalChat: React.FC = () => {
                       <div className="text-right shrink-0">
                         <p className="text-[11px] text-gray-500">{formatTimeLabel(conversation.lastMessageAt)}</p>
                         {conversation.unreadCount > 0 && (
-                          <span className="inline-flex mt-1 items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-whatsapp-500 text-white text-[11px] font-semibold">
+                          <span className="inline-flex mt-1 items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-whatsapp-500 text-white text-[11px] font-semibold">
                             {conversation.unreadCount}
                           </span>
                         )}
@@ -1596,12 +1596,12 @@ const InternalChat: React.FC = () => {
             </div>
           )}
 
-          <div ref={messagesScrollRef} className="flex-1 overflow-auto px-6 py-4 space-y-2">
+          <div ref={messagesScrollRef} className="flex-1 overflow-auto px-4 py-2.5 space-y-1.5">
             {groupedMessages.map((item, index) => {
               if (item.type === 'day') {
                 return (
                   <div key={`day_${index}`} className="flex justify-center py-2">
-                    <span className="text-[11px] text-gray-600 bg-white/90 px-3 py-1 rounded-full border border-gray-200">
+                    <span className="text-xs text-gray-600 bg-white/90 px-3 py-1 rounded-full border border-gray-200">
                       {item.label}
                     </span>
                   </div>
@@ -1656,24 +1656,24 @@ const InternalChat: React.FC = () => {
               const replyPreview = buildQuotedMessagePreview(repliedMessage);
 
               return (
-                <div key={message.id} className={`flex items-end gap-2 ${isMine ? 'justify-end' : 'justify-start'}`}>
+                <div key={message.id} className={`flex items-end gap-1.5 ${isMine ? 'justify-end' : 'justify-start'}`}>
                   {!isMine && (
-                    <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full border border-slate-200 bg-slate-100">
+                    <div className="h-7 w-7 shrink-0 overflow-hidden rounded-full border border-slate-200 bg-slate-100">
                       <img src={senderAvatar} alt={senderName || 'Funcionário'} className="h-full w-full object-cover" />
                     </div>
                   )}
                   <div
                     onContextMenu={(event) => openContextMenu(event, message)}
-                    className={`max-w-[72%] rounded-xl px-3 py-2 shadow-sm border ${
+                    className={`max-w-[76%] rounded-lg px-3 py-1.5 shadow-sm border ${
                       isMine ? 'bg-[#d9fdd3] border-green-100' : 'bg-white border-gray-100'
                     } ${selectedMessageIds.has(message.id) ? 'ring-2 ring-whatsapp-300' : ''}`}
                   >
                     {!isMine && (
-                      <p className="text-[11px] font-semibold text-gray-700 mb-1">{senderName}</p>
+                      <p className="text-xs font-semibold text-gray-700 mb-1">{senderName}</p>
                     )}
 
                     {starredMessageIds.has(message.id) && (
-                      <p className="text-[11px] text-amber-600 mb-1">★ Com estrela</p>
+                      <p className="text-xs text-amber-600 mb-1">★ Com estrela</p>
                     )}
 
                     {replyTargetId && (
@@ -1684,7 +1684,7 @@ const InternalChat: React.FC = () => {
                             : 'border-sky-400 bg-sky-50/80 text-sky-900'
                         }`}
                       >
-                        <p className="text-[11px] font-semibold">
+                        <p className="text-xs font-semibold">
                           {repliedSenderName ? `Em resposta a ${repliedSenderName}` : 'Em resposta a uma mensagem'}
                         </p>
                         <p className="truncate">{replyPreview}</p>
@@ -1693,7 +1693,7 @@ const InternalChat: React.FC = () => {
 
                     {message.type === 'image' && mediaUrl && (
                       <a href={mediaUrl} target="_blank" rel="noreferrer" className="block mb-2">
-                        <img src={mediaUrl} alt={message.fileName || 'Imagem'} className="max-h-64 rounded-lg border border-gray-200" />
+                        <img src={mediaUrl} alt={message.fileName || 'Imagem'} className="max-h-52 max-w-full rounded-md border border-gray-200 object-contain" />
                       </a>
                     )}
 
@@ -1722,10 +1722,10 @@ const InternalChat: React.FC = () => {
                       </div>
                     )}
 
-                    <p className="text-[15px] leading-relaxed text-gray-900 whitespace-pre-wrap break-words">
+                    <p className="text-[14px] leading-6 text-gray-900 whitespace-pre-wrap break-words">
                       {message.deletedAt ? 'Mensagem apagada.' : message.body}
                     </p>
-                    <div className="mt-1 flex items-center justify-end gap-1 text-[11px] text-gray-500">
+                    <div className="mt-1 flex items-center justify-end gap-1 text-xs text-gray-500">
                       <span>
                         {formatTimeLabel(message.createdAt)}
                         {message.editedAt ? ' · editada' : ''}
@@ -1752,7 +1752,7 @@ const InternalChat: React.FC = () => {
                               key={`${message.id}_${reaction.emoji}`}
                               type="button"
                               onClick={() => void handleToggleReaction(message, reaction.emoji)}
-                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-[2px] text-[11px] ${
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-[2px] text-xs ${
                                 reactedByMe
                                   ? 'border-whatsapp-300 bg-whatsapp-100 text-whatsapp-900'
                                   : 'border-gray-200 bg-white/80 text-gray-700'
@@ -1784,7 +1784,7 @@ const InternalChat: React.FC = () => {
             </button>
           )}
 
-          <footer className="bg-white border-t border-gray-200 px-4 py-3">
+          <footer className="bg-white border-t border-gray-200 px-3 py-2">
             {(replyMessage || editingMessage) && (
               <div className="mb-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700 flex items-center justify-between gap-2">
                 <div className="truncate">
@@ -1807,7 +1807,7 @@ const InternalChat: React.FC = () => {
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={!selectedConversationId || isUploading}
-                className="h-10 w-10 rounded-full border border-gray-200 text-gray-600 flex items-center justify-center disabled:opacity-50"
+                className="h-9 w-9 rounded-full border border-gray-200 text-gray-600 flex items-center justify-center disabled:opacity-50"
                 title="Anexar ficheiro"
               >
                 <Paperclip size={16} />
@@ -1825,14 +1825,14 @@ const InternalChat: React.FC = () => {
                 <button
                   onClick={() => setShowEmojiPicker((prev) => !prev)}
                   disabled={!selectedConversationId || isSending || isUploading}
-                  className="h-10 w-10 rounded-full border border-gray-200 text-gray-600 flex items-center justify-center disabled:opacity-50"
+                  className="h-9 w-9 rounded-full border border-gray-200 text-gray-600 flex items-center justify-center disabled:opacity-50"
                   title="Emojis"
                 >
                   <Smile size={16} />
                 </button>
                 {showEmojiPicker && (
                   <div className="absolute bottom-12 left-0 z-20 w-52 rounded-xl border border-gray-200 bg-white p-2 shadow-xl">
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Emojis</div>
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Emojis</div>
                     <div className="grid grid-cols-6 gap-1">
                       {QUICK_CHAT_EMOJIS.map((emoji) => (
                         <button
@@ -1866,13 +1866,13 @@ const InternalChat: React.FC = () => {
                 }}
                 placeholder={selectedConversationId ? 'Escreva uma mensagem interna... (Ctrl+V para colar imagem)' : 'Selecione uma conversa'}
                 disabled={!selectedConversationId || isSending || isUploading}
-                className="flex-1 resize-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[15px] focus:outline-none focus:ring-2 focus:ring-whatsapp-200 disabled:bg-gray-100"
+                className="min-h-[38px] flex-1 resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-whatsapp-200 disabled:bg-gray-100"
               />
 
               <button
                 onClick={() => void handleSendText()}
                 disabled={!selectedConversationId || !newMessage.trim() || isSending || isUploading}
-                className="h-10 w-10 rounded-full bg-whatsapp-500 text-white flex items-center justify-center disabled:opacity-50"
+                className="h-9 w-9 rounded-full bg-whatsapp-500 text-white flex items-center justify-center disabled:opacity-50"
                 title="Enviar"
               >
                 <Send size={16} />
@@ -1892,8 +1892,8 @@ const InternalChat: React.FC = () => {
           </footer>
         </section>
 
-        <aside className="hidden xl:flex border-l border-gray-200 bg-white min-h-0 flex-col gap-3 overflow-hidden p-3">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 shadow-sm">
+        <aside className="hidden xl:flex border-l border-gray-200 bg-white min-h-0 flex-col gap-2.5 overflow-hidden p-2.5">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 shadow-sm">
             <div className="text-xs uppercase tracking-wide text-slate-500">Atalhos</div>
             <div className="mt-2 grid grid-cols-3 gap-2">
               {([
@@ -1913,26 +1913,26 @@ const InternalChat: React.FC = () => {
                     }
                   }}
                   title={label}
-                  className="rounded-lg border border-slate-200 bg-white p-1.5 shadow-sm transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  className="rounded-md border border-slate-200 bg-white p-1 shadow-sm transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-300"
                 >
-                  <img src={icon} alt={label} className="h-14 w-full rounded-md object-contain" />
+                  <img src={icon} alt={label} className="h-8 w-full rounded object-contain" />
                 </a>
               ))}
             </div>
             {pedidoFeedback && <div className="mt-2 rounded-lg border border-green-200 bg-green-50 px-2 py-1.5 text-xs text-green-700">{pedidoFeedback}</div>}
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-slate-900">Registo de Ponto</div>
+                <div className="text-[13px] font-semibold text-slate-900">Registo de Ponto</div>
                 <p className="mt-0.5 text-xs text-slate-500">PIN pessoal para entrada ou saída.</p>
               </div>
               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
                 {pontoRecent.length}
               </span>
             </div>
-            <div className="mt-2 grid grid-cols-[minmax(0,1fr)_88px_88px] gap-2">
+            <div className="mt-2 grid grid-cols-[minmax(0,1fr)_76px_76px] gap-2">
             <input
               type="password"
               value={pontoPin}
@@ -1941,19 +1941,19 @@ const InternalChat: React.FC = () => {
                 if (pontoError) setPontoError('');
               }}
               placeholder="PIN"
-              className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-whatsapp-200"
+              className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-whatsapp-200"
             />
               <button
                 onClick={() => void submitPonto('ENTRADA')}
                 disabled={!!pontoSubmittingType}
-                className="h-10 rounded-lg bg-emerald-500 px-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-60"
+                className="h-9 rounded-lg bg-emerald-500 px-2 text-xs font-semibold text-white hover:bg-emerald-600 disabled:opacity-60"
               >
                 {pontoSubmittingType === 'ENTRADA' ? '...' : 'Entrada'}
               </button>
               <button
                 onClick={() => void submitPonto('SAIDA')}
                 disabled={!!pontoSubmittingType}
-                className="h-10 rounded-lg bg-rose-500 px-2 text-sm font-semibold text-white hover:bg-rose-600 disabled:opacity-60"
+                className="h-9 rounded-lg bg-rose-500 px-2 text-xs font-semibold text-white hover:bg-rose-600 disabled:opacity-60"
               >
                 {pontoSubmittingType === 'SAIDA' ? '...' : 'Saída'}
               </button>
@@ -1969,11 +1969,11 @@ const InternalChat: React.FC = () => {
               </div>
             )}
             <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
-              {pontoRecentError && <div className="mt-1 text-[11px] text-red-600">{pontoRecentError}</div>}
+              {pontoRecentError && <div className="mt-1 text-xs text-red-600">{pontoRecentError}</div>}
               <div className="space-y-1">
-                {pontoRecentLoading && <div className="text-[11px] text-slate-500">A carregar...</div>}
+                {pontoRecentLoading && <div className="text-xs text-slate-500">A carregar...</div>}
                 {!pontoRecentLoading && pontoRecent.length === 0 && (
-                  <div className="text-[11px] text-slate-500">Sem registos recentes.</div>
+                  <div className="text-xs text-slate-500">Sem registos recentes.</div>
                 )}
                 {!pontoRecentLoading &&
                   pontoRecent.map((registo, idx) => (
@@ -1982,13 +1982,13 @@ const InternalChat: React.FC = () => {
                       className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-2 py-1"
                     >
                       <span
-                        className={`text-[11px] font-semibold ${
+                        className={`text-xs font-semibold ${
                           registo.tipo === 'ENTRADA' ? 'text-emerald-700' : 'text-rose-700'
                         }`}
                       >
                         {registo.tipo === 'ENTRADA' ? 'ENTRADA' : 'SAÍDA'}
                       </span>
-                      <span className="text-[11px] text-slate-600">{formatPontoDateTime(registo.momento)}</span>
+                      <span className="text-xs text-slate-600">{formatPontoDateTime(registo.momento)}</span>
                     </div>
                   ))}
               </div>
@@ -2000,24 +2000,24 @@ const InternalChat: React.FC = () => {
               <p className="text-xs font-semibold text-blue-900 mb-2">Membros do grupo</p>
               <div className="flex flex-wrap gap-1">
                 {members.map((member) => (
-                  <span key={member.userId} className="text-[11px] px-2 py-1 rounded-full bg-white border border-blue-100 text-blue-800">
+                  <span key={member.userId} className="text-xs px-2 py-1 rounded-full bg-white border border-blue-100 text-blue-800">
                     {member.name}
                   </span>
                 ))}
-                {members.length === 0 && <span className="text-[11px] text-gray-500">Sem membros carregados.</span>}
+                {members.length === 0 && <span className="text-xs text-gray-500">Sem membros carregados.</span>}
               </div>
             </div>
           )}
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4 flex-1 min-h-[280px] flex flex-col shadow-sm">
+          <div className="rounded-lg border border-slate-200 bg-white p-3 flex-1 min-h-[260px] flex flex-col shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <div>
                 <div className="text-sm uppercase tracking-wide text-slate-500">Tarefas</div>
-                <div className="text-base font-semibold text-slate-900 truncate">
+                <div className="text-sm font-semibold text-slate-900 truncate">
                   {taskTargetUser ? taskTargetUser.name : 'Sem funcionário selecionado'}
                 </div>
               </div>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-sm font-medium text-slate-600">
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
                 {employeeTasks.length}
               </span>
             </div>
@@ -2028,7 +2028,7 @@ const InternalChat: React.FC = () => {
               </div>
             )}
 
-            <div className="mt-3 flex-1 min-h-0 overflow-auto space-y-2.5 pr-1">
+            <div className="mt-2.5 flex-1 min-h-0 overflow-auto space-y-2 pr-1">
               {employeeTasksLoading && <div className="text-sm text-slate-500">A carregar tarefas...</div>}
               {!employeeTasksLoading && employeeTasks.length === 0 && (
                 <div className="text-sm text-slate-500">Sem tarefas em aberto.</div>
@@ -2047,14 +2047,14 @@ const InternalChat: React.FC = () => {
                       }
                       navigate('/tasks');
                     }}
-                    className={`w-full text-left rounded-xl border px-3 py-3 shadow-sm transition-colors hover:shadow-md ${getInternalTaskCardTone(
+                    className={`w-full text-left rounded-lg border px-3 py-2.5 shadow-sm transition-colors hover:shadow-md ${getInternalTaskCardTone(
                       String(task.id || ''),
                       task.status
                     )}`}
                   >
-                    <div className="text-sm font-semibold leading-snug text-slate-900">{task.title || 'Tarefa sem título'}</div>
-                    <div className="mt-1 text-[13px] leading-snug text-slate-600">{task.customerName || 'Sem cliente'}</div>
-                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[13px]">
+                    <div className="text-[13px] font-semibold leading-snug text-slate-900">{task.title || 'Tarefa sem título'}</div>
+                    <div className="mt-1 text-xs leading-snug text-slate-600">{task.customerName || 'Sem cliente'}</div>
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
                       <span
                         className={`rounded-full border px-2 py-0.5 font-medium ${getInternalTaskStatusBadgeClass(task.status)}`}
                       >
@@ -2083,7 +2083,7 @@ const InternalChat: React.FC = () => {
           <ContextMenuItem icon={<Star size={14} />} label="Marcar com estrela" onClick={() => void handleContextAction('star', contextMenu.message)} />
           <ContextMenuItem icon={<Check size={14} />} label="Selecionar" onClick={() => void handleContextAction('select', contextMenu.message)} />
           <ContextMenuItem icon={<Info size={14} />} label="Detalhes" onClick={() => void handleContextAction('details', contextMenu.message)} />
-          <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Reagir</div>
+          <div className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Reagir</div>
           <div className="grid grid-cols-5 gap-1 px-2 pb-2">
             {QUICK_REACTION_EMOJIS.map((emoji) => (
               <button
@@ -2215,7 +2215,7 @@ const InternalChat: React.FC = () => {
                     </button>
                   </div>
                   {taskForm.customerId && !taskCustomerOpen && (
-                    <p className="mt-1 text-[11px] text-emerald-600 font-medium">✓ {customerLabel(actionCustomers.find(c => c.id === taskForm.customerId)!)}</p>
+                    <p className="mt-1 text-xs text-emerald-600 font-medium">✓ {customerLabel(actionCustomers.find(c => c.id === taskForm.customerId)!)}</p>
                   )}
                   {taskCustomerOpen && (() => {
                     const q = taskCustomerQuery.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -2229,7 +2229,7 @@ const InternalChat: React.FC = () => {
                             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-emerald-50 transition-colors border-b border-slate-50 last:border-0"
                             onMouseDown={() => { setTaskForm(prev => ({ ...prev, customerId: c.id })); setTaskCustomerQuery(''); setTaskCustomerOpen(false); }}>
                             <span className="flex-1 font-medium text-slate-800 truncate">{c.company || c.name}</span>
-                            {c.nif && <span className="shrink-0 text-[11px] font-mono text-slate-400">{c.nif}</span>}
+                            {c.nif && <span className="shrink-0 text-xs font-mono text-slate-400">{c.nif}</span>}
                           </button>
                         ))}
                       </div>
@@ -2286,7 +2286,7 @@ const InternalChat: React.FC = () => {
                 <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
                   <div className="font-semibold">Destino</div>
                   <div className="mt-0.5">Gerência (mpr@mpr.pt)</div>
-                  <div className="mt-1 text-[11px] text-blue-700">Estado inicial: PENDENTE</div>
+                  <div className="mt-1 text-xs text-blue-700">Estado inicial: PENDENTE</div>
                 </div>
               </div>
 
