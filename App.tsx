@@ -1,5 +1,5 @@
-import React, { Suspense, lazy } from 'react';
-import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
+import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -21,6 +21,7 @@ const AutoResponses = lazy(() => import('./pages/AutoResponses'));
 const ResponseForms = lazy(() => import('./pages/ResponseForms'));
 const SoftwareHub = lazy(() => import('./pages/SoftwareHub'));
 const Simulators = lazy(() => import('./pages/Simulators'));
+const MobileWorkspace = lazy(() => import('./pages/MobileWorkspace'));
 
 const RouteFallback: React.FC = () => (
   <div className="flex h-full w-full items-center justify-center p-8 text-gray-400">
@@ -29,15 +30,40 @@ const RouteFallback: React.FC = () => (
 );
 
 const ProtectedApp: React.FC = () => {
+  const location = useLocation();
+  const [isCompactViewport, setIsCompactViewport] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const query = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsCompactViewport(query.matches);
+    update();
+    query.addEventListener?.('change', update);
+    return () => query.removeEventListener?.('change', update);
+  }, []);
+
   if (!mockService.isAuthenticated()) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (location.pathname.startsWith('/mobile')) {
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route path="/mobile/*" element={<MobileWorkspace />} />
+          <Route path="*" element={<Navigate to="/mobile/chat" replace />} />
+        </Routes>
+      </Suspense>
+    );
   }
 
   return (
     <Layout>
       <Suspense fallback={<RouteFallback />}>
         <Routes>
-          <Route path="/" element={<Navigate to="/inbox" replace />} />
+          <Route path="/" element={<Navigate to={isCompactViewport ? '/mobile/chat' : '/inbox'} replace />} />
           <Route path="/inbox" element={<Inbox />} />
           <Route path="/internal-chat" element={<InternalChat />} />
           <Route path="/agenda" element={<Agenda />} />

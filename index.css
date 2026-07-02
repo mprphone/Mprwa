@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+    .mobile-input {
+        @apply min-h-[44px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-base text-slate-950 outline-none transition focus:border-emerald-300 focus:bg-white focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-100 disabled:text-slate-400;
+    }
+}
+
 /* Custom scrollbar for chat */
 .scrollbar-hide::-webkit-scrollbar {
     display: none;
