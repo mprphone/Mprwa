@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, Notification, shell, ipcMain, clipboard, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, Notification, shell, ipcMain, clipboard, dialog, powerMonitor, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -31,6 +31,12 @@ const {
 const { collectFinancasAtProfile } = require('./financas-at-profile');
 const { collectDesktopCartaoEletronico } = require('./cartaoEletronico');
 
+// Algumas máquinas Windows abrem o Electron com janela branca por causa do
+// driver/GPU. A app é essencialmente web, por isso é mais seguro renderizar
+// sem aceleração gráfica do que deixar o utilizador preso num ecrã vazio.
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('disable-gpu');
+app.commandLine.appendSwitch('disable-gpu-compositing');
 
 const APP_ID = 'pt.mpr.wapro.desktop';
 const APP_NAME = 'WA PRO';
@@ -65,6 +71,7 @@ let backendProcess = null;
 let backendManagedByElectron = false;
 let pollingTimer = null;
 let isQuitting = false;
+let pendingReloadOnShow = false;
 let unreadSnapshot = new Map();
 let messageTimestampSnapshot = new Map();
 let rendererUnreadState = {
@@ -1129,6 +1136,87 @@ function isInternalUrl(urlText, runtimeConfig) {
   }
 }
 
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildDesktopLoadErrorHtml({ appUrl, errorDescription, errorCode }) {
+  const safeUrl = escapeHtml(appUrl);
+  const safeError = escapeHtml(errorDescription || 'A janela não conseguiu carregar a aplicação.');
+  const safeCode = escapeHtml(errorCode ? `Código: ${errorCode}` : '');
+  return `<!doctype html>
+<html lang="pt">
+  <head>
+    <meta charset="utf-8" />
+    <title>WA PRO - diagnóstico</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: Arial, sans-serif;
+        color: #0f172a;
+        background: #f1f5f9;
+      }
+      main {
+        width: min(720px, calc(100vw - 32px));
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        background: white;
+        padding: 28px;
+        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.12);
+      }
+      h1 { margin: 0 0 8px; font-size: 22px; }
+      p { margin: 8px 0; line-height: 1.5; color: #475569; }
+      code {
+        display: block;
+        margin-top: 10px;
+        padding: 12px;
+        overflow-wrap: anywhere;
+        border-radius: 8px;
+        background: #f8fafc;
+        color: #334155;
+        font-size: 13px;
+      }
+      .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+      button, a {
+        appearance: none;
+        border: 1px solid #cbd5e1;
+        border-radius: 7px;
+        padding: 10px 14px;
+        background: #0f172a;
+        color: white;
+        font-weight: 700;
+        font-size: 14px;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      a.secondary, button.secondary { background: white; color: #0f172a; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Não consegui abrir o WA PRO neste PC</h1>
+      <p>${safeError}</p>
+      ${safeCode ? `<p>${safeCode}</p>` : ''}
+      <p>Confirme a ligação à internet/rede e reinicie a aplicação. Se continuar branco, abra o endereço abaixo no navegador para perceber se é bloqueio de rede, antivírus ou certificado.</p>
+      <code>${safeUrl}</code>
+      <div class="actions">
+        <button onclick="location.href='${safeUrl}'">Tentar novamente</button>
+        <a class="secondary" href="${safeUrl}" target="_blank" rel="noreferrer">Abrir no navegador</a>
+      </div>
+    </main>
+  </body>
+</html>`;
+}
+
 function createMainWindow(runtimeConfig) {
   mainWindow = new BrowserWindow({
     width: 1420,
@@ -1144,13 +1232,100 @@ function createMainWindow(runtimeConfig) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      backgroundThrottling: false,
     },
   });
 
-  mainWindow.loadURL(runtimeConfig.appUrl);
+  let loadFailureCount = 0;
+  let showingLoadErrorPage = false;
+  let appPageLoaded = false;
+  let loadWatchdog = null;
+
+  void session.defaultSession.clearCache().catch((error) => {
+    console.warn('[Electron] Falha ao limpar cache:', error?.message || error);
+  });
+
+  const reloadMainWindow = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    pendingReloadOnShow = false;
+    showingLoadErrorPage = false;
+    appPageLoaded = false;
+    if (loadWatchdog) clearTimeout(loadWatchdog);
+    loadWatchdog = setTimeout(() => {
+      if (!appPageLoaded && !showingLoadErrorPage) {
+        showLoadErrorPage({ reason: 'A aplicação instalada demorou demasiado a carregar.' });
+      }
+    }, 20_000);
+    mainWindow.loadURL(runtimeConfig.appUrl);
+  };
+
+  const showLoadErrorPage = (details = {}) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    pendingReloadOnShow = false;
+    showingLoadErrorPage = true;
+    if (loadWatchdog) {
+      clearTimeout(loadWatchdog);
+      loadWatchdog = null;
+    }
+    const html = buildDesktopLoadErrorHtml({
+      appUrl: runtimeConfig.appUrl,
+      errorDescription: details.errorDescription || details.reason || 'Falha ao carregar a aplicação.',
+      errorCode: details.errorCode,
+    });
+    mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    if (!mainWindow.isVisible()) mainWindow.show();
+  };
+
+  reloadMainWindow();
 
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow?.webContents.setZoomFactor(0.95);
+    if (!showingLoadErrorPage) {
+      appPageLoaded = true;
+      loadFailureCount = 0;
+      if (loadWatchdog) {
+        clearTimeout(loadWatchdog);
+        loadWatchdog = null;
+      }
+    }
+  });
+
+  // Janela fica escondida por horas (close() só faz hide()); se o renderer
+  // ou o GPU morrerem nesse intervalo, recarrega ao mostrar para evitar
+  // ecrã branco em vez de mostrar o conteúdo morto.
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.warn('[Electron] Renderer process gone:', details?.reason);
+    if (mainWindow.isVisible()) {
+      showLoadErrorPage({ reason: `Processo gráfico terminou: ${details?.reason || 'desconhecido'}` });
+    } else {
+      pendingReloadOnShow = true;
+    }
+  });
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame || errorCode === -3) return;
+    console.warn('[Electron] Falha ao carregar página:', validatedURL, errorCode, errorDescription);
+    if (showingLoadErrorPage) return;
+    loadFailureCount += 1;
+    if (loadFailureCount <= 1) {
+      setTimeout(() => reloadMainWindow(), 1000);
+      return;
+    }
+    if (mainWindow.isVisible()) {
+      showLoadErrorPage({ errorCode, errorDescription });
+    } else {
+      pendingReloadOnShow = true;
+    }
+  });
+
+  mainWindow.webContents.on('unresponsive', () => {
+    console.warn('[Electron] Janela principal ficou unresponsive.');
+  });
+
+  mainWindow.on('show', () => {
+    if (pendingReloadOnShow) {
+      reloadMainWindow();
+    }
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -1716,20 +1891,53 @@ async function bootstrap() {
     return String(clipboard.readText() || '').trim();
   });
 
+  function normalizeFolderPathForDesktop(folderPath) {
+    let targetPath = String(folderPath || '').trim().replace(/^["']|["']$/g, '');
+    if (process.platform === 'win32') {
+      targetPath = targetPath.replace(/\//g, '\\');
+      if (/^\\[^\\]/.test(targetPath)) {
+        targetPath = `\\${targetPath}`;
+      }
+    }
+    return targetPath;
+  }
+
+  function friendlyOpenFolderError(error, folderPath) {
+    const raw = String(error?.message || error || '').trim();
+    const suffix = folderPath ? `\n\nCaminho: ${folderPath}` : '';
+    if (/ENOENT|not exist|cannot find|não.*encontra|nao.*encontra/i.test(raw)) {
+      return `A pasta não existe ou este PC não consegue encontrar a partilha de rede.${suffix}`;
+    }
+    if (/EACCES|EPERM|permission|permiss/i.test(raw)) {
+      return `Sem permissão para abrir esta pasta neste PC. Confirme o acesso à partilha e as permissões do utilizador Windows.${suffix}`;
+    }
+    return raw ? `${raw}${suffix}` : `Não foi possível abrir a pasta.${suffix}`;
+  }
+
   ipcMain.handle('wa:open-folder', async (_event, folderPath) => {
-    const targetPath = String(folderPath || '').trim();
+    const targetPath = normalizeFolderPathForDesktop(folderPath);
     if (!targetPath) {
       return { success: false, error: 'Pasta não definida.' };
     }
 
     try {
+      await fs.promises.access(targetPath, fs.constants.R_OK);
       const result = await shell.openPath(targetPath);
       if (result) {
-        return { success: false, error: result };
+        if (process.platform === 'win32') {
+          const explorer = spawn('explorer.exe', [targetPath], {
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: true,
+          });
+          explorer.unref();
+          return { success: true };
+        }
+        return { success: false, error: friendlyOpenFolderError(result, targetPath) };
       }
       return { success: true };
     } catch (error) {
-      return { success: false, error: error?.message || 'Não foi possível abrir a pasta.' };
+      return { success: false, error: friendlyOpenFolderError(error, targetPath) };
     }
   });
 
@@ -1844,6 +2052,17 @@ async function bootstrap() {
   createTray();
   startUnreadWatcher(runtimeConfig.apiBaseUrl);
   initAutoUpdater();
+
+  // Depois de o sistema suspender/dormir, o renderer pode ficar com
+  // ligações (SSE/websocket) mortas; recarrega para garantir estado fresco.
+  powerMonitor.on('resume', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isVisible()) {
+      mainWindow.loadURL(runtimeConfig.appUrl);
+    } else {
+      pendingReloadOnShow = true;
+    }
+  });
 
   app.on('activate', () => {
     if (!mainWindow) {

@@ -51,93 +51,160 @@ const MEAL_EXEMPTION_CARD = 10.2;
 const PORTAL_FINANCAS_RETENTION_SOURCE = RULE_VERSIONS['salary-net'].sources[0];
 const SEG_SOCIAL_SOURCE = RULE_VERSIONS['salary-net'].sources[1];
 
-// ─── Tabelas oficiais AT 2026 — fórmula: max(0, Rendimento × Taxa - Parcela)
-// Fonte: Despacho n.º 172-A/2026.XXX — Portal das Finanças
-// Estrutura: { upTo: limite superior do escalão, rate: taxa global, deduction: parcela a abater }
-// Retenção = max(0, Rendimento × rate - deduction)
+// Tabelas oficiais de retenção IRS 2026, Continente (Despacho n.º 233-A/2026).
+// Fórmula: max(0, R × taxa marginal - parcela - parcela dependente × n.º dependentes).
+// R é a remuneração mensal sujeita a IRS, antes da dedução da Segurança Social.
 
-type IrsTableEntry = { upTo: number; rate: number; deduction: number };
+type IrsTableEntry = {
+  upTo: number;
+  rate: number;
+  deduction: number | ((monthlyGross: number) => number);
+  dependentDeduction: number;
+};
 
-// Continente — Não casado / Casado 2 titulares (tabela I)
-// Valores REAIS extraídos da página Doutor Finanças 2026 (verificados em 31/05/2026)
-// Fórmula: max(0, Rendimento × Taxa - Parcela)
-// NOTA: DF aplica IRS sobre a base líquida de SS (Rendimento - SS trabalhador)
-const IRS_TABLE_SINGLE_CONTINENT: IrsTableEntry[] = [
-  { upTo:  920,  rate: 0,      deduction: 0 },
-  { upTo: 1042,  rate: 0.1250, deduction: 115.11 },   // 12.5% × 2.6 × (1273.85 - R) — aprox. linear
-  { upTo: 1108,  rate: 0.1570, deduction: 148.24 },   // 15.7% × 1.35 × (1554.83 - R) — aprox.
-  { upTo: 1154,  rate: 0.1570, deduction: 94.71 },    // exacto do DF
-  { upTo: 1212,  rate: 0.2120, deduction: 158.18 },   // exacto do DF
-  { upTo: 1819,  rate: 0.2410, deduction: 193.33 },   // exacto do DF → a 1300: 1300×0.241-193.33=120€ bruto, taxa efectiva 13.5%
-  { upTo: 2119,  rate: 0.3110, deduction: 320.66 },   // exacto do DF
-  { upTo: 2499,  rate: 0.3560, deduction: 415.96 },
-  { upTo: 3004,  rate: 0.4010, deduction: 528.56 },
-  { upTo: 5004,  rate: 0.4350, deduction: 630.76 },
-  { upTo: Number.POSITIVE_INFINITY, rate: 0.5300, deduction: 1106.26 },
-];
-
-// Continente — Casado 1 titular (tabela II)
-const IRS_TABLE_MARRIED_ONE_CONTINENT: IrsTableEntry[] = [
-  { upTo:  792,  rate: 0,      deduction: 0 },
-  { upTo:  975,  rate: 0.1325, deduction: 105.03 },
-  { upTo: 1133,  rate: 0.18,   deduction: 159.11 },
-  { upTo: 1258,  rate: 0.2350, deduction: 221.66 },
-  { upTo: 1383,  rate: 0.2700, deduction: 265.66 },
-  { upTo: 1542,  rate: 0.3100, deduction: 321.02 },
-  { upTo: 1900,  rate: 0.3500, deduction: 382.72 },
-  { upTo: 2358,  rate: 0.4350, deduction: 544.22 },
-  { upTo: 2917,  rate: 0.4500, deduction: 579.66 },
-  { upTo: 4117,  rate: 0.4550, deduction: 594.22 },
-  { upTo: 4942,  rate: 0.4500, deduction: 573.55 },
-  { upTo: 5833,  rate: 0.4600, deduction: 622.89 },
-  { upTo: 10175, rate: 0.5200, deduction: 972.44 },
-  { upTo: Number.POSITIVE_INFINITY, rate: 0.5300, deduction: 1074.23 },
-];
-
-function lookupIrsRetention(monthlyGross: number, table: IrsTableEntry[]): number {
-  const entry = table.find((e) => monthlyGross <= e.upTo) || table[table.length - 1];
-  return Math.max(0, monthlyGross * entry.rate - entry.deduction);
+function rDeduction(multiplier: number, factor: number, reference: number) {
+  return (monthlyGross: number) => multiplier * factor * (reference - monthlyGross);
 }
 
-// Factor dependentes: redução fixa por dependente (Portaria 2026)
-const IRS_DEDUCTION_PER_DEPENDENT = 35.42; // €/mês por dependente
-const IRS_DEDUCTION_PER_DISABLED_DEPENDENT = 53.13;
+// Tabela I — Não casado sem dependentes ou casado dois titulares.
+const IRS_TABLE_SINGLE_CONTINENT: IrsTableEntry[] = [
+  { upTo: 920, rate: 0, deduction: 0, dependentDeduction: 0 },
+  { upTo: 1042, rate: 0.1250, deduction: rDeduction(0.1250, 2.60, 1273.85), dependentDeduction: 21.43 },
+  { upTo: 1108, rate: 0.1570, deduction: rDeduction(0.1570, 1.35, 1554.83), dependentDeduction: 21.43 },
+  { upTo: 1154, rate: 0.1570, deduction: 94.71, dependentDeduction: 21.43 },
+  { upTo: 1212, rate: 0.2120, deduction: 158.18, dependentDeduction: 21.43 },
+  { upTo: 1819, rate: 0.2410, deduction: 193.33, dependentDeduction: 21.43 },
+  { upTo: 2119, rate: 0.3110, deduction: 320.66, dependentDeduction: 21.43 },
+  { upTo: 2499, rate: 0.3490, deduction: 401.19, dependentDeduction: 21.43 },
+  { upTo: 3305, rate: 0.3836, deduction: 487.66, dependentDeduction: 21.43 },
+  { upTo: 5547, rate: 0.3969, deduction: 531.62, dependentDeduction: 21.43 },
+  { upTo: 20221, rate: 0.4495, deduction: 823.40, dependentDeduction: 21.43 },
+  { upTo: Number.POSITIVE_INFINITY, rate: 0.4717, deduction: 1272.31, dependentDeduction: 21.43 },
+];
+
+// Tabela II — Não casado com um ou mais dependentes.
+const IRS_TABLE_SINGLE_WITH_DEPENDENTS_CONTINENT: IrsTableEntry[] = IRS_TABLE_SINGLE_CONTINENT.map((entry) => ({
+  ...entry,
+  dependentDeduction: entry.upTo === 920 ? 0 : 34.29,
+}));
+
+// Tabela III — Casado, único titular.
+const IRS_TABLE_MARRIED_ONE_CONTINENT: IrsTableEntry[] = [
+  { upTo: 991, rate: 0, deduction: 0, dependentDeduction: 0 },
+  { upTo: 1042, rate: 0.1250, deduction: rDeduction(0.1250, 2.60, 1372.15), dependentDeduction: 42.86 },
+  { upTo: 1108, rate: 0.1250, deduction: rDeduction(0.1250, 1.35, 1677.85), dependentDeduction: 42.86 },
+  { upTo: 1119, rate: 0.1250, deduction: 96.17, dependentDeduction: 42.86 },
+  { upTo: 1432, rate: 0.1272, deduction: 98.64, dependentDeduction: 42.86 },
+  { upTo: 1962, rate: 0.1570, deduction: 141.32, dependentDeduction: 42.86 },
+  { upTo: 2240, rate: 0.1938, deduction: 213.53, dependentDeduction: 42.86 },
+  { upTo: 2773, rate: 0.2277, deduction: 289.47, dependentDeduction: 42.86 },
+  { upTo: 3389, rate: 0.2570, deduction: 370.72, dependentDeduction: 42.86 },
+  { upTo: 5965, rate: 0.2881, deduction: 476.12, dependentDeduction: 42.86 },
+  { upTo: 20265, rate: 0.3843, deduction: 1049.96, dependentDeduction: 42.86 },
+  { upTo: Number.POSITIVE_INFINITY, rate: 0.4717, deduction: 2821.13, dependentDeduction: 42.86 },
+];
+
+// Tabelas IV a VII — titular com deficiência.
+const IRS_TABLE_DISABLED_SINGLE_OR_MARRIED_TWO_NO_DEPENDENTS_CONTINENT: IrsTableEntry[] = [
+  { upTo: 1694, rate: 0, deduction: 0, dependentDeduction: 0 },
+  { upTo: 2063, rate: 0.2120, deduction: 359.13, dependentDeduction: 0 },
+  { upTo: 2492, rate: 0.3110, deduction: 563.37, dependentDeduction: 0 },
+  { upTo: 4487, rate: 0.3490, deduction: 658.07, dependentDeduction: 0 },
+  { upTo: 4753, rate: 0.3836, deduction: 813.33, dependentDeduction: 0 },
+  { upTo: 6687, rate: 0.3969, deduction: 876.55, dependentDeduction: 0 },
+  { upTo: 20468, rate: 0.4495, deduction: 1228.29, dependentDeduction: 0 },
+  { upTo: Number.POSITIVE_INFINITY, rate: 0.4717, deduction: 1682.68, dependentDeduction: 0 },
+];
+
+const IRS_TABLE_DISABLED_SINGLE_WITH_DEPENDENTS_CONTINENT: IrsTableEntry[] = [
+  { upTo: 1938, rate: 0, deduction: 0, dependentDeduction: 0 },
+  { upTo: 2063, rate: 0.2132, deduction: 413.19, dependentDeduction: 42.86 },
+  { upTo: 2854, rate: 0.3110, deduction: 614.96, dependentDeduction: 42.86 },
+  { upTo: 4504, rate: 0.3490, deduction: 723.42, dependentDeduction: 42.86 },
+  { upTo: 6826, rate: 0.3836, deduction: 879.26, dependentDeduction: 42.86 },
+  { upTo: 7048, rate: 0.3969, deduction: 970.05, dependentDeduction: 42.86 },
+  { upTo: 20468, rate: 0.4495, deduction: 1340.78, dependentDeduction: 42.86 },
+  { upTo: Number.POSITIVE_INFINITY, rate: 0.4717, deduction: 1795.17, dependentDeduction: 42.86 },
+];
+
+const IRS_TABLE_DISABLED_MARRIED_TWO_WITH_DEPENDENTS_CONTINENT: IrsTableEntry[] = [
+  { upTo: 1668, rate: 0, deduction: 0, dependentDeduction: 0 },
+  { upTo: 2068, rate: 0.2049, deduction: 341.78, dependentDeduction: 21.43 },
+  { upTo: 2497, rate: 0.2410, deduction: 416.44, dependentDeduction: 21.43 },
+  { upTo: 3107, rate: 0.3110, deduction: 591.23, dependentDeduction: 21.43 },
+  { upTo: 4504, rate: 0.3490, deduction: 709.30, dependentDeduction: 21.43 },
+  { upTo: 6826, rate: 0.3836, deduction: 865.14, dependentDeduction: 21.43 },
+  { upTo: 7048, rate: 0.3969, deduction: 955.93, dependentDeduction: 21.43 },
+  { upTo: 20468, rate: 0.4495, deduction: 1326.66, dependentDeduction: 21.43 },
+  { upTo: Number.POSITIVE_INFINITY, rate: 0.4717, deduction: 1781.05, dependentDeduction: 21.43 },
+];
+
+const IRS_TABLE_DISABLED_MARRIED_ONE_CONTINENT: IrsTableEntry[] = [
+  { upTo: 2325, rate: 0, deduction: 0, dependentDeduction: 0 },
+  { upTo: 3494, rate: 0.2277, deduction: 529.41, dependentDeduction: 42.86 },
+  { upTo: 3761, rate: 0.2570, deduction: 631.79, dependentDeduction: 42.86 },
+  { upTo: 6687, rate: 0.2881, deduction: 748.76, dependentDeduction: 42.86 },
+  { upTo: 20468, rate: 0.4244, deduction: 1660.20, dependentDeduction: 42.86 },
+  { upTo: Number.POSITIVE_INFINITY, rate: 0.4717, deduction: 2628.34, dependentDeduction: 42.86 },
+];
+
+function resolveDeduction(entry: IrsTableEntry, monthlyGross: number): number {
+  return typeof entry.deduction === 'function' ? entry.deduction(monthlyGross) : entry.deduction;
+}
+
+function lookupIrsRetention(monthlyGross: number, table: IrsTableEntry[], input: SalaryNetInput): number {
+  const entry = table.find((e) => monthlyGross <= e.upTo) || table[table.length - 1];
+  const dependents = Math.max(0, safeNumber(input.dependents));
+  const disabledDependents = Math.max(0, Math.min(dependents, safeNumber(input.disabledDependents)));
+  const disabledDependentExtra = input.maritalStatus === 'married_two_holders' ? 42.41 : 84.82;
+  const rate = dependents >= 3 ? Math.max(0, entry.rate - 0.01) : entry.rate;
+  return Math.max(
+    0,
+    monthlyGross * rate
+      - resolveDeduction(entry, monthlyGross)
+      - entry.dependentDeduction * dependents
+      - disabledDependentExtra * disabledDependents,
+  );
+}
 
 function getIrsRetentionMonthly(input: SalaryNetInput, monthlyGross: number): number {
   const isMarriedOneHolder = input.maritalStatus === 'married_one_holder';
   const isAzores = input.region === 'azores';
   const isMadeira = input.region === 'madeira';
+  const dependents = Math.max(0, safeNumber(input.dependents));
 
-  // Seleccionar tabela base
-  let table = isMarriedOneHolder ? IRS_TABLE_MARRIED_ONE_CONTINENT : IRS_TABLE_SINGLE_CONTINENT;
+  let table: IrsTableEntry[];
+  if (input.disability) {
+    if (isMarriedOneHolder) table = IRS_TABLE_DISABLED_MARRIED_ONE_CONTINENT;
+    else if (input.maritalStatus === 'married_two_holders' && dependents > 0) table = IRS_TABLE_DISABLED_MARRIED_TWO_WITH_DEPENDENTS_CONTINENT;
+    else if (dependents > 0) table = IRS_TABLE_DISABLED_SINGLE_WITH_DEPENDENTS_CONTINENT;
+    else table = IRS_TABLE_DISABLED_SINGLE_OR_MARRIED_TWO_NO_DEPENDENTS_CONTINENT;
+  } else if (isMarriedOneHolder) {
+    table = IRS_TABLE_MARRIED_ONE_CONTINENT;
+  } else if (input.maritalStatus === 'single' && dependents > 0) {
+    table = IRS_TABLE_SINGLE_WITH_DEPENDENTS_CONTINENT;
+  } else {
+    table = IRS_TABLE_SINGLE_CONTINENT;
+  }
 
-  let retention = lookupIrsRetention(monthlyGross, table);
+  let retention = lookupIrsRetention(monthlyGross, table, input);
 
   // Ajustes regionais (Açores -30%, Madeira -20%)
   if (isAzores) retention *= 0.70;
   else if (isMadeira) retention *= 0.80;
 
-  // Deduções por dependente
-  retention -= Math.max(0, safeNumber(input.dependents)) * IRS_DEDUCTION_PER_DEPENDENT;
-  retention -= Math.max(0, safeNumber(input.disabledDependents)) * IRS_DEDUCTION_PER_DISABLED_DEPENDENT;
-
   // IRS Jovem: isenção progressiva por ano de trabalho com limite anual
   if (input.youngIrs) {
     const exemptRate = youngIrsExemptionRate(safeNumber(input.youngIrsYear, 1));
-    const monthlyLimit = YOUNG_IRS_ANNUAL_LIMIT / 12;
+    const monthlyLimit = YOUNG_IRS_ANNUAL_LIMIT / 14;
     const exemptAmount = Math.min(monthlyGross * exemptRate, monthlyLimit * exemptRate);
     const reducedBase = Math.max(0, monthlyGross - exemptAmount);
-    const reducedEntry = table.find((e) => reducedBase <= e.upTo) || table[table.length - 1];
-    // Recalcular sobre base reduzida e reaplicar deduções por dependente
-    retention = Math.max(0, reducedBase * reducedEntry.rate - reducedEntry.deduction);
-    retention -= Math.max(0, safeNumber(input.dependents)) * IRS_DEDUCTION_PER_DEPENDENT;
-    retention -= Math.max(0, safeNumber(input.disabledDependents)) * IRS_DEDUCTION_PER_DISABLED_DEPENDENT;
+    retention = lookupIrsRetention(reducedBase, table, input);
+    if (isAzores) retention *= 0.70;
+    else if (isMadeira) retention *= 0.80;
   }
 
-  // Deficiência: tabela específica (redução ~50%)
-  if (input.disability) retention *= 0.50;
-
-  return Math.max(0, roundMoney(retention));
+  return Math.max(0, Math.floor(retention));
 }
 
 /** @deprecated use getIrsRetentionMonthly instead */
@@ -172,9 +239,7 @@ function calculateSalaryBase(input: SalaryNetInput) {
   const irsBase = contributiveBase + irsOnlyIncome;
   const workerRate = Math.max(0, safeNumber(input.socialSecurityRate, SOCIAL_SECURITY_WORKER_RATE * 100)) / 100;
   const socialSecurity = contributiveBase * workerRate;
-  // IRS aplica-se sobre a base LÍQUIDA de SS (confirmado pela tabela Doutor Finanças 2026)
-  const irsNetBase = Math.max(0, irsBase - socialSecurity);
-  const irs = getIrsRetentionMonthly(input, irsNetBase);
+  const irs = getIrsRetentionMonthly(input, irsBase);
   const grossMonthlyTotal = gross + allowanceMonthly + extraPay + otherTaxableIncome + irsOnlyIncome + exemptIncome + meal.monthly;
   const net = grossMonthlyTotal - socialSecurity - irs;
   return {

@@ -172,10 +172,26 @@ const Pedidos: React.FC = () => {
     descricao: '',
     dataInicio: '',
     dataFim: '',
+    aplicarTodos: true,
+    funcionarioId: '',
   });
   const [showCompanyForm, setShowCompanyForm] = useState(false);
   const [savingPedidoId, setSavingPedidoId] = useState('');
   const holidaySet = useMemo(() => new Set(holidays.map((item) => item.date)), [holidays]);
+  const funcionarioNameById = useMemo(() => {
+    return new Map(funcionarios.map((funcionario) => [funcionario.id, funcionario.nome]));
+  }, [funcionarios]);
+
+  const periodAppliesToFuncionario = (periodo: HrEmpresaPeriodo, funcionarioId: string) => {
+    return !periodo.funcionariosAlvo || periodo.funcionariosAlvo.length === 0 || periodo.funcionariosAlvo.includes(funcionarioId);
+  };
+
+  const periodTargetLabel = (periodo: HrEmpresaPeriodo) => {
+    if (!periodo.funcionariosAlvo || periodo.funcionariosAlvo.length === 0) return 'Todos os funcionários';
+    return periodo.funcionariosAlvo
+      .map((id) => funcionarioNameById.get(id) || 'Funcionário')
+      .join(', ');
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -218,7 +234,7 @@ const Pedidos: React.FC = () => {
         .filter((pedido) => pedido.funcionarioId === funcionario.id && isFolga(pedido.tipo))
         .reduce((sum, pedido) => sum + businessDays(pedido.dataInicio, pedido.dataFim, holidaySet), 0);
       const feriasEmpresa = periodosEmpresa
-        .filter((periodo) => !periodo.funcionariosAlvo || periodo.funcionariosAlvo.includes(funcionario.id))
+        .filter((periodo) => periodAppliesToFuncionario(periodo, funcionario.id))
         .reduce((sum, periodo) => sum + businessDays(periodo.dataInicio, periodo.dataFim, holidaySet), 0);
       const direito = Number(saldo?.diasDireito ?? 22);
       const extra = Number(saldo?.diasExtra ?? 0);
@@ -251,10 +267,12 @@ const Pedidos: React.FC = () => {
     }
     for (const holiday of holidays) push(holiday.date, holiday.name, 'bg-rose-100 text-rose-800');
     for (const periodo of periodosEmpresa) {
-      eachDate(periodo.dataInicio, periodo.dataFim).forEach((day) => push(day, periodo.titulo, 'bg-sky-100 text-sky-800'));
+      if (funcionarioFilter && !periodAppliesToFuncionario(periodo, funcionarioFilter)) continue;
+      const targetLabel = !periodo.funcionariosAlvo || periodo.funcionariosAlvo.length === 0 ? '' : ` · ${periodTargetLabel(periodo)}`;
+      eachDate(periodo.dataInicio, periodo.dataFim).forEach((day) => push(day, `${periodo.titulo}${targetLabel}`, 'bg-sky-100 text-sky-800'));
     }
     return map;
-  }, [pedidosAprovados, holidays, periodosEmpresa]);
+  }, [pedidosAprovados, holidays, periodosEmpresa, funcionarioFilter, funcionarioNameById]);
 
   const pedidosPorFuncionario = useMemo(() => {
     return funcionarios.map((funcionario) => {
@@ -355,6 +373,10 @@ const Pedidos: React.FC = () => {
       setError('A data fim não pode ser anterior à data início.');
       return;
     }
+    if (!companyPeriodDraft.aplicarTodos && !companyPeriodDraft.funcionarioId) {
+      setError('Escolha o funcionário para estas férias.');
+      return;
+    }
     setError('');
     try {
       const created = await createHrEmpresaPeriodo({
@@ -362,10 +384,10 @@ const Pedidos: React.FC = () => {
         descricao: companyPeriodDraft.descricao.trim(),
         dataInicio: companyPeriodDraft.dataInicio,
         dataFim: companyPeriodDraft.dataFim,
-        funcionariosAlvo: null,
+        funcionariosAlvo: companyPeriodDraft.aplicarTodos ? null : [companyPeriodDraft.funcionarioId],
       });
       setPeriodosEmpresa((current) => [...current, created].sort((a, b) => a.dataInicio.localeCompare(b.dataInicio)));
-      setCompanyPeriodDraft({ titulo: 'Férias da Empresa', descricao: '', dataInicio: '', dataFim: '' });
+      setCompanyPeriodDraft({ titulo: 'Férias da Empresa', descricao: '', dataInicio: '', dataFim: '', aplicarTodos: true, funcionarioId: '' });
       setShowCompanyForm(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao criar férias da empresa.');
@@ -389,7 +411,7 @@ const Pedidos: React.FC = () => {
   const printVacationMap = () => {
     const rows = saldoRows.map((row) => {
       const employeePedidos = pedidosAprovados.filter((pedido) => pedido.funcionarioId === row.funcionario.id && isVacation(pedido.tipo));
-      const employeeCompanyPeriods = periodosEmpresa.filter((periodo) => !periodo.funcionariosAlvo || periodo.funcionariosAlvo.includes(row.funcionario.id));
+      const employeeCompanyPeriods = periodosEmpresa.filter((periodo) => periodAppliesToFuncionario(periodo, row.funcionario.id));
       const periods = [
         ...employeePedidos.map((pedido) => ({
           start: isoDate(pedido.dataInicio),
@@ -715,7 +737,7 @@ const Pedidos: React.FC = () => {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <h2 className="font-bold text-slate-900">Férias da empresa</h2>
-                <p className="text-sm text-slate-500">Períodos aplicados a todos os funcionários e contados no mapa.</p>
+                <p className="text-sm text-slate-500">Períodos aplicados a todos ou só ao funcionário escolhido.</p>
               </div>
               {canManagePedidos && (
                 <button
@@ -728,7 +750,7 @@ const Pedidos: React.FC = () => {
             </div>
 
             {showCompanyForm && canManagePedidos && (
-              <div className="mt-4 grid gap-2 rounded-sm border border-teal-100 bg-teal-50 p-3 md:grid-cols-[1fr_1fr_150px_150px_auto]">
+              <div className="mt-4 grid gap-2 rounded-sm border border-teal-100 bg-teal-50 p-3 md:grid-cols-[1fr_1fr_150px_150px_190px_auto]">
                 <input
                   value={companyPeriodDraft.titulo}
                   onChange={(e) => setCompanyPeriodDraft((current) => ({ ...current, titulo: e.target.value }))}
@@ -753,6 +775,23 @@ const Pedidos: React.FC = () => {
                   onChange={(e) => setCompanyPeriodDraft((current) => ({ ...current, dataFim: e.target.value }))}
                   className="h-10 rounded-sm border border-slate-300 px-3 text-sm"
                 />
+                <select
+                  value={companyPeriodDraft.aplicarTodos ? 'all' : companyPeriodDraft.funcionarioId}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setCompanyPeriodDraft((current) => ({
+                      ...current,
+                      aplicarTodos: value === 'all',
+                      funcionarioId: value === 'all' ? '' : value,
+                    }));
+                  }}
+                  className="h-10 rounded-sm border border-slate-300 bg-white px-3 text-sm"
+                >
+                  <option value="all">Todos</option>
+                  {funcionarios.map((funcionario) => (
+                    <option key={funcionario.id} value={funcionario.id}>{funcionario.nome}</option>
+                  ))}
+                </select>
                 <button onClick={addCompanyPeriod} className="h-10 rounded-sm bg-teal-700 px-3 text-sm font-semibold text-white hover:bg-teal-800">
                   Criar
                 </button>
@@ -768,7 +807,7 @@ const Pedidos: React.FC = () => {
                     <div>
                       <p className="font-bold text-slate-900">{periodo.titulo}</p>
                       <p className="text-slate-600">{formatDate(periodo.dataInicio)} a {formatDate(periodo.dataFim)}</p>
-                      <p className="text-xs text-slate-500">Todos os funcionários{periodo.descricao ? ` · ${periodo.descricao}` : ''}</p>
+                      <p className="text-xs text-slate-500">{periodTargetLabel(periodo)}{periodo.descricao ? ` · ${periodo.descricao}` : ''}</p>
                     </div>
                     {canManagePedidos && (
                       <button
