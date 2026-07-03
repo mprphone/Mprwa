@@ -52,6 +52,22 @@ import {
   toggleInternalMessageReaction,
   uploadInternalFileMessage,
 } from '../services/internalChatApi';
+import { fetchHrRegistosPontoOverview, type HrPontoOverviewRow } from '../services/hrApi';
+
+const INTERNAL_PONTO_STATUS: Record<string, { label: string; tone: string }> = {
+  PRESENTE: { label: 'Presente', tone: 'bg-emerald-100 text-emerald-700' },
+  SAIU: { label: 'Saiu', tone: 'bg-slate-100 text-slate-600' },
+  SEM_ENTRADA: { label: 'Sem entrada', tone: 'bg-rose-100 text-rose-700' },
+  INCOMPLETO: { label: 'Incompleto', tone: 'bg-amber-100 text-amber-700' },
+  FOLGA: { label: 'Folga', tone: 'bg-slate-100 text-slate-400' },
+};
+function pontoStatusMetaLocal(status: string) {
+  return INTERNAL_PONTO_STATUS[status] || { label: status, tone: 'bg-slate-100 text-slate-600' };
+}
+function formatPontoHoraLocal(momento: string): string {
+  const d = new Date(String(momento || ''));
+  return Number.isNaN(d.getTime()) ? '--' : d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+}
 
 type MessageContextMenuState = {
   x: number;
@@ -173,6 +189,7 @@ const InternalChat: React.FC = () => {
   const [pontoFeedback, setPontoFeedback] = useState('');
   const [pontoRecent, setPontoRecent] = useState<InternalPontoRow[]>([]);
   const [pontoStatusHoje, setPontoStatusHoje] = useState('');
+  const [teamPonto, setTeamPonto] = useState<HrPontoOverviewRow[]>([]);
   const [pontoRecentLoading, setPontoRecentLoading] = useState(false);
   const [pontoRecentError, setPontoRecentError] = useState('');
   const [presenceByUserId, setPresenceByUserId] = useState<Record<string, InternalPresenceRow>>({});
@@ -231,6 +248,7 @@ const InternalChat: React.FC = () => {
   const navigate = useNavigate();
   const currentUserId = String(mockService.getCurrentUserId() || CURRENT_USER_ID || '').trim();
   const currentUser = users.find((user) => user.id === currentUserId) || null;
+  const isPontoGestor = String(currentUser?.email || '').trim().toLowerCase() === 'mpr@mpr.pt';
   const usersById = useMemo(() => {
     const map = new Map<string, User>();
     users.forEach((user) => {
@@ -789,6 +807,26 @@ const InternalChat: React.FC = () => {
       cancelled = true;
     };
   }, [currentUserId]);
+
+  // Gerente (mpr@mpr.pt) não pica — em vez das próprias picagens vê a equipa.
+  useEffect(() => {
+    if (!isPontoGestor || !currentUserId) {
+      setTeamPonto([]);
+      return;
+    }
+    let cancelled = false;
+    const load = () => {
+      void fetchHrRegistosPontoOverview(currentUserId)
+        .then((rows) => { if (!cancelled) setTeamPonto(Array.isArray(rows) ? rows : []); })
+        .catch(() => { if (!cancelled) setTeamPonto([]); });
+    };
+    load();
+    const interval = window.setInterval(load, 60000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [isPontoGestor, currentUserId]);
 
   useEffect(() => {
     const handleClose = () => setContextMenu(null);
@@ -1929,13 +1967,35 @@ const InternalChat: React.FC = () => {
           <div className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-[13px] font-semibold text-slate-900">Registo de Ponto</div>
-                <p className="mt-0.5 text-xs text-slate-500">PIN pessoal · picagens de {currentUser?.name || 'ti'}</p>
+                <div className="text-[13px] font-semibold text-slate-900">{isPontoGestor ? 'Ponto — Equipa (hoje)' : 'Registo de Ponto'}</div>
+                <p className="mt-0.5 text-xs text-slate-500">{isPontoGestor ? 'Picagens de todos os funcionários' : `PIN pessoal · picagens de ${currentUser?.name || 'ti'}`}</p>
               </div>
               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
-                {pontoRecent.length}
+                {isPontoGestor ? teamPonto.length : pontoRecent.length}
               </span>
             </div>
+            {isPontoGestor && (
+              <div className="mt-2 max-h-64 space-y-1 overflow-auto">
+                {teamPonto.length === 0 && <div className="text-xs text-slate-500">Sem funcionários.</div>}
+                {teamPonto.map((row) => {
+                  const meta = pontoStatusMetaLocal(row.status);
+                  return (
+                    <div key={row.funcionarioId} className="flex items-center justify-between gap-2 rounded-md border border-slate-100 px-2 py-1">
+                      <div className="min-w-0">
+                        <div className="truncate text-xs font-semibold text-slate-800">{row.nome}</div>
+                        <div className="text-[11px] text-slate-500">
+                          E {row.todayEntrada ? formatPontoHoraLocal(row.todayEntrada) : '--'} · S {row.todaySaida ? formatPontoHoraLocal(row.todaySaida) : '--'}
+                          {row.late && <span className="ml-1 text-amber-600">atrasado</span>}
+                        </div>
+                      </div>
+                      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${meta.tone}`}>{meta.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {!isPontoGestor && (
+              <>
             {pontoStatusHoje === 'SEM_ENTRADA' && (
               <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800">
                 <span aria-hidden>⚠️</span>
@@ -2004,6 +2064,8 @@ const InternalChat: React.FC = () => {
                   ))}
               </div>
             </div>
+              </>
+            )}
           </div>
 
           {selectedConversation?.type === 'group' && (
