@@ -52,22 +52,6 @@ import {
   toggleInternalMessageReaction,
   uploadInternalFileMessage,
 } from '../services/internalChatApi';
-import { fetchHrRegistosPontoOverview, type HrPontoOverviewRow } from '../services/hrApi';
-
-const INTERNAL_PONTO_STATUS: Record<string, { label: string; tone: string }> = {
-  PRESENTE: { label: 'Presente', tone: 'bg-emerald-100 text-emerald-700' },
-  SAIU: { label: 'Saiu', tone: 'bg-slate-100 text-slate-600' },
-  SEM_ENTRADA: { label: 'Sem entrada', tone: 'bg-rose-100 text-rose-700' },
-  INCOMPLETO: { label: 'Incompleto', tone: 'bg-amber-100 text-amber-700' },
-  FOLGA: { label: 'Folga', tone: 'bg-slate-100 text-slate-400' },
-};
-function pontoStatusMetaLocal(status: string) {
-  return INTERNAL_PONTO_STATUS[status] || { label: status, tone: 'bg-slate-100 text-slate-600' };
-}
-function formatPontoHoraLocal(momento: string): string {
-  const d = new Date(String(momento || ''));
-  return Number.isNaN(d.getTime()) ? '--' : d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
-}
 
 type MessageContextMenuState = {
   x: number;
@@ -189,7 +173,6 @@ const InternalChat: React.FC = () => {
   const [pontoFeedback, setPontoFeedback] = useState('');
   const [pontoRecent, setPontoRecent] = useState<InternalPontoRow[]>([]);
   const [pontoStatusHoje, setPontoStatusHoje] = useState('');
-  const [teamPonto, setTeamPonto] = useState<HrPontoOverviewRow[]>([]);
   const [pontoRecentLoading, setPontoRecentLoading] = useState(false);
   const [pontoRecentError, setPontoRecentError] = useState('');
   const [presenceByUserId, setPresenceByUserId] = useState<Record<string, InternalPresenceRow>>({});
@@ -806,27 +789,6 @@ const InternalChat: React.FC = () => {
       cancelled = true;
     };
   }, [currentUserId]);
-
-  // Painel "Equipa — hoje": só o gerente (mpr@mpr.pt) vê as picagens de todos.
-  useEffect(() => {
-    const isGestor = String(currentUser?.email || '').trim().toLowerCase() === 'mpr@mpr.pt';
-    if (!isGestor || !currentUserId) {
-      setTeamPonto([]);
-      return;
-    }
-    let cancelled = false;
-    const load = () => {
-      void fetchHrRegistosPontoOverview(currentUserId)
-        .then((rows) => { if (!cancelled) setTeamPonto(Array.isArray(rows) ? rows : []); })
-        .catch(() => { if (!cancelled) setTeamPonto([]); });
-    };
-    load();
-    const interval = window.setInterval(load, 60000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [currentUser?.email, currentUserId]);
 
   useEffect(() => {
     const handleClose = () => setContextMenu(null);
@@ -2043,32 +2005,6 @@ const InternalChat: React.FC = () => {
               </div>
             </div>
           </div>
-
-          {String(currentUser?.email || '').trim().toLowerCase() === 'mpr@mpr.pt' && teamPonto.length > 0 && (
-            <div className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm">
-              <div className="mb-1.5 flex items-center justify-between">
-                <div className="text-[13px] font-semibold text-slate-900">Equipa — hoje</div>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">{teamPonto.length}</span>
-              </div>
-              <div className="max-h-56 space-y-1 overflow-auto">
-                {teamPonto.map((row) => {
-                  const meta = pontoStatusMetaLocal(row.status);
-                  return (
-                    <div key={row.funcionarioId} className="flex items-center justify-between gap-2 rounded-md border border-slate-100 px-2 py-1">
-                      <div className="min-w-0">
-                        <div className="truncate text-xs font-semibold text-slate-800">{row.nome}</div>
-                        <div className="text-[11px] text-slate-500">
-                          E {row.todayEntrada ? formatPontoHoraLocal(row.todayEntrada) : '--'} · S {row.todaySaida ? formatPontoHoraLocal(row.todaySaida) : '--'}
-                          {row.late && <span className="ml-1 text-amber-600">atrasado</span>}
-                        </div>
-                      </div>
-                      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${meta.tone}`}>{meta.label}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {selectedConversation?.type === 'group' && (
             <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3">
