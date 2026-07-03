@@ -1926,7 +1926,7 @@ const InternalChat: React.FC = () => {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-[13px] font-semibold text-slate-900">Registo de Ponto</div>
-                <p className="mt-0.5 text-xs text-slate-500">PIN pessoal para entrada ou saída.</p>
+                <p className="mt-0.5 text-xs text-slate-500">PIN pessoal · picagens de {currentUser?.name || 'ti'}</p>
               </div>
               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
                 {pontoRecent.length}
@@ -1969,6 +1969,7 @@ const InternalChat: React.FC = () => {
               </div>
             )}
             <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">As tuas últimas picagens</div>
               {pontoRecentError && <div className="mt-1 text-xs text-red-600">{pontoRecentError}</div>}
               <div className="space-y-1">
                 {pontoRecentLoading && <div className="text-xs text-slate-500">A carregar...</div>}
