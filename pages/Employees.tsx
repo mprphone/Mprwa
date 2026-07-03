@@ -77,6 +77,8 @@ const Employees: React.FC = () => {
   const [pontoGestaoLoading, setPontoGestaoLoading] = useState(false);
   const [pontoGestaoError, setPontoGestaoError] = useState('');
   const [pontoOverview, setPontoOverview] = useState<HrPontoOverviewRow[]>([]);
+  const [pontoDefaultEntrada, setPontoDefaultEntrada] = useState('09:00');
+  const [pontoDefaultSaida, setPontoDefaultSaida] = useState('18:00');
   const [pontoTimeDrafts, setPontoTimeDrafts] = useState<Record<string, string>>({});
   const [objetivosItems, setObjetivosItems] = useState<HrObjetivo[]>([]);
   const [objetivosConfig, setObjetivosConfig] = useState<HrObjetivosConfig>({ patamar50: '', patamar65: '', patamar80: '', premioMaximo: 0, notasGerais: '' });
@@ -930,9 +932,9 @@ const Employees: React.FC = () => {
     setPontoGestaoError('');
     try {
       if (registo) {
-        await updateHrRegistoPonto(registo.id, { tipo, momento: buildMoment(group.date, time), origem: registo.origem || 'manual', actorUserId: currentUserId });
+        await updateHrRegistoPonto(registo.id, { tipo, momento: buildMoment(group.date, time), origem: registo.origem || 'oracle', actorUserId: currentUserId });
       } else {
-        await createHrRegistoPonto({ funcionarioId: group.funcionarioId, tipo, momento: buildMoment(group.date, time), origem: 'manual', actorUserId: currentUserId });
+        await createHrRegistoPonto({ funcionarioId: group.funcionarioId, tipo, momento: buildMoment(group.date, time), origem: 'oracle', actorUserId: currentUserId });
       }
       await loadPontoGestao();
     } catch (error) {
@@ -949,9 +951,9 @@ const Employees: React.FC = () => {
     }
     try {
       if (registo) {
-        await updateHrRegistoPonto(registo.id, { tipo, momento: buildMoment(group.date, time), origem: registo.origem || 'manual', actorUserId: currentUserId });
+        await updateHrRegistoPonto(registo.id, { tipo, momento: buildMoment(group.date, time), origem: registo.origem || 'oracle', actorUserId: currentUserId });
       } else {
-        await createHrRegistoPonto({ funcionarioId: group.funcionarioId, tipo, momento: buildMoment(group.date, time), origem: 'manual', actorUserId: currentUserId });
+        await createHrRegistoPonto({ funcionarioId: group.funcionarioId, tipo, momento: buildMoment(group.date, time), origem: 'oracle', actorUserId: currentUserId });
       }
       await loadHrRegistosPonto(selectedHrId);
     } catch (error) {
@@ -978,6 +980,33 @@ const Employees: React.FC = () => {
     } catch (error) {
       setPontoGestaoError(error instanceof Error ? error.message : 'Falha ao apagar picagem.');
     }
+  };
+  // Preenche a entrada/saída em falta de um dia com o horário previsto do
+  // funcionário (ou o padrão). Fica com origem 'oracle' — indistinguível das
+  // picagens automáticas, conforme pedido.
+  const preencherDiaPrevisto = async (group: { funcionarioId: string; date: string; rows: HrRegistoPonto[] }) => {
+    if (!canManageHr) return;
+    const func = hrFuncionarios.find((f) => f.id === group.funcionarioId);
+    const entradaHora = String(func?.horaEntradaPrevista || pontoDefaultEntrada || '').trim();
+    const saidaHora = String(func?.horaSaidaPrevista || pontoDefaultSaida || '').trim();
+    const entrada1 = getPontoSlot(group.rows, 'ENTRADA', 0);
+    const saida1 = getPontoSlot(group.rows, 'SAIDA', 0);
+    const ops: Promise<unknown>[] = [];
+    if (!entrada1 && /^\d{1,2}:\d{2}$/.test(entradaHora)) {
+      ops.push(createHrRegistoPonto({ funcionarioId: group.funcionarioId, tipo: 'ENTRADA', momento: buildMoment(group.date, entradaHora), origem: 'oracle', actorUserId: currentUserId }));
+    }
+    if (!saida1 && /^\d{1,2}:\d{2}$/.test(saidaHora)) {
+      ops.push(createHrRegistoPonto({ funcionarioId: group.funcionarioId, tipo: 'SAIDA', momento: buildMoment(group.date, saidaHora), origem: 'oracle', actorUserId: currentUserId }));
+    }
+    if (ops.length === 0) return;
+    setPontoGestaoError('');
+    try {
+      await Promise.all(ops);
+    } catch (error) {
+      setPontoGestaoError(error instanceof Error ? error.message : 'Falha ao preencher o dia.');
+      return;
+    }
+    await loadPontoGestao();
   };
   const downloadPontoCsv = () => {
     const lines = [
@@ -1308,6 +1337,19 @@ const Employees: React.FC = () => {
             </div>
           </div>
 
+          {canManageHr && (
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+              <span className="font-semibold text-slate-600">Horário padrão p/ preencher:</span>
+              <label className="flex items-center gap-1">Entrada
+                <input type="time" value={pontoDefaultEntrada} onChange={(e) => setPontoDefaultEntrada(e.target.value)} className="h-9 rounded-md border border-slate-300 px-2" />
+              </label>
+              <label className="flex items-center gap-1">Saída
+                <input type="time" value={pontoDefaultSaida} onChange={(e) => setPontoDefaultSaida(e.target.value)} className="h-9 rounded-md border border-slate-300 px-2" />
+              </label>
+              <span className="text-xs text-slate-400">Usado quando o funcionário não tem horário previsto definido.</span>
+            </div>
+          )}
+
           {pontoGestaoError && <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{pontoGestaoError}</div>}
 
           <div className="space-y-3">
@@ -1333,9 +1375,21 @@ const Employees: React.FC = () => {
                         {formatDate(group.date)} · Trabalhadas {diffMinutesLabel(pontoResumo.workedMinutes).replace('+', '')} · Saldo {diffMinutesLabel(pontoResumo.balance)}
                       </p>
                     </div>
-                    <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-bold ${pontoResumo.status === 'OK' ? 'bg-emerald-100 text-emerald-800' : pontoResumo.status === 'Atraso' ? 'bg-orange-100 text-orange-800' : 'bg-amber-100 text-amber-800'}`}>
-                      {pontoResumo.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {canManageHr && (!slots[0].registo || !slots[1].registo) && (
+                        <button
+                          type="button"
+                          onClick={() => void preencherDiaPrevisto(group)}
+                          title="Preencher entradas/saídas em falta com o horário previsto (ou o padrão)"
+                          className="rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                        >
+                          Preencher previsto
+                        </button>
+                      )}
+                      <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-bold ${pontoResumo.status === 'OK' ? 'bg-emerald-100 text-emerald-800' : pontoResumo.status === 'Atraso' ? 'bg-orange-100 text-orange-800' : 'bg-amber-100 text-amber-800'}`}>
+                        {pontoResumo.status}
+                      </span>
+                    </div>
                   </div>
                   <div className="grid gap-3 md:grid-cols-4">
                     {slots.map((slot) => {
