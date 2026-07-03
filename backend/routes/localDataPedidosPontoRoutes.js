@@ -677,6 +677,7 @@ function registerPedidosPontoRoutes(context, helpers) {
     app.get('/api/internal-chat/ponto/supabase/recent', async (req, res) => {
         try {
             const actorUserId = String(req.query.actorUserId || req.query.userId || '').trim();
+            const targetUserId = String(req.query.targetUserId || '').trim();
             const limit = Math.min(10, Math.max(1, Number(req.query.limit || 2) || 2));
             if (!actorUserId) {
                 return res.status(400).json({ success: false, error: 'actorUserId é obrigatório.' });
@@ -684,9 +685,22 @@ function registerPedidosPontoRoutes(context, helpers) {
 
             const actorUser = await dbGetAsync('SELECT id, email FROM users WHERE id = ? LIMIT 1', [actorUserId]);
             if (!actorUser?.id) return res.status(404).json({ success: false, error: 'Utilizador local não encontrado.' });
+
+            // Por defeito consulta o próprio; o gerente (mpr@mpr.pt) pode consultar
+            // as picagens de outro utilizador (ex.: a pessoa da conversa selecionada).
+            let lookupEmail = String(actorUser.email || '').trim();
+            if (targetUserId && targetUserId !== actorUserId) {
+                const isManager = String(actorUser.email || '').trim().toLowerCase() === 'mpr@mpr.pt';
+                if (isManager) {
+                    const targetUser = await dbGetAsync('SELECT email FROM users WHERE id = ? LIMIT 1', [targetUserId]);
+                    lookupEmail = String(targetUser?.email || '').trim();
+                }
+            }
+            if (!lookupEmail) return res.json({ success: true, table: 'hr_registos_ponto', data: [] });
+
             const funcionario = await dbGetAsync(
                 'SELECT id, dias_trabalho FROM hr_funcionarios WHERE lower(email) = lower(?) LIMIT 1',
-                [String(actorUser.email || '').trim()]
+                [lookupEmail]
             );
             if (!funcionario?.id) return res.json({ success: true, table: 'hr_registos_ponto', data: [] });
             const rows = await dbAllAsync(

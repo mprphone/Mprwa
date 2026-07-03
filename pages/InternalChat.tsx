@@ -296,6 +296,17 @@ const InternalChat: React.FC = () => {
     [users, taskTargetUserId]
   );
 
+  // Gerente (mpr@mpr.pt) não pica — o cartão de ponto mostra as picagens da
+  // pessoa da conversa direta selecionada. Funcionários veem as suas.
+  const isPontoGestor = String(currentUser?.email || '').trim().toLowerCase() === 'mpr@mpr.pt';
+  const pontoTargetUserId = isPontoGestor
+    ? (selectedConversation?.type === 'direct' ? String(selectedConversation.otherUserId || '').trim() : '')
+    : currentUserId;
+  const pontoTargetUser = useMemo(
+    () => users.find((user) => user.id === pontoTargetUserId) || null,
+    [users, pontoTargetUserId]
+  );
+
   const memberIdSet = useMemo(() => new Set(members.map((member) => member.userId)), [members]);
 
   const selectedMessageIds = useMemo(
@@ -761,15 +772,16 @@ const InternalChat: React.FC = () => {
   }, [taskTargetUserId, selectedConversationId, currentUserId]);
 
   useEffect(() => {
-    if (!currentUserId) {
+    if (!currentUserId || (isPontoGestor && !pontoTargetUserId)) {
       setPontoRecent([]);
+      setPontoStatusHoje('');
       setPontoRecentError('');
       return;
     }
     let cancelled = false;
     setPontoRecentLoading(true);
     setPontoRecentError('');
-    void fetchInternalPontoRecentSupabase({ actorUserId: currentUserId, limit: 2 })
+    void fetchInternalPontoRecentSupabase({ actorUserId: currentUserId, targetUserId: pontoTargetUserId || undefined, limit: isPontoGestor ? 6 : 2 })
       .then((result) => {
         if (cancelled) return;
         setPontoRecent(Array.isArray(result.rows) ? result.rows : []);
@@ -788,7 +800,7 @@ const InternalChat: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [currentUserId]);
+  }, [currentUserId, isPontoGestor, pontoTargetUserId]);
 
   useEffect(() => {
     const handleClose = () => setContextMenu(null);
@@ -1929,13 +1941,15 @@ const InternalChat: React.FC = () => {
           <div className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-[13px] font-semibold text-slate-900">Registo de Ponto</div>
-                <p className="mt-0.5 text-xs text-slate-500">PIN pessoal · picagens de {currentUser?.name || 'ti'}</p>
+                <div className="text-[13px] font-semibold text-slate-900">{isPontoGestor ? 'Ponto' : 'Registo de Ponto'}</div>
+                <p className="mt-0.5 text-xs text-slate-500 truncate">{isPontoGestor ? (pontoTargetUser?.name ? `Picagens de ${pontoTargetUser.name}` : 'Seleciona uma conversa') : `PIN pessoal · picagens de ${currentUser?.name || 'ti'}`}</p>
               </div>
               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
                 {pontoRecent.length}
               </span>
             </div>
+            {!isPontoGestor && (
+              <>
             {pontoStatusHoje === 'SEM_ENTRADA' && (
               <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800">
                 <span aria-hidden>⚠️</span>
@@ -1978,13 +1992,17 @@ const InternalChat: React.FC = () => {
                 {pontoError}
               </div>
             )}
+              </>
+            )}
             <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
-              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">As tuas últimas picagens</div>
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{isPontoGestor ? 'Últimas picagens' : 'As tuas últimas picagens'}</div>
               {pontoRecentError && <div className="mt-1 text-xs text-red-600">{pontoRecentError}</div>}
               <div className="space-y-1">
                 {pontoRecentLoading && <div className="text-xs text-slate-500">A carregar...</div>}
                 {!pontoRecentLoading && pontoRecent.length === 0 && (
-                  <div className="text-xs text-slate-500">Sem registos recentes.</div>
+                  <div className="text-xs text-slate-500">
+                    {isPontoGestor && !pontoTargetUserId ? 'Abre a conversa de um funcionário para veres as picagens dele.' : 'Sem registos recentes.'}
+                  </div>
                 )}
                 {!pontoRecentLoading &&
                   pontoRecent.map((registo, idx) => (

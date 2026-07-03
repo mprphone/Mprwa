@@ -567,14 +567,17 @@ export async function createInternalPontoSupabase(input: {
 
 export async function fetchInternalPontoRecentSupabase(input: {
   actorUserId: string;
+  targetUserId?: string;
   limit?: number;
 }): Promise<{ rows: InternalPontoRow[]; statusHoje: string; temEntradaHoje: boolean }> {
   const actorUserId = String(input.actorUserId || '').trim();
+  const targetUserId = String(input.targetUserId || '').trim();
   const limit = Math.min(10, Math.max(1, Number(input.limit || 2) || 2));
   const query = new URLSearchParams({
     actorUserId,
     limit: String(limit),
   });
+  if (targetUserId) query.set('targetUserId', targetUserId);
 
   const response = await fetch(`/api/internal-chat/ponto/supabase/recent?${query.toString()}`, {
     headers: { Accept: 'application/json' },
