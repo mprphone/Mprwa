@@ -7,6 +7,7 @@ import {
   fetchHrFuncionarios,
   fetchHrPedidos,
   fetchHrRegistosPonto,
+  fetchHrRegistosPontoOverview,
   createHrRegistoPonto,
   updateHrRegistoPonto,
   deleteHrRegistoPonto,
@@ -20,6 +21,7 @@ import {
   HrFuncionario,
   HrPedido,
   HrRegistoPonto,
+  HrPontoOverviewRow,
   HrObjetivo,
   HrObjetivosConfig,
   HrEmailAutoReplySchedule,
@@ -29,6 +31,24 @@ import {
 
 type HrFichaTab = 'informacao' | 'objetivos' | 'picagens' | 'ferias' | 'pedidos';
 type EmployeesTab = 'utilizadores' | 'fichas' | 'ponto';
+
+const PONTO_STATUS_META: Record<string, { label: string; tone: string }> = {
+  PRESENTE: { label: 'Presente', tone: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  SAIU: { label: 'Saiu', tone: 'bg-slate-100 text-slate-600 border-slate-200' },
+  SEM_ENTRADA: { label: 'Sem entrada', tone: 'bg-rose-100 text-rose-700 border-rose-200' },
+  INCOMPLETO: { label: 'Incompleto', tone: 'bg-amber-100 text-amber-700 border-amber-200' },
+  FOLGA: { label: 'Folga', tone: 'bg-slate-100 text-slate-400 border-slate-200' },
+};
+function pontoStatusMeta(status: string) {
+  return PONTO_STATUS_META[status] || { label: status, tone: 'bg-slate-100 text-slate-600 border-slate-200' };
+}
+function formatPontoHora(momento: string): string {
+  const raw = String(momento || '').trim();
+  if (!raw) return '--';
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+}
 
 const Employees: React.FC = () => {
   const [employees, setEmployees] = useState<User[]>([]);
@@ -56,6 +76,7 @@ const Employees: React.FC = () => {
   const [pontoGestaoRows, setPontoGestaoRows] = useState<HrRegistoPonto[]>([]);
   const [pontoGestaoLoading, setPontoGestaoLoading] = useState(false);
   const [pontoGestaoError, setPontoGestaoError] = useState('');
+  const [pontoOverview, setPontoOverview] = useState<HrPontoOverviewRow[]>([]);
   const [pontoTimeDrafts, setPontoTimeDrafts] = useState<Record<string, string>>({});
   const [objetivosItems, setObjetivosItems] = useState<HrObjetivo[]>([]);
   const [objetivosConfig, setObjetivosConfig] = useState<HrObjetivosConfig>({ patamar50: '', patamar65: '', patamar80: '', premioMaximo: 0, notasGerais: '' });
@@ -203,6 +224,12 @@ const Employees: React.FC = () => {
       });
       setPontoGestaoRows(rows);
       setPontoTimeDrafts({});
+      try {
+        const overview = await fetchHrRegistosPontoOverview(currentUserId);
+        setPontoOverview(overview);
+      } catch {
+        // resumo é complementar — não bloqueia a gestão
+      }
     } catch (error) {
       setPontoGestaoRows([]);
       setPontoGestaoError(error instanceof Error ? error.message : 'Falha ao carregar picagens.');
@@ -1218,6 +1245,35 @@ const Employees: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {pontoOverview.length > 0 && (
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-bold text-slate-800">Estado de hoje por funcionário</h3>
+                <span className="text-xs text-slate-400">Dia ancorado na entrada · horário previsto de cada um</span>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {pontoOverview.map((row) => {
+                  const meta = pontoStatusMeta(row.status);
+                  return (
+                    <div key={row.funcionarioId} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-slate-800">{row.nome}</div>
+                        <div className="text-xs text-slate-500">
+                          <span>E {formatPontoHora(row.todayEntrada)}</span>
+                          <span className="mx-1 text-slate-300">·</span>
+                          <span>S {formatPontoHora(row.todaySaida)}</span>
+                          {row.horaEntradaPrevista && <span className="ml-1 text-slate-400">(prev. {row.horaEntradaPrevista})</span>}
+                          {row.late && <span className="ml-1 font-semibold text-amber-600">atrasado</span>}
+                        </div>
+                      </div>
+                      <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${meta.tone}`}>{meta.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[1fr_180px_180px_auto]">
             <label className="text-sm">

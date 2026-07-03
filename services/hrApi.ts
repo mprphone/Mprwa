@@ -240,6 +240,27 @@ export async function fetchHrRegistosPonto(filters: {
   return Array.isArray(data) ? data : [];
 }
 
+export type HrPontoStatus = 'PRESENTE' | 'SAIU' | 'SEM_ENTRADA' | 'INCOMPLETO' | 'FOLGA';
+
+export interface HrPontoOverviewRow {
+  funcionarioId: string;
+  nome: string;
+  horaEntradaPrevista: string;
+  horaSaidaPrevista: string;
+  status: HrPontoStatus;
+  late: boolean;
+  todayEntrada: string;
+  todaySaida: string;
+  ultimaPicagem: { tipo: 'ENTRADA' | 'SAIDA'; momento: string } | null;
+}
+
+// Resumo por funcionário: última picagem + estado de hoje.
+export async function fetchHrRegistosPontoOverview(viewerUserId?: string) {
+  const qs = viewerUserId ? `?viewerUserId=${encodeURIComponent(viewerUserId)}` : '';
+  const data = await request<HrPontoOverviewRow[]>(`/api/hr/registos-ponto/overview${qs}`);
+  return Array.isArray(data) ? data : [];
+}
+
 export async function createHrRegistoPonto(input: {
   funcionarioId: string;
   tipo: 'ENTRADA' | 'SAIDA';

@@ -1650,6 +1650,130 @@ function registerHrManagementRoutes(context) {
         }
     });
 
+    // Resumo por funcionário: última picagem + estado de hoje (dia ancorado na
+    // ENTRADA, respeitando o horário previsto de cada funcionário).
+    app.get('/api/hr/registos-ponto/overview', async (req, res) => {
+        try {
+            await ensureHrSchema();
+            const viewer = await resolveHrViewer(req.query.viewerUserId);
+            const restrictFuncionarioId = (viewer.user && !viewer.isManager) ? (viewer.funcionarioId || '__none__') : null;
+
+            const parseMomento = (s) => { const d = new Date(String(s || '')); return Number.isNaN(d.getTime()) ? null : d; };
+            const localDateKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            const timeToMinutes = (s) => { const m = String(s || '').match(/(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+            const worksToday = (dias, d) => {
+                const raw = String(dias || '').trim();
+                const dow = d.getDay(); // 0=dom..6=sab
+                if (!raw) return dow >= 1 && dow <= 5; // default seg-sex
+                if (/^[0-7,\s]+$/.test(raw)) {
+                    const nums = raw.split(/[,\s]+/).map(Number).filter((n) => !Number.isNaN(n));
+                    return nums.includes(dow) || nums.includes(dow === 0 ? 7 : dow);
+                }
+                const names = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+                return raw.toLowerCase().includes(names[dow]);
+            };
+
+            const funcArgs = [];
+            let funcWhere = 'activo = 1';
+            if (restrictFuncionarioId) { funcWhere += ' AND id = ?'; funcArgs.push(restrictFuncionarioId); }
+            const funcionarios = await dbAllAsync(
+                `SELECT id, nome, hora_entrada_prevista, hora_saida_prevista, tolerancia_entrada_min,
+                        horas_diarias_previstas, dias_trabalho
+                 FROM hr_funcionarios WHERE ${funcWhere} ORDER BY nome`,
+                funcArgs
+            );
+
+            const lastRows = await dbAllAsync(
+                `SELECT r.funcionario_id, r.tipo, r.momento
+                 FROM hr_registos_ponto r
+                 INNER JOIN (
+                     SELECT funcionario_id, MAX(datetime(momento)) AS m
+                     FROM hr_registos_ponto GROUP BY funcionario_id
+                 ) t ON t.funcionario_id = r.funcionario_id AND datetime(r.momento) = t.m`
+            );
+            const lastByFunc = new Map();
+            lastRows.forEach((r) => { const k = String(r.funcionario_id); if (!lastByFunc.has(k)) lastByFunc.set(k, r); });
+
+            const recentRows = await dbAllAsync(
+                `SELECT funcionario_id, tipo, momento
+                 FROM hr_registos_ponto
+                 WHERE datetime(momento) >= datetime('now', '-2 days')
+                 ORDER BY funcionario_id ASC, datetime(momento) ASC`
+            );
+            const recentByFunc = new Map();
+            recentRows.forEach((r) => {
+                const k = String(r.funcionario_id);
+                if (!recentByFunc.has(k)) recentByFunc.set(k, []);
+                recentByFunc.get(k).push(r);
+            });
+
+            const now = new Date();
+            const todayKey = localDateKey(now);
+
+            const data = funcionarios.map((f) => {
+                const fid = String(f.id);
+                const punches = recentByFunc.get(fid) || [];
+                let openEntrada = null;
+                let todayEntrada = '';
+                let todaySaida = '';
+                for (const p of punches) {
+                    const tipo = String(p.tipo || '').toUpperCase() === 'SAIDA' ? 'SAIDA' : 'ENTRADA';
+                    const d = parseMomento(p.momento);
+                    if (tipo === 'ENTRADA') {
+                        openEntrada = { momento: p.momento, date: d };
+                        if (d && localDateKey(d) === todayKey) todayEntrada = p.momento;
+                    } else {
+                        if (openEntrada) {
+                            if (openEntrada.date && localDateKey(openEntrada.date) === todayKey) todaySaida = p.momento;
+                            openEntrada = null;
+                        } else if (d && localDateKey(d) === todayKey) {
+                            todaySaida = p.momento;
+                        }
+                    }
+                }
+
+                let status;
+                if (openEntrada) {
+                    status = (openEntrada.date && localDateKey(openEntrada.date) === todayKey) ? 'PRESENTE' : 'INCOMPLETO';
+                } else if (todayEntrada) {
+                    status = 'SAIU';
+                } else {
+                    status = worksToday(f.dias_trabalho, now) ? 'SEM_ENTRADA' : 'FOLGA';
+                }
+
+                let late = false;
+                if (todayEntrada && f.hora_entrada_prevista) {
+                    const entD = parseMomento(todayEntrada);
+                    const expected = timeToMinutes(f.hora_entrada_prevista);
+                    const tol = Number(f.tolerancia_entrada_min || 0) || 0;
+                    if (entD && expected != null) {
+                        late = (entD.getHours() * 60 + entD.getMinutes()) > expected + tol;
+                    }
+                }
+
+                const last = lastByFunc.get(fid);
+                return {
+                    funcionarioId: fid,
+                    nome: String(f.nome || ''),
+                    horaEntradaPrevista: String(f.hora_entrada_prevista || ''),
+                    horaSaidaPrevista: String(f.hora_saida_prevista || ''),
+                    status,
+                    late,
+                    todayEntrada: todayEntrada || '',
+                    todaySaida: todaySaida || '',
+                    ultimaPicagem: last ? {
+                        tipo: String(last.tipo || '').toUpperCase() === 'SAIDA' ? 'SAIDA' : 'ENTRADA',
+                        momento: String(last.momento || ''),
+                    } : null,
+                };
+            });
+
+            return res.json({ success: true, generatedAt: now.toISOString(), data });
+        } catch (error) {
+            return res.status(500).json({ success: false, error: error?.message || String(error) });
+        }
+    });
+
     app.post('/api/hr/registos-ponto', async (req, res) => {
         try {
             await ensureHrSchema();
