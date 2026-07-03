@@ -696,9 +696,25 @@ function registerPedidosPontoRoutes(context, helpers) {
                  LIMIT ?`,
                 [String(funcionario.id), limit]
             );
+
+            // Estado de hoje (para o alerta "ainda não deu entrada").
+            const todayRows = await dbAllAsync(
+                `SELECT tipo FROM hr_registos_ponto
+                 WHERE funcionario_id = ? AND date(momento, 'localtime') = date('now', 'localtime')
+                 ORDER BY datetime(momento) ASC`,
+                [String(funcionario.id)]
+            );
+            const temEntradaHoje = todayRows.some((r) => String(r.tipo || '').toUpperCase() !== 'SAIDA');
+            const ultimoTipoHoje = todayRows.length
+                ? (String(todayRows[todayRows.length - 1].tipo || '').toUpperCase() === 'SAIDA' ? 'SAIDA' : 'ENTRADA')
+                : '';
+            const statusHoje = !temEntradaHoje ? 'SEM_ENTRADA' : (ultimoTipoHoje === 'ENTRADA' ? 'PRESENTE' : 'SAIU');
+
             return res.json({
                 success: true,
                 table: 'hr_registos_ponto',
+                statusHoje,
+                temEntradaHoje,
                 data: rows.map((row) => ({
                     id: String(row.id || ''),
                     funcionarioId: String(row.funcionario_id || ''),

@@ -172,6 +172,7 @@ const InternalChat: React.FC = () => {
   const [pontoError, setPontoError] = useState('');
   const [pontoFeedback, setPontoFeedback] = useState('');
   const [pontoRecent, setPontoRecent] = useState<InternalPontoRow[]>([]);
+  const [pontoStatusHoje, setPontoStatusHoje] = useState('');
   const [pontoRecentLoading, setPontoRecentLoading] = useState(false);
   const [pontoRecentError, setPontoRecentError] = useState('');
   const [presenceByUserId, setPresenceByUserId] = useState<Record<string, InternalPresenceRow>>({});
@@ -769,13 +770,15 @@ const InternalChat: React.FC = () => {
     setPontoRecentLoading(true);
     setPontoRecentError('');
     void fetchInternalPontoRecentSupabase({ actorUserId: currentUserId, limit: 2 })
-      .then((rows) => {
+      .then((result) => {
         if (cancelled) return;
-        setPontoRecent(Array.isArray(rows) ? rows : []);
+        setPontoRecent(Array.isArray(result.rows) ? result.rows : []);
+        setPontoStatusHoje(result.statusHoje || '');
       })
       .catch((loadError) => {
         if (cancelled) return;
         setPontoRecent([]);
+        setPontoStatusHoje('');
         setPontoRecentError(loadError instanceof Error ? loadError.message : 'Falha ao carregar últimos registos.');
       })
       .finally(() => {
@@ -1391,8 +1394,9 @@ const InternalChat: React.FC = () => {
       setPontoRecentLoading(true);
       setPontoRecentError('');
       try {
-        const rows = await fetchInternalPontoRecentSupabase({ actorUserId: currentUserId, limit: 2 });
-        setPontoRecent(Array.isArray(rows) ? rows : []);
+        const result = await fetchInternalPontoRecentSupabase({ actorUserId: currentUserId, limit: 2 });
+        setPontoRecent(Array.isArray(result.rows) ? result.rows : []);
+        setPontoStatusHoje(result.statusHoje || '');
       } catch (recentError) {
         setPontoRecentError(recentError instanceof Error ? recentError.message : 'Falha ao carregar últimos registos.');
       } finally {
@@ -1932,6 +1936,12 @@ const InternalChat: React.FC = () => {
                 {pontoRecent.length}
               </span>
             </div>
+            {pontoStatusHoje === 'SEM_ENTRADA' && (
+              <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800">
+                <span aria-hidden>⚠️</span>
+                <span>Ainda não deste entrada hoje. Não te esqueças de picar.</span>
+              </div>
+            )}
             <div className="mt-2 grid grid-cols-[minmax(0,1fr)_76px_76px] gap-2">
             <input
               type="password"

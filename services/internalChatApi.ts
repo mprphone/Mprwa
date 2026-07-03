@@ -568,7 +568,7 @@ export async function createInternalPontoSupabase(input: {
 export async function fetchInternalPontoRecentSupabase(input: {
   actorUserId: string;
   limit?: number;
-}): Promise<InternalPontoRow[]> {
+}): Promise<{ rows: InternalPontoRow[]; statusHoje: string; temEntradaHoje: boolean }> {
   const actorUserId = String(input.actorUserId || '').trim();
   const limit = Math.min(10, Math.max(1, Number(input.limit || 2) || 2));
   const query = new URLSearchParams({
@@ -583,15 +583,21 @@ export async function fetchInternalPontoRecentSupabase(input: {
   const payload = await safeJson<{
     success?: boolean;
     data?: InternalPontoRow[];
+    statusHoje?: string;
+    temEntradaHoje?: boolean;
     error?: unknown;
   }>(response);
   if (!response.ok || !payload.success || !Array.isArray(payload.data)) {
     if (!response.ok) {
       throw new Error(parseError(payload, response.status, 'Falha ao carregar registos de ponto'));
     }
-    return [];
+    return { rows: [], statusHoje: '', temEntradaHoje: false };
   }
-  return payload.data;
+  return {
+    rows: payload.data,
+    statusHoje: String(payload.statusHoje || ''),
+    temEntradaHoje: Boolean(payload.temEntradaHoje),
+  };
 }
 
 export async function importInternalChatHistorySupabase(input: {
