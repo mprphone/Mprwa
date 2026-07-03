@@ -1656,7 +1656,9 @@ function registerHrManagementRoutes(context) {
         try {
             await ensureHrSchema();
             const viewer = await resolveHrViewer(req.query.viewerUserId);
-            const restrictFuncionarioId = (viewer.user && !viewer.isManager) ? (viewer.funcionarioId || '__none__') : null;
+            // Só o gerente (mpr@mpr.pt) vê todos; qualquer outro — ou chamada sem
+            // viewer válido — fica restrito ao próprio funcionário (ou a nada).
+            const restrictFuncionarioId = viewer.isManager ? null : (viewer.funcionarioId || '__none__');
 
             const parseMomento = (s) => { const d = new Date(String(s || '')); return Number.isNaN(d.getTime()) ? null : d; };
             const localDateKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

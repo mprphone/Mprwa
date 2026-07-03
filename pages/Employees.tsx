@@ -224,11 +224,15 @@ const Employees: React.FC = () => {
       });
       setPontoGestaoRows(rows);
       setPontoTimeDrafts({});
-      try {
-        const overview = await fetchHrRegistosPontoOverview(currentUserId);
-        setPontoOverview(overview);
-      } catch {
-        // resumo é complementar — não bloqueia a gestão
+      if (canManageHr) {
+        try {
+          const overview = await fetchHrRegistosPontoOverview(currentUserId);
+          setPontoOverview(overview);
+        } catch {
+          // resumo é complementar — não bloqueia a gestão
+        }
+      } else {
+        setPontoOverview([]);
       }
     } catch (error) {
       setPontoGestaoRows([]);
@@ -1246,7 +1250,7 @@ const Employees: React.FC = () => {
             </div>
           </div>
 
-          {pontoOverview.length > 0 && (
+          {canManageHr && pontoOverview.length > 0 && (
             <div className="rounded-xl border border-slate-200 bg-white p-3">
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="text-sm font-bold text-slate-800">Estado de hoje por funcionário</h3>
