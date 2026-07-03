@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { isWorkDay } = require('../../src/server/utils/workDays');
 
 /**
  * Internal Chat user tasks, Ponto (time tracking) & Pedidos (requests) routes.
@@ -684,7 +685,7 @@ function registerPedidosPontoRoutes(context, helpers) {
             const actorUser = await dbGetAsync('SELECT id, email FROM users WHERE id = ? LIMIT 1', [actorUserId]);
             if (!actorUser?.id) return res.status(404).json({ success: false, error: 'Utilizador local não encontrado.' });
             const funcionario = await dbGetAsync(
-                'SELECT id FROM hr_funcionarios WHERE lower(email) = lower(?) LIMIT 1',
+                'SELECT id, dias_trabalho FROM hr_funcionarios WHERE lower(email) = lower(?) LIMIT 1',
                 [String(actorUser.email || '').trim()]
             );
             if (!funcionario?.id) return res.json({ success: true, table: 'hr_registos_ponto', data: [] });
@@ -708,7 +709,11 @@ function registerPedidosPontoRoutes(context, helpers) {
             const ultimoTipoHoje = todayRows.length
                 ? (String(todayRows[todayRows.length - 1].tipo || '').toUpperCase() === 'SAIDA' ? 'SAIDA' : 'ENTRADA')
                 : '';
-            const statusHoje = !temEntradaHoje ? 'SEM_ENTRADA' : (ultimoTipoHoje === 'ENTRADA' ? 'PRESENTE' : 'SAIU');
+            // Só alerta em dias de trabalho do próprio funcionário (dias_trabalho).
+            const diaDeTrabalho = isWorkDay(funcionario.dias_trabalho, new Date());
+            const statusHoje = !temEntradaHoje
+                ? (diaDeTrabalho ? 'SEM_ENTRADA' : 'FOLGA')
+                : (ultimoTipoHoje === 'ENTRADA' ? 'PRESENTE' : 'SAIU');
 
             return res.json({
                 success: true,

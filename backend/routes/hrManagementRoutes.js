@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const { createEmailAutoReplyService } = require('../../src/server/services/emailAutoReplyService');
+const { isWorkDay } = require('../../src/server/utils/workDays');
 
 function registerHrManagementRoutes(context) {
     const {
@@ -1663,18 +1664,6 @@ function registerHrManagementRoutes(context) {
             const parseMomento = (s) => { const d = new Date(String(s || '')); return Number.isNaN(d.getTime()) ? null : d; };
             const localDateKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
             const timeToMinutes = (s) => { const m = String(s || '').match(/(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
-            const worksToday = (dias, d) => {
-                const raw = String(dias || '').trim();
-                const dow = d.getDay(); // 0=dom..6=sab
-                if (!raw) return dow >= 1 && dow <= 5; // default seg-sex
-                if (/^[0-7,\s]+$/.test(raw)) {
-                    const nums = raw.split(/[,\s]+/).map(Number).filter((n) => !Number.isNaN(n));
-                    return nums.includes(dow) || nums.includes(dow === 0 ? 7 : dow);
-                }
-                const names = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
-                return raw.toLowerCase().includes(names[dow]);
-            };
-
             const funcArgs = [];
             let funcWhere = 'activo = 1';
             if (restrictFuncionarioId) { funcWhere += ' AND id = ?'; funcArgs.push(restrictFuncionarioId); }
@@ -1740,7 +1729,7 @@ function registerHrManagementRoutes(context) {
                 } else if (todayEntrada) {
                     status = 'SAIU';
                 } else {
-                    status = worksToday(f.dias_trabalho, now) ? 'SEM_ENTRADA' : 'FOLGA';
+                    status = isWorkDay(f.dias_trabalho, now) ? 'SEM_ENTRADA' : 'FOLGA';
                 }
 
                 let late = false;
