@@ -336,6 +336,40 @@ function humanizeDetailKey(value: string): string {
     .replace(/^./, (letter) => letter.toUpperCase());
 }
 
+// Achata a estrutura aninhada do "projeto de apoio" (candidatura/acompanhamento/…)
+// em linhas legíveis "Secção · Campo: valor", em vez de despejar JSON em bruto.
+function flattenApoioEntries(value: unknown, prefix = ''): { label: string; value: string }[] {
+  const out: { label: string; value: string }[] = [];
+  if (value === null || value === undefined) return out;
+  if (Array.isArray(value)) {
+    value.forEach((item, idx) => {
+      if (item && typeof item === 'object') {
+        const line = Object.values(item as Record<string, unknown>).map(formatDetailValue).filter(Boolean).join(' — ');
+        if (line) out.push({ label: `${prefix || 'Item'} ${idx + 1}`, value: line });
+      } else {
+        const s = formatDetailValue(item);
+        if (s) out.push({ label: `${prefix || 'Item'} ${idx + 1}`, value: s });
+      }
+    });
+    return out;
+  }
+  if (typeof value === 'object') {
+    Object.entries(value as Record<string, unknown>).forEach(([k, v]) => {
+      const fullLabel = prefix ? `${prefix} · ${humanizeDetailKey(k)}` : humanizeDetailKey(k);
+      if (v && typeof v === 'object') {
+        out.push(...flattenApoioEntries(v, fullLabel));
+      } else {
+        const s = formatDetailValue(v);
+        if (s) out.push({ label: fullLabel, value: s });
+      }
+    });
+    return out;
+  }
+  const s = formatDetailValue(value);
+  if (s) out.push({ label: prefix || 'Valor', value: s });
+  return out;
+}
+
 function taskStatusLabel(status: TaskStatus | string): string {
   if (status === TaskStatus.DONE) return 'Concluida';
   if (status === TaskStatus.IN_PROGRESS) return 'Em progresso';
@@ -1419,9 +1453,12 @@ function OccurrenceDetail({
 }) {
   const isResolved = normalizeSearch(occurrence.state).includes('resol');
   const attachments = Array.isArray(occurrence.attachments) ? occurrence.attachments : [];
-  const apoioDetails = Object.entries(occurrence.projetoApoioDetalhe || {})
-    .map(([key, value]) => ({ key, value: formatDetailValue(value) }))
-    .filter((item) => item.value);
+  const apoioSections = Object.entries(occurrence.projetoApoioDetalhe || {})
+    .map(([sectionKey, sectionValue]) => ({
+      section: humanizeDetailKey(sectionKey),
+      rows: flattenApoioEntries(sectionValue),
+    }))
+    .filter((section) => section.rows.length > 0);
   return (
     <DetailShell title="Ocorrencia" subtitle={occurrence.customerCompany || occurrence.customerName || 'Sem cliente'} onBack={onBack}>
       <div className="space-y-4 p-4">
@@ -1460,12 +1497,19 @@ function OccurrenceDetail({
           </div>
         )}
 
-        {apoioDetails.length > 0 && (
+        {apoioSections.length > 0 && (
           <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-500">Projeto de apoio</p>
-            <div className="space-y-2">
-              {apoioDetails.slice(0, 12).map((item) => (
-                <DetailRow key={item.key} label={humanizeDetailKey(item.key)} value={item.value} />
+            <div className="space-y-4">
+              {apoioSections.map((section) => (
+                <div key={section.section}>
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-violet-600">{section.section}</p>
+                  <div className="space-y-2">
+                    {section.rows.map((item, idx) => (
+                      <DetailRow key={`${section.section}-${item.label}-${idx}`} label={item.label} value={item.value} />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
