@@ -2,6 +2,7 @@ function startServerLifecycle(context) {
     const {
         app,
         port,
+        host = '127.0.0.1',
         dbReadyPromise,
         isBackofficeOnly,
         isChatCoreOnly,
@@ -16,7 +17,7 @@ function startServerLifecycle(context) {
         bootstrapCustomersAutoPullScheduler,
     } = context;
 
-    app.listen(port, async () => {
+    app.listen(port, host, async () => {
         if (dbReadyPromise && typeof dbReadyPromise.then === 'function') {
             const dbReady = await dbReadyPromise;
             if (!dbReady) {
@@ -35,7 +36,7 @@ function startServerLifecycle(context) {
             bootstrapObrigacoesAutoScheduler(port);
             bootstrapCustomersAutoPullScheduler(port);
         }
-        console.log(`Servidor rodando na porta ${port}`);
+        console.log(`Servidor rodando em ${host}:${port}`);
         console.log(`Iniciado em: ${new Date().toLocaleString()}`);
         console.log(`Perfil ativo: ${appRole || 'all'}`);
         console.log('Aguardando mensagens...');

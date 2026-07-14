@@ -215,6 +215,7 @@ const {
 const IS_CHAT_CORE_ONLY = APP_ROLE === 'chat_core';
 const IS_BACKOFFICE_ONLY = APP_ROLE === 'backoffice';
 const PORT = process.env.PORT || 3000;
+const BIND_HOST = String(process.env.BIND_HOST || '127.0.0.1').trim() || '127.0.0.1';
 const ACTIVE_WHATSAPP_PROVIDER = String(WHATSAPP_PROVIDER || 'cloud').trim().toLowerCase() === 'baileys'
     ? 'baileys'
     : 'cloud';
@@ -3066,6 +3067,10 @@ if (!IS_CHAT_CORE_ONLY) {
 // Error-middleware do Express: regista erros de rotas e mantém a resposta como
 // antes (delega no handler default do Express). Registado depois de todas as rotas.
 app.use((err, req, res, next) => {
+    if (err instanceof URIError) {
+        if (res.headersSent) return res.end();
+        return res.status(400).json({ success: false, error: 'URL inválida.' });
+    }
     logError(`route ${req.method} ${req.originalUrl || req.url}`, err);
     return next(err);
 });
@@ -3073,6 +3078,7 @@ app.use((err, req, res, next) => {
 startServerLifecycle({
     app,
     port: PORT,
+    host: BIND_HOST,
     dbReadyPromise,
     isBackofficeOnly: IS_BACKOFFICE_ONLY,
     isChatCoreOnly: IS_CHAT_CORE_ONLY,

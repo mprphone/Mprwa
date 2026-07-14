@@ -16,7 +16,10 @@ function registerFrontendRoutes(context) {
         })
     );
 
-    app.get('*', (req, res) => {
+    // A interface usa HashRouter, portanto as rotas do cliente ficam depois de
+    // "#" e nunca chegam ao servidor. Limitar o fallback evita devolver 200 e
+    // o index.html para sondagens como /.env ou /etc/passwd.
+    app.get(['/', '/index.html'], (req, res) => {
         const indexPath = path.join(baseDir, 'dist', 'index.html');
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         res.setHeader('Pragma', 'no-cache');
