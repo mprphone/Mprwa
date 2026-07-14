@@ -28,6 +28,41 @@ correspondente estarem cumpridos e registados.**
 Estes números são observações deduplicadas por rota/origem, não o total bruto de
 pedidos. Servem para inventário e comparação entre dias.
 
+## Âmbito e integrações externas (Vercel/Supabase)
+
+O fecho de `ALLOW_LOCAL_API_WITHOUT_AUTH` protege apenas os pedidos que chegam ao
+backend `mprWA` em `127.0.0.1:3010`, normalmente através de `wa.mpr.pt`. Não se
+deve inferir, a partir do log deste backend, que todos os robôs da infraestrutura
+foram inventariados.
+
+Inventário confirmado em 14 de julho de 2026:
+
+| Origem/serviço | Caminho observado | Autenticação | Relação com o bypass `mprWA` |
+| --- | --- | --- | --- |
+| `controle.mpr.pt` | Vercel → Supabase | sessão/RLS do Supabase | não passa pelo `mprWA`; o bundle atual usa diretamente tabelas como `clientes`, `funcionarios`, `pedidos` e `configuracoes` |
+| Supabase Edge Functions | Supabase → `iuc.mpr.pt` (`/jobs/:id`, `/emitir-guia-iuc`, `/recolher-iuc`) | `x-robot-secret`; `ROBOT_REQUIRE_SECRET=true` | independente do bypass `mprWA` |
+| Supabase Edge Functions | Supabase → `imi.mpr.pt` (`/campanhas/start`) | segredo do robô; `ROBOT_REQUIRE_SECRET=true` | independente do bypass `mprWA` |
+| `pri.mpr.pt` | Nginx → serviço local `127.0.0.1:4100` | tokens próprios da extensão Primavera | serviço separado; não passa por `3010` |
+| `api.pr.pt` | infraestrutura externa a este servidor | por confirmar no respetivo projeto | fora do âmbito técnico deste backend |
+
+O projeto Supabase contém ainda recursos como `robot_jobs`, `imi_robot_jobs`,
+`robot_campaigns`, `imi_robot_campaigns`, `iuc_global_pedidos` e
+`imi_global_pedidos`. A atividade nestas tabelas não aparece em
+`logs/auth-events.log`; deve ser acompanhada pelos logs das Edge Functions e dos
+serviços `iuc-bot`/`imi-bot`.
+
+Regras para estas integrações:
+
+1. Nunca colocar `INTERNAL_API_KEY`, `ROBOT_API_SECRET` ou uma chave
+   `service_role` em JavaScript entregue ao browser pelo Vercel.
+2. Guardar segredos apenas nas variáveis server-side do Vercel/Supabase Edge e
+   enviá-los de funções server-to-server.
+3. Não usar allowlist de IP para Vercel ou Supabase Edge; os IPs de saída são
+   variáveis. Autenticar por segredo rotacionável e identificar a integração no
+   log.
+4. Antes de alterar a autenticação de `iuc.mpr.pt`, `imi.mpr.pt`, `pri.mpr.pt`
+   ou `api.pr.pt`, criar um plano e uma janela de observação próprios.
+
 ## Modos registados
 
 O ficheiro `logs/auth-events.log` passa a distinguir:
@@ -124,6 +159,10 @@ Critérios para concluir a fase:
 ## Fase 3 — ensaio controlado sem bypass
 
 Fazer numa janela acompanhada, com acesso SSH/Tailscale disponível.
+
+Esta fase fecha apenas o bypass do `mprWA`. Antes do ensaio, confirmar que os
+fluxos Supabase Edge → IUC/IMI continuam saudáveis, mas não alterar os segredos
+desses serviços na mesma janela.
 
 1. Guardar cópia do `.env` com permissões restritas.
 2. Definir `ALLOW_LOCAL_API_WITHOUT_AUTH=false`.
