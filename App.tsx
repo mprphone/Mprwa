@@ -96,6 +96,26 @@ const ProtectedApp: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void mockService.initializeAuthSession().finally(() => {
+      if (active) setAuthReady(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (!authReady) {
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <RouteFallback />
+      </div>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <Router>

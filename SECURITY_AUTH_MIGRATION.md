@@ -18,9 +18,10 @@ correspondente estarem cumpridos e registados.**
   de Portugal e o benchmark local. Ambos passam agora a enviar a chave. Algumas
   observações podem ser browser/diagnóstico executado no próprio servidor e
   serão distinguidas pelo novo identificador diagnóstico.
-- As sessões ficam em memória; um restart invalida a sessão server-side, mas o
-  frontend pode conservar o utilizador no `localStorage`. O bypass mascara esta
-  inconsistência.
+- As novas sessões ficam persistidas no SQLite e sobrevivem a restart. No
+  arranque, o frontend valida o cookie em `/api/auth/me` antes de aceitar o
+  utilizador guardado localmente. O modo de compatibilidade offline permanece
+  temporariamente enquanto o bypass estiver em observação.
 - O bypass também deixa sondagens externas atravessarem o middleware de auth,
   embora rotas inexistentes acabem normalmente em 404.
 
@@ -103,11 +104,11 @@ para enviar a chave e reiniciar novamente a janela de observação.
 
 Antes de exigir login, corrigir o ciclo de sessão:
 
-1. Persistir sessões no SQLite ou usar token assinado com expiração e estratégia
-   explícita de revogação.
-2. No arranque do frontend, chamar `/api/auth/me`; `localStorage` sozinho não
-   pode significar autenticação.
-3. Se a sessão expirou ou foi invalidada por restart, encaminhar para login.
+1. [Implementado] Persistir sessões no SQLite com token assinado, expiração e
+   revogação; apenas o hash do identificador secreto fica na base de dados.
+2. [Implementado] No arranque do frontend, chamar `/api/auth/me`; `localStorage`
+   sozinho já não significa autenticação quando o backend responde normalmente.
+3. [Implementado] Se a sessão expirou ou foi revogada, encaminhar para login.
 4. Manter cookie `HttpOnly`, `Secure`, `SameSite=Lax` e expiração curta.
 5. Migrar palavras-passe em texto simples para Argon2id de forma progressiva no
    próximo login bem-sucedido.

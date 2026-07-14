@@ -40,7 +40,7 @@ Endpoints de controlo:
 ## Autenticação da API (Segurança)
 
 A API tem autenticação por sessão (login server-side + cookie HttpOnly assinado com HMAC).
-Está desenhada em **duas fases** para poder ser ativada sem interromper o serviço.
+A migração é feita em **fases graduais** para não interromper o serviço.
 
 O acesso externo entra sempre pelo **nginx** (serviço systemd `mprwa-backend` →
 `proxy_pass http://127.0.0.1:3010`). Continua a poder abrir-se de qualquer parte do
@@ -66,11 +66,19 @@ mundo pelo endereço público — a autenticação **só acrescenta o login, nã
   é obrigatório** e o leak anónimo (ex.: `/api/import/supabase` com senhas dos clientes)
   ainda **não está fechado**.
 
-O roteiro completo, critérios de avanço, matriz de testes e rollback estão em
-[`SECURITY_AUTH_MIGRATION.md`](SECURITY_AUTH_MIGRATION.md). Não ativar a Fase 2
-apenas com base nesta secção resumida.
+### Fase 2A — SESSÕES PERSISTENTES (bypass ainda ativo)
+- As sessões são guardadas no SQLite; a base guarda apenas o hash do identificador
+  secreto e permite expiração e revogação no logout.
+- O frontend valida `/api/auth/me` antes de abrir a aplicação. Um `localStorage`
+  antigo já não autentica o utilizador quando o backend está disponível.
+- O bypass permanece ativo como rede de segurança e os logs devem mostrar a
+  substituição gradual de `bypass external_proxy` por `allow_session`.
 
-### Fase 2 — ATIVAR A PROTEÇÃO (só depois de testar a Fase 1)
+O roteiro completo, critérios de avanço, matriz de testes e rollback estão em
+[`SECURITY_AUTH_MIGRATION.md`](SECURITY_AUTH_MIGRATION.md). Não fechar o bypass
+apenas com base nesta secção resumida; essa mudança corresponde à Fase 3.
+
+### Fase 3 — ATIVAR A PROTEÇÃO (só depois de concluir a observação)
 1. No `.env`: `ALLOW_LOCAL_API_WITHOUT_AUTH=false`
 2. `sudo systemctl restart mprwa-backend`
 3. A partir daqui o login passa a ser **obrigatório**. Testar:

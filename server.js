@@ -91,6 +91,7 @@ const {
 const { getCustomerSecretsKey, encryptCustomerSecret, decryptCustomerSecret } = require('./src/server/utils/crypto');
 const { createMappers } = require('./src/server/utils/mappers');
 const { internalApiHeaders } = require('./src/server/utils/internalApi');
+const { createAuthSessionStore } = require('./src/server/security/authSessionStore');
 const { createTaskRepository } = require('./src/server/repositories/taskRepository');
 const { createConversationRepository } = require('./src/server/repositories/conversationRepository');
 const { createMessageService } = require('./src/server/services/messageService');
@@ -417,7 +418,6 @@ const AUTH_SECRET = String(process.env.AUTH_SECRET || process.env.SESSION_SECRET
 const INTERNAL_API_KEY = String(process.env.INTERNAL_API_KEY || process.env.WA_INTERNAL_API_KEY || '').trim();
 const REQUIRE_API_AUTH = String(process.env.REQUIRE_API_AUTH || 'true').trim().toLowerCase() !== 'false';
 const ALLOW_LOCAL_API_WITHOUT_AUTH = String(process.env.ALLOW_LOCAL_API_WITHOUT_AUTH || 'true').trim().toLowerCase() !== 'false';
-const authSessions = new Map();
 
 function parseCookies(headerValue) {
     const cookies = {};
@@ -435,40 +435,12 @@ function parseCookies(headerValue) {
     return cookies;
 }
 
-function signAuthValue(value) {
-    return crypto.createHmac('sha256', AUTH_SECRET).update(String(value || '')).digest('base64url');
-}
-
-function createSessionToken(user) {
-    const sessionId = crypto.randomBytes(24).toString('base64url');
-    const expiresAt = Date.now() + AUTH_SESSION_TTL_MS;
-    authSessions.set(sessionId, {
-        userId: String(user.id || '').trim(),
-        email: String(user.email || '').trim().toLowerCase(),
-        role: String(user.role || '').trim(),
-        expiresAt,
-    });
-    return `${sessionId}.${signAuthValue(sessionId)}`;
-}
-
-function getSessionFromToken(rawToken) {
-    const token = String(rawToken || '').trim();
-    const [sessionId, signature] = token.split('.');
-    if (!sessionId || !signature || signAuthValue(sessionId) !== signature) return null;
-    const session = authSessions.get(sessionId);
-    if (!session) return null;
-    if (Date.now() > Number(session.expiresAt || 0)) {
-        authSessions.delete(sessionId);
-        return null;
-    }
-    return { ...session, sessionId };
-}
-
-function clearSessionToken(rawToken) {
-    const token = String(rawToken || '').trim();
-    const [sessionId] = token.split('.');
-    if (sessionId) authSessions.delete(sessionId);
-}
+const authSessionStore = createAuthSessionStore({
+    dbRunAsync,
+    dbGetAsync,
+    secret: AUTH_SECRET,
+    ttlMs: AUTH_SESSION_TTL_MS,
+});
 
 function readAuthToken(req) {
     const authHeader = String(req.headers.authorization || '').trim();
@@ -520,9 +492,11 @@ async function authenticateUserForSession(email, password) {
 function registerAuthRoutes() {
     app.post('/api/auth/login', async (req, res) => {
         try {
+            const dbReady = await dbReadyPromise;
+            if (!dbReady) return res.status(503).json({ success: false, error: 'Serviço de autenticação indisponível.' });
             const result = await authenticateUserForSession(req.body?.email, req.body?.password);
             if (!result.success) return res.status(401).json(result);
-            const token = createSessionToken(result.user);
+            const { token } = await authSessionStore.create(result.user);
             const maxAgeSeconds = Math.floor(AUTH_SESSION_TTL_MS / 1000);
             const secure = String(req.headers['x-forwarded-proto'] || req.protocol || '').includes('https');
             res.setHeader(
@@ -544,15 +518,22 @@ function registerAuthRoutes() {
         }
     });
 
-    app.post('/api/auth/logout', (req, res) => {
-        clearSessionToken(readAuthToken(req));
+    app.post('/api/auth/logout', async (req, res) => {
+        await authSessionStore.revoke(readAuthToken(req)).catch(() => false);
         res.setHeader('Set-Cookie', `${AUTH_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
         return res.json({ success: true });
     });
 
-    app.get('/api/auth/me', (req, res) => {
-        const session = getSessionFromToken(readAuthToken(req));
-        return res.json({ success: true, authenticated: Boolean(session), session: session || null });
+    app.get('/api/auth/me', async (req, res) => {
+        try {
+            const dbReady = await dbReadyPromise;
+            if (!dbReady) return res.status(503).json({ success: false, error: 'Serviço de autenticação indisponível.' });
+            const session = await authSessionStore.get(readAuthToken(req));
+            return res.json({ success: true, authenticated: Boolean(session), session: session || null });
+        } catch (error) {
+            logError('auth session lookup', error);
+            return res.status(503).json({ success: false, error: 'Serviço de autenticação indisponível.' });
+        }
     });
 }
 
@@ -668,7 +649,7 @@ function logAuthEvent(kind, req, options = {}) {
     }
 }
 
-function apiAuthMiddleware(req, res, next) {
+async function apiAuthMiddleware(req, res, next) {
     if (!REQUIRE_API_AUTH) return next();
     if (!String(req.path || '').startsWith('/api/')) return next();
     if (req.method === 'OPTIONS') return next();
@@ -681,7 +662,12 @@ function apiAuthMiddleware(req, res, next) {
         return next();
     }
 
-    const session = getSessionFromToken(readAuthToken(req));
+    let session = null;
+    try {
+        session = await authSessionStore.get(readAuthToken(req));
+    } catch (error) {
+        logError('auth session middleware lookup', error);
+    }
     if (session) {
         req.auth = { type: 'session', session };
         logAuthEvent('allow_session', req, { session });

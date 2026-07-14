@@ -89,6 +89,7 @@ class MockService {
   private calls = [...INITIAL_CALLS];
   private agendaEvents = [...INITIAL_AGENDA_EVENTS];
   private triggers = [...INITIAL_TRIGGERS];
+  private authBootstrapPromise: Promise<void> | null = null;
   private supabaseImportPromise: Promise<void> | null = null;
   private supabaseImportDone = false;
   private readonly obrigacoesApi = new ObrigacoesApi(
@@ -105,7 +106,6 @@ class MockService {
     // Identificador apenas diagnóstico: ajuda a descobrir que cliente ainda usa
     // o bypass durante a migração. Nunca é aceite pelo backend como autenticação.
     this.setSessionUserId(CURRENT_USER_ID);
-    void this.ensureSupabaseImport();
   }
 
   private isBrowser(): boolean {
@@ -869,6 +869,46 @@ class MockService {
   }
 
   // --- Auth ---
+  async initializeAuthSession(): Promise<void> {
+    if (!this.isBrowser()) return;
+    if (!this.authBootstrapPromise) {
+      this.authBootstrapPromise = this.bootstrapAuthSession();
+    }
+    await this.authBootstrapPromise;
+  }
+
+  private async bootstrapAuthSession(): Promise<void> {
+    try {
+      const response = await fetch('/api/auth/me', {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) {
+        // Durante a migração, uma indisponibilidade do backend não elimina a
+        // sessão local: o bypass continua a ser a rede de segurança temporária.
+        console.warn(`[Auth] Não foi possível validar a sessão (${response.status}).`);
+        return;
+      }
+
+      const payload = await response.json() as {
+        authenticated?: boolean;
+        session?: { userId?: string } | null;
+      };
+      const userId = String(payload.session?.userId || '').trim();
+      if (!payload.authenticated || !userId) {
+        this.setSessionUserId('');
+        return;
+      }
+
+      this.setSessionUserId(userId);
+      await this.ensureSupabaseImport();
+    } catch (error) {
+      // Mantém compatibilidade offline nesta fase. Quando o bypass for removido,
+      // este caso passará a mostrar explicitamente indisponibilidade do serviço.
+      console.warn('[Auth] Validação de sessão indisponível:', error);
+    }
+  }
+
   isAuthenticated(): boolean {
     return !!CURRENT_USER_ID;
   }
@@ -896,12 +936,14 @@ class MockService {
         };
         if (response.ok && payload.success) {
           const userId = String(payload.user?.id || '').trim();
-          if (userId) this.setSessionUserId(userId);
+          if (!userId) {
+            return { success: false, error: 'A sessão recebida é inválida.' };
+          }
+          this.setSessionUserId(userId);
+          await this.ensureSupabaseImport();
           return { success: true };
         }
-        if (response.status === 401) {
-          return { success: false, error: payload.error || 'Não foi possível autenticar.' };
-        }
+        return { success: false, error: payload.error || 'Serviço de autenticação indisponível.' };
       } catch {
         // Compatibilidade com servidores antigos/desktop offline: cai no fluxo legado abaixo.
       }
