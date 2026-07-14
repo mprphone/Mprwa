@@ -301,6 +301,7 @@ const Inbox: React.FC = () => {
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [conversationSearch, setConversationSearch] = useState('');
+  const [telegramOnly, setTelegramOnly] = useState(false);
   const [managedTemplates, setManagedTemplates] = useState<Array<{
     id: string;
     name: string;
@@ -2941,13 +2942,18 @@ const Inbox: React.FC = () => {
   }, [chatContacts]);
 
   const conversationChannelById = useMemo(() => {
-    const map: Record<string, 'whatsapp'> = {};
+    const map: Record<string, 'whatsapp' | 'telegram'> = {};
     conversations.forEach((conversation) => {
       const conversationId = String(conversation.id || '').trim();
       if (conversationId) map[conversationId] = 'whatsapp';
     });
     return map;
   }, [conversations]);
+
+  const telegramCount = useMemo(
+    () => Object.values(conversationChannelById).filter((channel) => channel === 'telegram').length,
+    [conversationChannelById]
+  );
 
   const conversationDisplayNameById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -3060,7 +3066,7 @@ const Inbox: React.FC = () => {
       return String(row.conversation_id || '').trim() === conversationId;
     }) || null;
 
-    const channel = 'whatsapp';
+    const channel = 'whatsapp' as const;
     const contactKey =
       normalizePhoneDigits(String(directContact?.from_number || '')) ||
       extractPhoneDigitsFromConversationId(conversationId) ||
@@ -3173,6 +3179,7 @@ const Inbox: React.FC = () => {
   const filteredConversations = conversations.filter(c => {
     const conversationId = String(c.id || '').trim();
     if (blockedConversationIds.has(conversationId)) return false;
+    if (telegramOnly && conversationChannelById[conversationId] !== 'telegram') return false;
     if (activeTab === 'mine') return userOwnsConversation(c) && c.status !== ConversationStatus.CLOSED && conversationHasRealMessages(c);
     if (activeTab === 'triage') return c.ownerId === null && c.status !== ConversationStatus.CLOSED && conversationHasRealMessages(c);
     if (activeTab === 'waiting') return c.status !== ConversationStatus.CLOSED && conversationHasRealMessages(c);
@@ -3318,6 +3325,9 @@ const Inbox: React.FC = () => {
         customers={customers}
         users={USERS}
         currentUserId={CURRENT_USER_ID}
+        telegramOnly={telegramOnly}
+        telegramCount={telegramCount}
+        onToggleTelegramOnly={() => setTelegramOnly((previous) => !previous)}
         onSelectConversation={handleSelectConversation}
         onOpenNewChat={() => setShowNewChatModal(true)}
         onConversationSearchChange={setConversationSearch}
@@ -4133,9 +4143,10 @@ const InboxCustomerProfilePanel: React.FC<InboxCustomerProfilePanelProps> = ({
         <div className="mt-2 space-y-2">
           {(customer.agregadoFamiliar || []).length > 0 ? (
             (customer.agregadoFamiliar || []).map((relation, idx) => (
-              <div key={`${relation.relatedCustomerId || 'h'}_${idx}`} className="rounded border border-gray-100 bg-gray-50 px-2 py-1.5 text-xs">
+              <div key={`${relation.customerId || 'h'}_${idx}`} className="rounded border border-gray-100 bg-gray-50 px-2 py-1.5 text-xs">
                 <p className="font-semibold text-gray-800">
-                  {resolveRelatedCustomerName(relation.relatedCustomerId, customers)}
+                  {(relation.customerId && resolveRelatedCustomerName(relation.customerId, customers)) ||
+                    relation.customerCompany || relation.customerName || 'Ficha desconhecida'}
                 </p>
                 <p className="text-gray-600">
                   Relação: {HOUSEHOLD_RELATION_LABELS[String(relation.relationType || '').trim().toLowerCase()] || 'Outro'}
@@ -4154,9 +4165,10 @@ const InboxCustomerProfilePanel: React.FC<InboxCustomerProfilePanelProps> = ({
         <div className="mt-2 space-y-2">
           {(customer.fichasRelacionadas || []).length > 0 ? (
             (customer.fichasRelacionadas || []).map((relation, idx) => (
-              <div key={`${relation.relatedCustomerId || 'r'}_${idx}`} className="rounded border border-gray-100 bg-gray-50 px-2 py-1.5 text-xs">
+              <div key={`${relation.customerId || 'r'}_${idx}`} className="rounded border border-gray-100 bg-gray-50 px-2 py-1.5 text-xs">
                 <p className="font-semibold text-gray-800">
-                  {resolveRelatedCustomerName(relation.relatedCustomerId, customers)}
+                  {(relation.customerId && resolveRelatedCustomerName(relation.customerId, customers)) ||
+                    relation.customerCompany || relation.customerName || 'Ficha desconhecida'}
                 </p>
                 <p className="text-gray-600">
                   Relação: {RELATED_RECORD_LABELS[String(relation.relationType || '').trim().toLowerCase()] || 'Outro'}

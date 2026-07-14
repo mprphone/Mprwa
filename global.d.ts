@@ -44,11 +44,14 @@ declare global {
         targetUrl?: string;
         timeoutMs?: number;
         closeAfterSubmit?: boolean;
+        returnAfterSubmit?: boolean;
         credentialLabel?: string;
         postLoginFlow?: string;
         apiBaseUrl?: string;
         customerName?: string;
         customerCompany?: string;
+        customerNif?: string;
+        customerNiss?: string;
         subEmail?: string;
         subUsername?: string;
         subPassword?: string;

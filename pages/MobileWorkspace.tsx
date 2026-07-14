@@ -24,6 +24,7 @@ import {
   User,
   Users,
   X,
+  type LucideIcon,
 } from 'lucide-react';
 import { mockService, CURRENT_USER_ID } from '../services/mockData';
 import {
@@ -122,7 +123,7 @@ type MobileFiscalSummary = {
   updatedAt?: string;
 };
 
-const MOBILE_TABS: Array<{ id: MobileTab; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }> = [
+const MOBILE_TABS: Array<{ id: MobileTab; label: string; icon: LucideIcon }> = [
   { id: 'chat', label: 'Chat', icon: MessageCircle },
   { id: 'tasks', label: 'Tarefas', icon: CheckCircle2 },
   { id: 'occurrences', label: 'Ocorr.', icon: ClipboardList },

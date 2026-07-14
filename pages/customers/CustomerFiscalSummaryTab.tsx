@@ -19,18 +19,23 @@ export type FiscalCertidao = {
 };
 
 export type FiscalDocumento = {
-  tipo: 'pme' | 'bportugal' | 'certidao_permanente' | 'rebe' | 'domicilio_fiscal';
+  // Tipos conhecidos: pme, bportugal, certidao_permanente, rebe, domicilio_fiscal,
+  // pacto_social, inicio_atividade — e dinâmicos como 'cc_<nif>' (CC por sócio).
+  tipo: string;
   label: string;
   dataValidade?: string;
+  dataEfeito?: string;
   valida?: boolean;
   ficheiroPdf?: string;
   notas?: string;
+  estatuto?: string;
 };
 
 export type FiscalDivida = {
   entidade: 'at' | 'ss';
   montante: number;
   semDivida: boolean;
+  comDivida?: boolean;
 };
 
 export type FiscalSummaryData = {
@@ -104,6 +109,9 @@ const DEFAULT_DATA: FiscalSummaryData = {
 };
 
 type Props = {
+  // Sem @types/react instalado, o TS não reconhece o `key` especial do JSX;
+  // declará-lo aqui permite usar key={...} para forçar remount (React nunca o passa como prop).
+  key?: string | number;
   customer: Customer;
   anyAutomationBusy: boolean;
 };
@@ -150,6 +158,19 @@ function normalizeCustomerType(value?: string) {
   if (text.includes('particular') || text.includes('independente')) return 'particular';
   if (text.includes('empresa')) return 'empresa';
   return '';
+}
+
+function documentoNotas(row: FiscalDocumento) {
+  if (row.tipo !== 'pme') return row.notas || '';
+  const estatuto = String(row.estatuto || '').trim();
+  if (estatuto) return /^estatuto\s*:/i.test(estatuto) ? estatuto : `Estatuto: ${estatuto}`;
+  const notas = String(row.notas || '').trim();
+  if (!notas) return '';
+  if (/^estatuto\s*:/i.test(notas)) return notas;
+  if (/^(microempresa|pequena\s+empresa|m[eé]dia\s+empresa|pme\s+l[ií]der|pme\s+excel[eê]ncia)$/i.test(notas)) {
+    return `Estatuto: ${notas}`;
+  }
+  return notas;
 }
 
 function jobStatusLabel(status?: string) {
@@ -366,7 +387,7 @@ function OutrosDocumentosTable({
         body: JSON.stringify({ tipo }),
       });
       const json = await res.json();
-      if (json.success) await load();
+      if (json.success) onRefresh?.();
     } catch (e) {
       console.error('Erro ao eliminar documento:', e);
     } finally {
@@ -457,6 +478,7 @@ function OutrosDocumentosTable({
           {[...rows, ...ccRows].map((row, i) => {
             const canUpload = UPLOADABLE_TIPOS.has(row.tipo) || row.tipo.startsWith('cc_');
             const isUploading = uploadingTipo === row.tipo;
+            const notas = documentoNotas(row);
             return (
               <tr key={i} className={`border-b border-slate-50 last:border-0 transition-colors ${
                 row.valida ? 'bg-emerald-50/40' : 'hover:bg-slate-50/70'
@@ -476,7 +498,7 @@ function OutrosDocumentosTable({
                   <StatusDot valida={Boolean(row.valida)} />
                 </td>
                 <td className="px-3 py-2.5">
-                  <span className={row.notas ? CELL : EMPTY}>{row.notas || '—'}</span>
+                  <span className={notas ? CELL : EMPTY}>{notas || '—'}</span>
                 </td>
                 <td className="px-2 py-2.5 text-center">
                   <div className="inline-flex items-center gap-1">
@@ -522,7 +544,7 @@ function DividaCard({ divida }: { divida: FiscalDivida }) {
     : '/icones_autologin/02_seguranca_social.png';
   const label = divida.entidade === 'at' ? 'AT' : 'Seg. Social';
   const isGood = divida.semDivida;
-  const isUnknown = !divida.semDivida && divida.montante === 0;
+  const isUnknown = !divida.semDivida && !divida.comDivida && divida.montante === 0;
 
   return (
     <div className={`flex flex-1 items-center gap-3 rounded-xl border-2 px-4 py-3.5 transition-all ${
@@ -538,6 +560,9 @@ function DividaCard({ divida }: { divida: FiscalDivida }) {
         isGood ? 'text-emerald-700' : isUnknown ? 'text-slate-500' : 'text-red-700'
       }`}>
         {label}
+        {!isGood && !isUnknown && divida.montante > 0 && (
+          <span className="ml-2 normal-case tracking-normal">{formatEur(divida.montante)} €</span>
+        )}
       </p>
       <span className={`inline-flex items-center justify-center rounded-full w-7 h-7 ${
         isGood
@@ -584,6 +609,8 @@ export function CustomerFiscalSummaryTab({ customer, anyAutomationBusy }: Props)
   const [runningJobs, setRunningJobs] = useState<Set<RecolhaJob>>(new Set());
   const [jobMessages, setJobMessages] = useState<Record<string, string>>({});
   const [batchBusy, setBatchBusy] = useState(false);
+  const [showForcePicker, setShowForcePicker] = useState(false);
+  const [forceSelection, setForceSelection] = useState<Set<RecolhaJob>>(() => new Set(AUTO_JOBS));
   const [showLogs, setShowLogs] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
@@ -669,11 +696,12 @@ export function CustomerFiscalSummaryTab({ customer, anyAutomationBusy }: Props)
   // force=false → respeita política (skips se já completo ou se pede confirmação)
   // force=true  → força recolha de tudo
   // Usa Promise.allSettled: erros num job não bloqueiam os restantes
-  async function triggerBatchRecolha(force = false) {
+  async function triggerBatchRecolha(force = false, selectedJobs?: RecolhaJob[]) {
     if (batchBusy || anyAutomationBusy) return;
     setBatchBusy(true);
     try {
-      const jobsToRun = AUTO_JOBS.filter((job) => {
+      const sourceJobs = selectedJobs?.length ? selectedJobs : AUTO_JOBS;
+      const jobsToRun = sourceJobs.filter((job) => {
         if (isParticular && job === 'ies') return false;
         if (isEmpresa && (job as string) === 'domicilio_fiscal') return false;
         return true;
@@ -691,6 +719,15 @@ export function CustomerFiscalSummaryTab({ customer, anyAutomationBusy }: Props)
     } finally {
       setBatchBusy(false);
     }
+  }
+
+  function toggleForceJob(job: RecolhaJob) {
+    setForceSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(job)) next.delete(job);
+      else next.add(job);
+      return next;
+    });
   }
 
   async function triggerRecolha(job: RecolhaJob, force = false) {
@@ -729,19 +766,34 @@ export function CustomerFiscalSummaryTab({ customer, anyAutomationBusy }: Props)
   const isParticular = customerType === 'particular';
   const isEmpresa = customerType === 'empresa';
   const robotBusy = activeJobs.size > 0;
+  const forceJobOptions = RECOLHA_JOBS.filter(({ job }) => {
+    if (isParticular && job === 'ies') return false;
+    if (isEmpresa && job === 'domicilio_fiscal') return false;
+    return true;
+  });
+  const selectedForceJobs = forceJobOptions.map((item) => item.job).filter((job) => forceSelection.has(job));
 
   // Métricas para o card de situação geral
+  const temDividaAtiva = (d?: FiscalDivida) => !!d && !d.semDivida && (d.comDivida || d.montante > 0);
+  const dividaForCertidao = (tipo: string) =>
+    tipo.toUpperCase().includes('AT') ? data.dividas[atIdx] : tipo.toUpperCase().includes('SS') ? data.dividas[ssIdx] : undefined;
+  const dividasAtivas = data.dividas.filter((d) => temDividaAtiva(d));
+  const hasDividas = dividasAtivas.length > 0;
   const allFilings = [...data.ies, ...data.modelo22];
   const certasCount = allFilings.filter((f) => /certa|entregue|aceite/i.test(f.situacao || '')).length;
-  const certidoesValidasCount = data.certidoes.filter((c) => c.valida).length;
+  const certidoesValidasCount = data.certidoes.filter((c) => c.valida && !temDividaAtiva(dividaForCertidao(c.tipo))).length;
   const semDeclaracaoItems = allFilings.filter((f) => /sem\s+declara|não\s+dispon/i.test(f.situacao || ''));
   const hasProblems = data.certidoes.some((c) => c.dataValidade && isExpired(c.dataValidade));
-  const situacaoLabel = hasProblems ? 'Atenção' : certasCount >= 2 ? 'Regular' : 'Incompleto';
-  const situacaoColor = hasProblems ? 'text-amber-600' : certasCount >= 2 ? 'text-emerald-600' : 'text-slate-500';
-  const situacaoBg = hasProblems ? 'bg-amber-50 border-amber-200' : certasCount >= 2 ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200';
+  const situacaoLabel = hasDividas ? 'Com dívidas' : hasProblems ? 'Atenção' : certasCount >= 2 ? 'Regular' : 'Incompleto';
+  const situacaoColor = hasDividas ? 'text-red-600' : hasProblems ? 'text-amber-600' : certasCount >= 2 ? 'text-emerald-600' : 'text-slate-500';
+  const situacaoBg = hasDividas ? 'bg-red-50 border-red-200' : hasProblems ? 'bg-amber-50 border-amber-200' : certasCount >= 2 ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200';
 
-  // Alertas para anos sem submissão
+  // Alertas: dívidas primeiro, depois anos sem submissão
   const alerts: string[] = [];
+  dividasAtivas.forEach((d) => {
+    const entidadeLabel = d.entidade === 'at' ? 'AT' : 'Segurança Social';
+    alerts.push(`O cliente tem dívidas à ${entidadeLabel}${d.montante > 0 ? ` no valor de ${formatEur(d.montante)} €` : ''}.`);
+  });
   data.ies.forEach((f) => { if (f.ano && /sem\s+declara|não\s+dispon/i.test(f.situacao || '')) alerts.push(`A IES de ${f.ano} ainda não tem submissão disponível.`); });
   data.modelo22.forEach((f) => { if (f.ano && /sem\s+declara|não\s+dispon/i.test(f.situacao || '')) alerts.push(`O Modelo 22 de ${f.ano} ainda não tem submissão disponível.`); });
 
@@ -778,12 +830,59 @@ export function CustomerFiscalSummaryTab({ customer, anyAutomationBusy }: Props)
             Atualizar dados
           </button>
           {/* Forçar recolha */}
-          <button type="button" disabled={batchBusy || anyAutomationBusy}
-            onClick={() => void triggerBatchRecolha(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-all disabled:opacity-50">
-            {batchBusy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-            Forçar recolha
-          </button>
+          <div className="relative">
+            <button type="button" disabled={batchBusy || anyAutomationBusy}
+              onClick={() => setShowForcePicker((v) => !v)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-all disabled:opacity-50">
+              {batchBusy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+              Forçar recolha
+              <ChevronDown size={13} className={`transition-transform ${showForcePicker ? 'rotate-180' : ''}`} />
+            </button>
+            {showForcePicker && (
+              <div className="absolute right-0 z-30 mt-2 w-72 rounded-lg border border-slate-200 bg-white p-3 text-sm shadow-xl">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Escolher recolhas</span>
+                  <button type="button"
+                    onClick={() => setForceSelection(new Set(forceJobOptions.map((item) => item.job)))}
+                    className="text-[11px] font-semibold text-emerald-600 hover:text-emerald-700">
+                    Todas
+                  </button>
+                </div>
+                <div className="max-h-72 space-y-1 overflow-y-auto pr-1">
+                  {forceJobOptions.map(({ job, label }) => {
+                    const busy = runningJobs.has(job) || activeJobs.has(job);
+                    return (
+                      <label key={job} className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold ${busy ? 'text-slate-400' : 'text-slate-700 hover:bg-slate-50'}`}>
+                        <input type="checkbox"
+                          checked={forceSelection.has(job)}
+                          disabled={busy}
+                          onChange={() => toggleForceJob(job)}
+                          className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                        <span className="flex-1 truncate">{label}</span>
+                        {busy && <span className="text-[10px] font-medium text-blue-500">em curso</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                  <button type="button"
+                    onClick={() => setForceSelection(new Set())}
+                    className="rounded-md px-2 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50">
+                    Limpar
+                  </button>
+                  <button type="button"
+                    disabled={selectedForceJobs.length === 0 || batchBusy || anyAutomationBusy}
+                    onClick={() => {
+                      setShowForcePicker(false);
+                      void triggerBatchRecolha(true, selectedForceJobs);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 disabled:opacity-50">
+                    <RefreshCw size={12} /> Forçar selecionados
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
           {/* Enviar ao cliente */}
           <button type="button" onClick={() => setShowEmailModal(true)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-all">
@@ -863,12 +962,17 @@ export function CustomerFiscalSummaryTab({ customer, anyAutomationBusy }: Props)
       {/* ── Card situação geral ────────────────────────────────────── */}
       <div className={`rounded-xl border p-4 ${situacaoBg}`}>
         <div className="flex flex-wrap items-center gap-4">
-          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${hasProblems ? 'bg-amber-100' : certasCount >= 2 ? 'bg-emerald-100' : 'bg-slate-100'}`}>
-            {hasProblems ? <AlertTriangle size={22} className="text-amber-600" /> : certasCount >= 2 ? <CheckCircle2 size={22} className="text-emerald-600" /> : <AlertCircle size={22} className="text-slate-400" />}
+          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${hasDividas ? 'bg-red-100' : hasProblems ? 'bg-amber-100' : certasCount >= 2 ? 'bg-emerald-100' : 'bg-slate-100'}`}>
+            {hasDividas ? <AlertTriangle size={22} className="text-red-600" /> : hasProblems ? <AlertTriangle size={22} className="text-amber-600" /> : certasCount >= 2 ? <CheckCircle2 size={22} className="text-emerald-600" /> : <AlertCircle size={22} className="text-slate-400" />}
           </div>
           <div>
             <p className="text-base font-bold text-slate-800">Situação geral: <span className={situacaoColor}>{situacaoLabel}</span></p>
             <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+              {dividasAtivas.map((d) => (
+                <span key={d.entidade} className="flex items-center gap-1 font-semibold text-red-600">
+                  <ThumbsDown size={11} /> Dívidas {d.entidade === 'at' ? 'AT' : 'SS'}{d.montante > 0 ? ` · ${formatEur(d.montante)} €` : ''}
+                </span>
+              ))}
               {certasCount > 0 && <span className="flex items-center gap-1"><CheckCircle2 size={11} className="text-emerald-500" /> {certasCount} declarações certas</span>}
               {certidoesValidasCount > 0 && <span className="flex items-center gap-1"><Shield size={11} className="text-emerald-500" /> {certidoesValidasCount} certidões válidas</span>}
               {semDeclaracaoItems.length > 0 && <span className="flex items-center gap-1 text-slate-400"><Info size={11} /> {semDeclaracaoItems.length} {semDeclaracaoItems.length === 1 ? 'item' : 'itens'} sem declaração disponível</span>}
@@ -942,16 +1046,23 @@ export function CustomerFiscalSummaryTab({ customer, anyAutomationBusy }: Props)
             <div className="grid grid-cols-4 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
               <span className="col-span-1">Certidão</span><span>Situação</span><span>Validade</span><span className="text-right">PDF</span>
             </div>
-            {data.certidoes.map((c, i) => (
+            {data.certidoes.map((c, i) => {
+              const temDivida = temDividaAtiva(dividaForCertidao(c.tipo));
+              return (
               <div key={i} className="grid grid-cols-4 items-center px-4 py-2.5 text-xs hover:bg-slate-50/60">
                 <span className="font-semibold text-slate-700 truncate">{c.tipo.replace('Certidão Dívida ', '')}</span>
-                <span>{c.valida ? <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Válida</span> : <span className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">—</span>}</span>
+                <span>{temDivida
+                  ? <span className="inline-flex items-center gap-0.5 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">Com dívidas</span>
+                  : c.valida
+                    ? <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Válida</span>
+                    : <span className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">—</span>}</span>
                 <span className={`text-[11px] ${c.dataValidade && isExpired(c.dataValidade) ? 'text-red-500' : 'text-slate-500'}`}>{c.dataValidade ? `até ${formatDate(c.dataValidade)}` : '—'}</span>
                 <span className="text-right">
                   {c.ficheiroPdf ? <a href={fiscalFileUrl(customer, c.ficheiroPdf)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-emerald-600 hover:text-emerald-700 font-medium text-[11px]"><FileText size={11} /> Ver certidão</a> : <span className="text-slate-300">—</span>}
                 </span>
               </div>
-            ))}
+              );
+            })}
           </div>
           <div className="border-t border-slate-50 px-4 py-2">
             <button className="text-[11px] text-slate-400 hover:text-slate-600 flex items-center gap-1">Ver todas as certidões <ChevronRight size={11} /></button>
@@ -968,15 +1079,24 @@ export function CustomerFiscalSummaryTab({ customer, anyAutomationBusy }: Props)
             {[data.dividas[atIdx] ?? DEFAULT_DATA.dividas[0], data.dividas[ssIdx] ?? DEFAULT_DATA.dividas[1]].map((d, i) => {
               const icon = d.entidade === 'at' ? '/icones_autologin/01_financas.png' : '/icones_autologin/02_seguranca_social.png';
               const label = d.entidade === 'at' ? 'AT' : 'Segurança Social';
+              const comDivida = !d.semDivida && (d.comDivida || d.montante > 0);
               return (
-                <div key={i} className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 ${d.semDivida ? 'border-emerald-100 bg-emerald-50' : 'border-slate-100 bg-slate-50'}`}>
+                <div key={i} className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 ${
+                  d.semDivida ? 'border-emerald-100 bg-emerald-50' : comDivida ? 'border-red-200 bg-red-50' : 'border-slate-100 bg-slate-50'
+                }`}>
                   <img src={icon} alt={label} className="h-8 w-8 shrink-0 rounded-md object-contain bg-white p-0.5" />
                   <span className="flex-1 text-xs font-semibold text-slate-700">{label}</span>
                   {d.semDivida
                     ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">Sem dívidas</span>
-                    : <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500">Por verificar</span>
+                    : comDivida
+                      ? <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-[11px] font-bold text-red-700">
+                          Com dívidas{d.montante > 0 ? ` · ${formatEur(d.montante)} €` : ''}
+                        </span>
+                      : <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500">Por verificar</span>
                   }
-                  <span className={d.semDivida ? 'text-emerald-500' : 'text-slate-400'}>{d.semDivida ? <ThumbsUp size={14} /> : <ThumbsDown size={14} />}</span>
+                  <span className={d.semDivida ? 'text-emerald-500' : comDivida ? 'text-red-500' : 'text-slate-400'}>
+                    {d.semDivida ? <ThumbsUp size={14} /> : <ThumbsDown size={14} />}
+                  </span>
                 </div>
               );
             })}

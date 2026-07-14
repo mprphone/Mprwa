@@ -24,13 +24,16 @@ function applyBancoPortugal(current, fiscalCollection) {
 }
 
 function applyPme(current, fiscalCollection) {
+    const estatuto = fiscalCollection.estatuto || fiscalCollection.detalhes?.estatuto || '';
     return updateDocumento(current, 'pme', {
         tipo: 'pme',
         label: 'Certificado PME',
         dataValidade: fiscalCollection.dataValidade || '',
+        dataEfeito: fiscalCollection.dataEfeito || '',
         valida: true,
         ficheiroPdf: fiscalCollection.ficheiroPdf,
-        notas: fiscalCollection.notas || fiscalCollection.dataEfeito || '',
+        estatuto,
+        notas: fiscalCollection.notas || (estatuto ? `Estatuto: ${estatuto}` : fiscalCollection.dataEfeito || ''),
     });
 }
 

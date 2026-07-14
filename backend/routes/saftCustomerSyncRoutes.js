@@ -548,7 +548,10 @@ function registerSaftCustomerSyncRoutes(context, helpers) {
             }
 
             try {
-                await ensureStandardCustomerDocumentFolders(canonicalCustomer || normalized);
+                const folderResult = await ensureStandardCustomerDocumentFolders(canonicalCustomer || normalized);
+                if (!folderResult.created) {
+                    warnings.push('Ficha sem "Pasta de documentos" definida — nenhuma pasta física foi criada; as recolhas fiscais irão para a pasta local de fallback.');
+                }
             } catch (folderError) {
                 warnings.push(`Cliente guardado, mas não foi possível criar/validar subpastas padrão: ${folderError?.message || folderError}`);
             }

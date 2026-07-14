@@ -4,7 +4,6 @@ const config: CapacitorConfig = {
   appId: 'pt.mpr.wapro.mobile',
   appName: 'WA PRO Mobile',
   webDir: 'dist',
-  bundledWebRuntime: false,
   plugins: {
     PushNotifications: {
       presentationOptions: ['badge', 'sound', 'alert'],

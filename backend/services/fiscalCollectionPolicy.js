@@ -43,6 +43,15 @@ function sameMonth(value, reference = new Date()) {
     return Boolean(date && date.getFullYear() === reference.getFullYear() && date.getMonth() === reference.getMonth());
 }
 
+function dateFromText(value) {
+    const match = String(value || '').match(/\b(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{4})\b/);
+    if (!match) return null;
+    const raw = match[1];
+    if (/^\d{4}-/.test(raw)) return parseDate(raw);
+    const parts = raw.split(/[/-]/).map((part) => part.padStart(2, '0'));
+    return parseDate(`${parts[2]}-${parts[1]}-${parts[0]}`);
+}
+
 function findCertidao(data, labelPart) {
     const needle = String(labelPart || '').toLowerCase();
     return (Array.isArray(data.certidoes) ? data.certidoes : []).find((entry) => (
@@ -126,11 +135,18 @@ function assessFiscalCollectionNeed(job, data, options = {}) {
 
     if (job === 'pme') {
         const doc = findDocumento(data, 'pme');
-        const last = meta.completedAt || meta.startedAt || meta.requestedAt || doc?.dataValidade;
-        if (sameYear(last, now.getFullYear())) {
-            return { shouldCollect: false, requiresConfirmation: true, reason: 'Certificado PME já consta neste ano. Quer recolher novamente?' };
+        const hasPdf = Boolean(doc?.ficheiroPdf);
+        if (!hasPdf) return { shouldCollect: true, requiresConfirmation: false, reason: 'Certificado PME sem PDF guardado.' };
+        const documentDate = parseDate(doc?.dataEfeito || doc?.dataEmissao || doc?.dataValidade) || dateFromText(doc?.notas);
+        if (documentDate) {
+            if (documentDate <= addMonths(now, -12)) return { shouldCollect: true, requiresConfirmation: false, reason: 'Certificado PME com mais de 1 ano.' };
+            return { shouldCollect: false, requiresConfirmation: true, reason: 'Certificado PME tem menos de 1 ano. Quer recolher novamente?' };
         }
-        return { shouldCollect: true, requiresConfirmation: false, reason: 'Certificado PME deste ano em falta.' };
+        const last = parseDate(meta.completedAt || meta.startedAt || meta.requestedAt);
+        if (last && last > addMonths(now, -12)) {
+            return { shouldCollect: false, requiresConfirmation: true, reason: 'Certificado PME recolhido há menos de 1 ano. Quer recolher novamente?' };
+        }
+        return { shouldCollect: true, requiresConfirmation: false, reason: 'Certificado PME sem data recente confirmada.' };
     }
 
     if (job === 'bportugal') {

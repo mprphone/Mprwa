@@ -80,7 +80,7 @@ function AccessIconGrid({ customer, busy, triggerFinancasAutologin, triggerSegSo
   const [busyPortals, setBusyPortals] = useState<Set<string>>(new Set());
 
   const certidaoUrl = (() => {
-    const code = String((customer as Record<string, unknown>).certidaoPermanenteNumero || '').trim();
+    const code = String(customer.certidaoPermanenteNumero || '').trim();
     const base = 'https://registo.justica.gov.pt/Empresas/Consultar-Certidao-Permanente/Iniciar';
     return code ? `${base}?codcertidao=${encodeURIComponent(code)}` : base;
   })();

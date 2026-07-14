@@ -25,7 +25,16 @@ function isValidCertidaoSsPdf(text) {
         && !/obrigat[oó]rio|campo\s+obrigat/i.test(text);
 }
 
+// A declaração com dívidas diz "não tem a situação contributiva regularizada" —
+// contém "regularizada" como substring, por isso testar SEMPRE a negação primeiro.
+function detectComDivida(text) {
+    return /n[aã]o\s+tem\s+(a\s+)?(sua\s+)?situa[cç][aã]o\s+contributiva\s+regularizada/i.test(text)
+        || /situa[cç][aã]o\s+contributiva\s+n[aã]o\s+regularizada/i.test(text)
+        || /n[aã]o\s+regularizada/i.test(text);
+}
+
 function detectSemDivida(text) {
+    if (detectComDivida(text)) return false;
     return /regularizada|n[aã]o\s+existem\s+d[ií]vidas|sem\s+d[ií]vidas/i.test(text);
 }
 
@@ -153,7 +162,7 @@ async function collectCertidaoSsAfterSegSocialLogin(page, customer) {
     trace('page text:', pageText.slice(0, 200));
 
     // Collect metadata from page
-    const semDividaPage = /regularizada/i.test(pageText);
+    const semDividaPage = !detectComDivida(pageText) && /regularizada/i.test(pageText);
     const numeroMatch = pageText.match(/n[ºo°]\s*declara[cç][aã]o[:\s]+([A-Z0-9]+)/i);
 
     // Step 5: "Obter nova declaração" if present (request a fresh one)
@@ -223,15 +232,21 @@ async function collectCertidaoSsAfterSegSocialLogin(page, customer) {
                 pageTextSample: pageText.slice(0, 500),
             };
         }
-        const semDivida = detectSemDivida(pdfText) || semDividaPage;
+        const comDivida = detectComDivida(pdfText);
+        const semDivida = !comDivida && (detectSemDivida(pdfText) || semDividaPage);
         return {
             status: 'completed',
             ficheiroPdf,
             dataValidade: certidaoValidUntil(pdfText, 4),
             valida: true,
             semDivida,
+            comDivida,
             numeroDeclaracao: numeroMatch?.[1] || '',
-            message: semDivida ? 'Certidão SS — situação contributiva regularizada.' : 'Certidão SS obtida.',
+            message: semDivida
+                ? 'Certidão SS — situação contributiva regularizada.'
+                : comDivida
+                    ? 'Certidão SS — contribuinte tem dívidas à Segurança Social.'
+                    : 'Certidão SS obtida.',
             pageTextSample: pageText.slice(0, 500),
         };
     }

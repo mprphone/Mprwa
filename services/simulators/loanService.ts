@@ -9,7 +9,7 @@ export type LoanInput = {
   euribor: number;              // % e.g. 3.264
   spread: number;               // % e.g. 1.5
   rateType: LoanRateType;       // taxa fixa ou variável
-  euriborReviewMonths: 6 | 12;  // revisão euribor (só variável)
+  euriborReviewMonths: 3 | 6 | 12;  // revisão euribor (só variável)
   termYears: number;
   startDate: string;            // YYYY-MM-DD
   extraPaymentMonthly: number;

@@ -3,20 +3,21 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { mockService, CURRENT_USER_ID } from '../services/mockData';
 import { Task, TaskAttachment, Customer, Conversation, User, TaskStatus, TaskPriority, ConversationStatus, Role } from '../types';
 import { AlertTriangle, ChevronDown, Edit3, Plus, Search, RefreshCw, Paperclip, Trash2, X } from 'lucide-react';
+import { resolveTaskCustomer } from '../services/taskCustomerUtils';
 
 interface EnrichedTask extends Task {
-  customerName?: string;
   ownerName?: string;
 }
 
 // ─── Combobox de cliente com pesquisa ─────────────────────────────────────────
 
-function CustomerCombobox({ customers, query, onQueryChange, selectedCustomer, customerLabel }: {
+function CustomerCombobox({ customers, query, onQueryChange, selectedCustomer, customerLabel, required = true }: {
   customers: Customer[];
   query: string;
   onQueryChange: (v: string) => void;
   selectedCustomer: Customer | null;
   customerLabel: (c: Customer) => string;
+  required?: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
@@ -36,7 +37,7 @@ function CustomerCombobox({ customers, query, onQueryChange, selectedCustomer, c
       <label className="block text-xs font-medium text-slate-500 mb-1">Cliente associado</label>
       <div className={`flex items-center rounded-lg border bg-white transition-all ${open ? 'border-emerald-400 ring-2 ring-emerald-100' : 'border-slate-200'}`}>
         <input
-          required
+          required={required}
           type="text"
           className="flex-1 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none bg-transparent"
           value={displayValue}
@@ -201,12 +202,12 @@ const Tasks: React.FC = () => {
       setConversations(convs);
 
       const enriched = allTasks.map(t => {
-        const conv = convs.find(c => c.id === t.conversationId);
-        const cust = custs.find(c => c.id === conv?.customerId);
+        const resolvedCustomer = resolveTaskCustomer(t, convs, custs);
         const owner = allUsers.find(u => u.id === t.assignedUserId);
         return {
           ...t,
-          customerName: cust?.name,
+          customerId: resolvedCustomer.customerId,
+          customerName: resolvedCustomer.customerName,
           ownerName: owner?.name
         };
       });
@@ -265,6 +266,12 @@ const Tasks: React.FC = () => {
       setIsDeletingTask(false);
       saveInFlightRef.current = false;
       setSelectedTask(task);
+
+      // Pré-preencher o cliente atual da tarefa (derivado da conversa) para permitir corrigi-lo.
+      const currentCustomer = resolveTaskCustomer(task, conversations, customers).customer || null;
+      setSelectedCustomerId(currentCustomer?.id || '');
+      setSelectedCustomerQuery(currentCustomer ? customerLabel(currentCustomer) : '');
+
       setEditFormData({
           title: task.title,
           assignedUserId: task.assignedUserId,
@@ -354,10 +361,23 @@ const Tasks: React.FC = () => {
           const nextDueIso = new Date(editFormData.dueDate).toISOString();
 
           if (selectedTask) {
-              // UPDATE EXISTING
+              // UPDATE EXISTING — resolver conversa do cliente escolhido (pode ter mudado)
+              let conversationId = selectedTask.conversationId;
+              if (selectedCustomerId) {
+                  const currentConv = conversations.find((c) => c.id === selectedTask.conversationId);
+                  if (String(currentConv?.customerId || '') !== selectedCustomerId) {
+                      let targetConv = conversations.find((c) => c.customerId === selectedCustomerId && c.status === ConversationStatus.OPEN)
+                          || conversations.find((c) => c.customerId === selectedCustomerId);
+                      if (!targetConv) {
+                          targetConv = await mockService.createConversation(selectedCustomerId);
+                      }
+                      conversationId = targetConv.id;
+                  }
+              }
+
               await mockService.updateTask(selectedTask.id, {
                   id: selectedTask.id,
-                  conversationId: selectedTask.conversationId,
+                  conversationId,
                   title: nextTitle,
                   assignedUserId: editFormData.assignedUserId,
                   priority: editFormData.priority,
@@ -726,22 +746,15 @@ const Tasks: React.FC = () => {
               </h2>
               <form onSubmit={handleSave} className="space-y-4">
                  
-                 {/* Combobox de cliente — ordenado e filtrável */}
-                 {!selectedTask && (
-                   <CustomerCombobox
-                     customers={filteredCustomerSuggestions}
-                     query={selectedCustomerQuery}
-                     onQueryChange={handleCustomerQueryChange}
-                     selectedCustomer={selectedCustomerForCreate ?? null}
-                     customerLabel={customerLabel}
-                   />
-                 )}
-
-                 {selectedTask && (
-                     <div className="bg-gray-50 p-2 rounded text-sm text-gray-600 mb-2">
-                         <span className="font-bold">Cliente:</span> {selectedTask.customerName}
-                     </div>
-                 )}
+                 {/* Combobox de cliente — ordenado e filtrável (criação e edição) */}
+                 <CustomerCombobox
+                   customers={filteredCustomerSuggestions}
+                   query={selectedCustomerQuery}
+                   onQueryChange={handleCustomerQueryChange}
+                   selectedCustomer={selectedCustomerForCreate ?? null}
+                   customerLabel={customerLabel}
+                   required={!selectedTask}
+                 />
 
                  <div>
                     <label className="block text-sm font-medium text-gray-700">Assunto</label>

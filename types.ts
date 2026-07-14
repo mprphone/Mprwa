@@ -163,6 +163,9 @@ export interface Conversation {
 export interface Task {
   id: string;
   conversationId: string;
+  customerId?: string;
+  customerName?: string;
+  customerCompany?: string;
   title: string;
   status: TaskStatus;
   priority: TaskPriority;

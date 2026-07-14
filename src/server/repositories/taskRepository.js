@@ -43,6 +43,9 @@ function createTaskRepository(deps) {
         return {
             id,
             conversationId,
+            customerId: String(row.customer_id || '').trim() || undefined,
+            customerName: String(row.customer_name || '').trim() || undefined,
+            customerCompany: String(row.customer_company || '').trim() || undefined,
             title,
             status: normalizeTaskStatus(row.status),
             priority: normalizeTaskPriority(row.priority),
@@ -56,13 +59,26 @@ function createTaskRepository(deps) {
     async function getLocalTasks(conversationId) {
         const query = conversationId
             ? {
-                  sql: `SELECT id, conversation_id, title, status, priority, due_date, assigned_user_id, notes, attachments_json
-                        FROM tasks WHERE conversation_id = ? ORDER BY datetime(updated_at) DESC`,
+                  sql: `SELECT t.id, t.conversation_id, cv.customer_id,
+                               cu.name AS customer_name, cu.company AS customer_company,
+                               t.title, t.status, t.priority, t.due_date, t.assigned_user_id,
+                               t.notes, t.attachments_json
+                        FROM tasks t
+                        LEFT JOIN conversations cv ON cv.id = t.conversation_id
+                        LEFT JOIN customers cu ON cu.id = cv.customer_id
+                        WHERE t.conversation_id = ?
+                        ORDER BY datetime(t.updated_at) DESC`,
                   params: [conversationId],
               }
             : {
-                  sql: `SELECT id, conversation_id, title, status, priority, due_date, assigned_user_id, notes, attachments_json
-                        FROM tasks ORDER BY datetime(updated_at) DESC`,
+                  sql: `SELECT t.id, t.conversation_id, cv.customer_id,
+                               cu.name AS customer_name, cu.company AS customer_company,
+                               t.title, t.status, t.priority, t.due_date, t.assigned_user_id,
+                               t.notes, t.attachments_json
+                        FROM tasks t
+                        LEFT JOIN conversations cv ON cv.id = t.conversation_id
+                        LEFT JOIN customers cu ON cu.id = cv.customer_id
+                        ORDER BY datetime(t.updated_at) DESC`,
                   params: [],
               };
 
@@ -108,7 +124,15 @@ function createTaskRepository(deps) {
             [taskId, conversationId, title, status, priority, dueDate, assignedUserId || null, notes || null, attachmentsJson]
         );
 
-        const savedRow = await dbGetAsync('SELECT * FROM tasks WHERE id = ? LIMIT 1', [taskId]);
+        const savedRow = await dbGetAsync(
+            `SELECT t.*, cv.customer_id, cu.name AS customer_name, cu.company AS customer_company
+             FROM tasks t
+             LEFT JOIN conversations cv ON cv.id = t.conversation_id
+             LEFT JOIN customers cu ON cu.id = cv.customer_id
+             WHERE t.id = ?
+             LIMIT 1`,
+            [taskId]
+        );
         return normalizeLocalSqlTask(savedRow);
     }
 

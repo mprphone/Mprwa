@@ -4,6 +4,35 @@ const { cleanText, normalizeDateToIso } = require('../../shared/textHelpers');
 const { buildFiscalDownloadPath, uniquePath } = require('../../documents/documentNamingService');
 const fs = require('fs/promises');
 const path = require('path');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+
+const execFileAsync = promisify(execFile);
+
+async function extractPdfText(filePath) {
+    if (!filePath) return '';
+    try {
+        const { stdout } = await execFileAsync('pdftotext', [filePath, '-'], { timeout: 10000 });
+        return stdout || '';
+    } catch (_) {
+        return '';
+    }
+}
+
+function extractPmeStatute(text) {
+    const normalized = cleanText(text || '');
+    if (!normalized) return '';
+    const match = normalized.match(/Estatuto\s+Atribu[ií]do\s*:?\s*(Microempresa|Micro|Pequena(?:\s+Empresa)?|M[eé]dia(?:\s+Empresa)?|PME\s+L[ií]der|PME\s+Excel[eê]ncia)\b/i)
+        || normalized.match(/\b(Microempresa|Micro|Pequena\s+Empresa|M[eé]dia\s+Empresa|PME\s+L[ií]der|PME\s+Excel[eê]ncia)\b/i);
+    if (!match) return '';
+    const value = cleanText(match[1]).toLowerCase();
+    if (/^micro(?:empresa)?$/.test(value)) return 'Microempresa';
+    if (/^pequena(?:\s+empresa)?$/.test(value)) return 'Pequena Empresa';
+    if (/^m[eé]dia(?:\s+empresa)?$/.test(value)) return 'Média Empresa';
+    if (/pme\s+l[ií]der/.test(value)) return 'PME Líder';
+    if (/pme\s+excel[eê]ncia/.test(value)) return 'PME Excelência';
+    return cleanText(match[1]);
+}
 
 async function collectPmeCertificateAfterIapmeiLogin(page, customer) {
     const year = String(new Date().getFullYear());
@@ -227,20 +256,24 @@ async function collectPmeCertificateAfterIapmeiLogin(page, customer) {
     trace('PDF capturado:', downloaded || 'nenhum');
 
     const finalText = await readFullText();
+    const pdfText = downloaded ? await extractPdfText(downloaded) : '';
+    const combinedText = [finalText, pdfText].filter(Boolean).join('\n');
     trace('texto final (400):', finalText.slice(0, 400));
-    const dateMatch = finalText.match(/\b(\d{1,2}[/-]\d{1,2}[/-]\d{4}|\d{4}-\d{1,2}-\d{1,2})\b/);
-    const typeMatch = finalText.match(/\b(Microempresa|Pequena\s+Empresa|M[eé]dia\s+Empresa|PME\s+L[ií]der|PME\s+Excel[eê]ncia)\b/i);
+    if (pdfText) trace('texto PDF PME (400):', cleanText(pdfText).slice(0, 400));
+    const dateMatch = combinedText.match(/\b(\d{1,2}[/-]\d{1,2}[/-]\d{4}|\d{4}-\d{1,2}-\d{1,2})\b/);
+    const estatuto = extractPmeStatute(combinedText);
 
     return {
         status: downloaded ? 'completed' : 'needs_review',
         ficheiroPdf: downloaded || '',
         dataValidade: '',
         dataEfeito: dateMatch ? normalizeDateToIso(dateMatch[1]) : '',
-        notas: typeMatch ? cleanText(typeMatch[1]) : '',
+        estatuto,
+        notas: estatuto ? `Estatuto: ${estatuto}` : '',
         message: downloaded
             ? 'Certificado PME guardado na pasta do cliente.'
             : 'Não encontrei o link do certificado PME (pdf). Verifica se está disponível no portal IAPMEI.',
-        pageTextSample: cleanText(finalText).slice(0, 1000),
+        pageTextSample: cleanText(combinedText).slice(0, 1000),
     };
 }
 

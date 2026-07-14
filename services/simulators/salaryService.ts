@@ -350,7 +350,7 @@ export function calculateSalaryNet(input: SalaryNetInput): SimulationResult {
         value: `${youngIrsExemptionRate(safeNumber(input.youngIrsYear, 1)) * 100}% (${safeNumber(input.youngIrsYear, 1)}º ano) · limite ${YOUNG_IRS_ANNUAL_LIMIT}€/ano`,
         sourceLabel: 'Decreto-Lei n.º 2/2024 — IRS Jovem',
         sourceUrl: 'https://dre.pt/dre/detalhe/decreto-lei/2-2024-843898484',
-        confidence: 'requires_validation',
+        confidence: 'requires_validation' as const,
       }] : []),
     ],
     assumptions: [

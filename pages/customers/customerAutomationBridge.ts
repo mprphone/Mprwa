@@ -22,7 +22,7 @@ export type LocalFinancasAutologinResponse = {
 };
 
 export type FinancasAtProfileFields = Partial<Pick<CustomerFormState,
-  'morada' | 'codigoPostal' | 'dataNascimento' | 'dataConstituicao' | 'inicioAtividade' | 'tipoIva' | 'caePrincipal' | 'codigoReparticaoFinancas' | 'tipoContabilidade' | 'managers'
+  'morada' | 'codigoPostal' | 'dataNascimento' | 'dataConstituicao' | 'inicioAtividade' | 'tipoIva' | 'caePrincipal' | 'caeDescricao' | 'caeSecundarios' | 'infoAtividades' | 'codigoReparticaoFinancas' | 'tipoContabilidade' | 'managers'
 >>;
 
 export type LocalFinancasAtProfileResponse = {

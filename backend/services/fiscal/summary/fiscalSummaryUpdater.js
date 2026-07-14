@@ -32,10 +32,16 @@ function updateCertidao(current, tipoLabel, entidade, fiscalCollection) {
 
     const dividas = Array.isArray(current.dividas) ? [...current.dividas] : [];
     const dividaIdx = dividas.findIndex((row) => row?.entidade === entidade);
+    const montanteRecolhido = Number(fiscalCollection.montanteDivida);
     const dividaNext = {
         entidade,
-        montante: fiscalCollection.semDivida ? 0 : Number(current.dividas?.[dividaIdx]?.montante || 0),
+        montante: fiscalCollection.semDivida
+            ? 0
+            : (Number.isFinite(montanteRecolhido) && montanteRecolhido > 0
+                ? montanteRecolhido
+                : Number(current.dividas?.[dividaIdx]?.montante || 0)),
         semDivida: Boolean(fiscalCollection.semDivida),
+        comDivida: Boolean(fiscalCollection.comDivida),
     };
     if (dividaIdx >= 0) dividas[dividaIdx] = { ...dividas[dividaIdx], ...dividaNext };
     else dividas.push(dividaNext);

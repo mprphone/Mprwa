@@ -19,12 +19,104 @@ async function extractPdfText(filePath) {
     }
 }
 
+// A certidão com dívidas diz "não tem a sua situação tributária regularizada" —
+// contém a frase positiva como substring, por isso testar SEMPRE a negação primeiro.
+function detectComDivida(text) {
+    return /n[aã]o\s+tem\s+(a\s+)?(sua\s+)?situa[cç][aã]o\s+tribut[aá]ria\s+regularizada/i.test(text)
+        || /situa[cç][aã]o\s+tribut[aá]ria\s+n[aã]o\s+regularizada/i.test(text)
+        || /(?<!n[aã]o\s{1,4})\b(?:tem|existem)\s+d[ií]vidas?/i.test(text)
+        || /d[ií]vida[s]?\s+em\s+aberto/i.test(text);
+}
+
 function detectSemDivida(text) {
+    if (detectComDivida(text)) return false;
     return /situa[cç][aã]o\s+tribut[aá]ria\s+regularizada|n[aã]o\s+existem\s+d[ií]vidas|n[aã]o\s+tem\s+d[ií]vidas/i.test(text);
 }
 
-function detectComDivida(text) {
-    return /tem\s+d[ií]vidas?|existem\s+d[ií]vidas?|d[ií]vida[s]?\s+em\s+aberto|n[aã]o\s+regularizada/i.test(text);
+function parseEuroAmounts(text) {
+    const t = String(text || '');
+    const out = [];
+    const push = (raw) => {
+        const n = Number(raw.replace(/[. \s]/g, '').replace(',', '.'));
+        if (Number.isFinite(n)) out.push(n);
+    };
+    let m;
+    const suffixed = /(\d{1,3}(?:[. \s]\d{3})*,\d{2})\s*(?:€|eur\b)/gi;
+    const prefixed = /(?:€|eur\b)\s*(\d{1,3}(?:[. \s]\d{3})*,\d{2})/gi;
+    while ((m = suffixed.exec(t))) push(m[1]);
+    while ((m = prefixed.exec(t))) push(m[1]);
+    return out;
+}
+
+function formatEuro(value) {
+    return new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
+}
+
+// Consulta a página de dívidas fiscais (sessão AT já iniciada) para obter o montante em dívida.
+// Best-effort: se nenhuma página candidata responder com conteúdo de dívidas, devolve { checked: false }.
+async function consultarDividasAt(page, trace) {
+    const candidateUrls = [
+        String(process.env.PORTAL_FINANCAS_DIVIDAS_URL || '').trim(),
+        'https://sitfiscal.portaldasfinancas.gov.pt/divida/consultarDivida',
+        'https://sitfiscal.portaldasfinancas.gov.pt/geral/dashboard',
+    ].filter(Boolean);
+
+    for (const url of candidateUrls) {
+        trace('consultar dívidas em:', url);
+        const ok = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 }).then(() => true).catch(() => false);
+        if (!ok) continue;
+        await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
+        await page.waitForTimeout(1500);
+
+        const text = cleanText(await page.locator('body').innerText({ timeout: 7000 }).catch(() => ''));
+        if (!/d[ií]vida/i.test(text) || /autentica[cç][aã]o|senha\s+de\s+acesso/i.test(text)) continue;
+
+        const semDivida = /n[aã]o\s+(existem|tem|possui)\s+d[ií]vidas|sem\s+d[ií]vidas|n[aã]o\s+foram\s+encontrad[ao]s?\s+d[ií]vidas/i.test(text);
+        const totalMatch = text.match(/total[^\d€]{0,40}?(\d{1,3}(?:[. \s]\d{3})*,\d{2})\s*(?:€|eur\b)?/i);
+        const amounts = parseEuroAmounts(text);
+        const montante = totalMatch
+            ? Number(totalMatch[1].replace(/[. \s]/g, '').replace(',', '.'))
+            : (amounts.length ? Math.max(...amounts) : null);
+
+        trace('página de dívidas:', JSON.stringify({ url: page.url(), semDivida, montante, amostras: amounts.slice(0, 6) }));
+        return {
+            checked: true,
+            semDivida,
+            comDivida: !semDivida && Number(montante) > 0,
+            montante: semDivida ? 0 : montante,
+            pageUrl: page.url(),
+            textSample: text.slice(0, 600),
+        };
+    }
+    return { checked: false };
+}
+
+// Combina a leitura da certidão (PDF) com a consulta da página de dívidas.
+// A página de dívidas fornece o montante e desempata quando a certidão é inconclusiva.
+async function resolveDividaInfo(page, pdfText, trace) {
+    let semDivida = detectSemDivida(pdfText);
+    let comDivida = detectComDivida(pdfText);
+    let montanteDivida = semDivida ? 0 : null;
+
+    if (!semDivida) {
+        const dividas = await consultarDividasAt(page, trace).catch(() => null);
+        if (dividas?.checked) {
+            if (dividas.comDivida) comDivida = true;
+            if (dividas.semDivida && !comDivida) { semDivida = true; montanteDivida = 0; }
+            if (Number(dividas.montante) > 0) montanteDivida = Number(dividas.montante);
+        }
+    }
+    return { semDivida, comDivida, montanteDivida };
+}
+
+function dividaMessage({ semDivida, comDivida, montanteDivida }, fallback) {
+    if (semDivida) return 'Certidão AT — situação tributária regularizada.';
+    if (comDivida) {
+        return montanteDivida > 0
+            ? `Certidão AT — contribuinte tem dívidas (${formatEuro(montanteDivida)}).`
+            : 'Certidão AT — contribuinte tem dívidas.';
+    }
+    return fallback;
 }
 
 function isValidCertidaoPdf(text) {
@@ -423,24 +515,21 @@ async function collectCertidaoAtAfterFinancasLogin(page, customer, options = {})
 
     if (consultaPdf) {
         pageText = await readText();
+        const certidaoPageUrl = page.url();
         const pdfText = await extractPdfText(consultaPdf);
-        const semDivida = detectSemDivida(pdfText);
-        const comDivida = detectComDivida(pdfText);
-        trace('PDF text semDivida:', semDivida, 'comDivida:', comDivida);
         const dataValidade = certidaoValidUntil(pdfText, 4);
+        const dividaInfo = await resolveDividaInfo(page, pdfText, trace);
+        trace('dívida info:', JSON.stringify(dividaInfo));
         return {
             status: 'completed',
             ficheiroPdf: consultaPdf,
             dataValidade,
             valida: true,
-            semDivida,
-            comDivida,
-            message: semDivida
-                ? 'Certidão AT — situação tributária regularizada.'
-                : comDivida
-                    ? 'Certidão AT — contribuinte tem dívidas.'
-                    : 'Certidão AT obtida via consulta.',
-            pageUrl: page.url(),
+            semDivida: dividaInfo.semDivida,
+            comDivida: dividaInfo.comDivida,
+            montanteDivida: dividaInfo.montanteDivida,
+            message: dividaMessage(dividaInfo, 'Certidão AT obtida via consulta.'),
+            pageUrl: certidaoPageUrl,
             pageTextSample: cleanText(pageText).slice(0, 1000),
             lastStep
         };
@@ -459,22 +548,20 @@ async function collectCertidaoAtAfterFinancasLogin(page, customer, options = {})
         const retryPdf = await collectCertidaoAtViaConsulta(page, customer, year, trace);
         if (retryPdf) {
             pageText = await readText();
+            const certidaoPageUrl = page.url();
             const pdfText = await extractPdfText(retryPdf);
-            const semDivida = detectSemDivida(pdfText);
-            const comDivida = detectComDivida(pdfText);
+            const dividaInfo = await resolveDividaInfo(page, pdfText, trace);
+            trace('dívida info:', JSON.stringify(dividaInfo));
             return {
                 status: 'completed',
                 ficheiroPdf: retryPdf,
                 dataValidade: certidaoValidUntil(pdfText, 4),
                 valida: true,
-                semDivida,
-                comDivida,
-                message: semDivida
-                    ? 'Certidão AT — situação tributária regularizada.'
-                    : comDivida
-                        ? 'Certidão AT — contribuinte tem dívidas.'
-                        : 'Certidão AT emitida e obtida via consulta.',
-                pageUrl: page.url(),
+                semDivida: dividaInfo.semDivida,
+                comDivida: dividaInfo.comDivida,
+                montanteDivida: dividaInfo.montanteDivida,
+                message: dividaMessage(dividaInfo, 'Certidão AT emitida e obtida via consulta.'),
+                pageUrl: certidaoPageUrl,
                 pageTextSample: cleanText(pageText).slice(0, 1000),
                 lastStep
             };

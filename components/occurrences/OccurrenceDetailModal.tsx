@@ -262,7 +262,7 @@ const OccurrenceDetailModal: React.FC<Props> = ({
     }
 
     return fallbackDossieCatalog
-      .map((item) => {
+      .map((item): DossieItemTemplate | null => {
         const key = String(item.key || '').trim();
         if (!key) return null;
         return {

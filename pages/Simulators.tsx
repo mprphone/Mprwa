@@ -23,6 +23,7 @@ import { ActOfficialValidationResult, validateActCompensationOfficial } from '..
 import { SalaryOfficialResult, validateSalaryOfficial } from '../services/simulators/salaryOfficialApi';
 import {
   ActCompensationInput,
+  EmployeeCostInput,
   ImtInput,
   RULE_VERSIONS,
   SalaryNetInput,
@@ -163,7 +164,7 @@ function statusLabel(status: string): string {
 }
 
 const Field: React.FC<{
-  label: string;
+  label: React.ReactNode;
   children: React.ReactNode;
 }> = ({ label, children }) => (
   <label className="space-y-1.5">
@@ -1132,7 +1133,8 @@ const Simulators: React.FC = () => {
                     {loanInput.rateType === 'variable' && (
                       <Field label="Revisão Euribor">
                         <select className={inputClass} value={loanInput.euriborReviewMonths}
-                          onChange={(e) => setLoanInput((p) => ({ ...p, euriborReviewMonths: Number(e.target.value) as 6 | 12 }))}>
+                          onChange={(e) => setLoanInput((p) => ({ ...p, euriborReviewMonths: Number(e.target.value) as 3 | 6 | 12 }))}>
+                          <option value={3}>3 meses</option>
                           <option value={6}>6 meses</option>
                           <option value={12}>12 meses</option>
                         </select>

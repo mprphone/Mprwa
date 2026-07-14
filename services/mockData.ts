@@ -10,7 +10,6 @@ import {
   sendChatMessage,
   setConversationWhatsAppAccount as apiSetConversationWhatsAppAccount,
   syncChatConversation,
-  uploadChatTempMedia,
 } from './chatCoreApi';
 import {
   consultarSegSocialValoresApuradosMensalmenteApi,
@@ -26,6 +25,40 @@ import {
   type SegSocialSubUserPasswordLookupResult,
   type SegSocialSubUserSetupResult,
 } from './segSocialCustomerApi';
+import {
+  INITIAL_AGENDA_EVENTS,
+  INITIAL_CALLS,
+  INITIAL_CONVERSATIONS,
+  INITIAL_CUSTOMERS,
+  INITIAL_MESSAGES,
+  INITIAL_TASKS,
+  INITIAL_TRIGGERS,
+  INITIAL_USERS,
+} from './mockInitialData';
+import { ObrigacoesApi } from './obrigacoesApi';
+import { CustomerDocumentsApi } from './customerDocumentsApi';
+import {
+  deleteAgendaEventApi,
+  deleteTaskApi,
+  fetchAgendaEventsApi,
+  fetchCallsApi,
+  fetchTasksApi,
+  importTasksApi,
+  saveAgendaEventApi,
+  saveCallApi,
+  saveTaskApi,
+  type TaskImportInput,
+  type TaskImportResult,
+} from './operationalDataApi';
+import {
+  isFilledValue,
+  isValidAgendaEvent,
+  isValidCustomer,
+  isValidUser,
+  mergeImportedCustomersInto,
+  normalizeDigits,
+  parseTimestampToIso,
+} from './mockDataUtils';
 
 export type {
   SaftSegSocialPasswordSyncResult,
@@ -34,191 +67,11 @@ export type {
 
 // --- Initial Mock Data ---
 
-const INITIAL_USERS: User[] = [
-  { id: 'u1', name: 'Ana Silva', email: 'ana@company.com', password: '1234', role: Role.ADMIN, avatarUrl: 'https://picsum.photos/200/200?random=1' },
-  { id: 'u2', name: 'João Santos', email: 'joao@company.com', password: '1234', role: Role.AGENT, avatarUrl: 'https://picsum.photos/200/200?random=2' },
-  { id: 'u3', name: 'Maria Costa', email: 'maria@company.com', password: '1234', role: Role.AGENT, avatarUrl: 'https://picsum.photos/200/200?random=3' },
-  { id: 'u4', name: 'Marco Rebelo', email: 'mpr@mpr.pt', password: '1234', role: Role.ADMIN, avatarUrl: 'https://ui-avatars.com/api/?name=Marco+Rebelo&background=random' },
-];
-
 export const USERS = [...INITIAL_USERS]; // Shared reference used by legacy views
 export let CURRENT_USER_ID =
   typeof window !== 'undefined' && window.localStorage
     ? (window.localStorage.getItem('wa_pro_session_user_id') || '')
     : '';
-
-const INITIAL_CUSTOMERS: Customer[] = [
-  { 
-    id: 'c1', 
-    name: 'Carlos Ferreira', 
-    company: 'Tech Solutions', 
-    phone: '+351912345678', 
-    ownerId: 'u1',
-    type: CustomerType.ENTERPRISE,
-    contacts: [{ name: 'Secretaria', phone: '+351210000000' }],
-    allowAutoResponses: true
-  },
-  { 
-    id: 'c2', 
-    name: 'Sofia Martins', 
-    company: 'Logística Lda', 
-    phone: '+351961112233', 
-    ownerId: 'u2',
-    type: CustomerType.SUPPLIER,
-    contacts: [],
-    allowAutoResponses: false
-  },
-  { 
-    id: 'c3', 
-    name: 'Novo Cliente', 
-    company: 'Startup Inc', 
-    phone: '+351933334444', 
-    ownerId: null,
-    type: CustomerType.INDEPENDENT,
-    contacts: [],
-    allowAutoResponses: true
-  },
-];
-
-const INITIAL_CONVERSATIONS: Conversation[] = [
-  { id: 'conv1', customerId: 'c1', ownerId: 'u1', status: ConversationStatus.OPEN, lastMessageAt: new Date().toISOString(), unreadCount: 0 },
-  { id: 'conv2', customerId: 'c2', ownerId: 'u2', status: ConversationStatus.WAITING, lastMessageAt: new Date(Date.now() - 3600000).toISOString(), unreadCount: 0 },
-  { id: 'conv3', customerId: 'c3', ownerId: null, status: ConversationStatus.OPEN, lastMessageAt: new Date(Date.now() - 7200000).toISOString(), unreadCount: 0 },
-];
-
-const INITIAL_MESSAGES: Message[] = [
-  { id: 'm1', conversationId: 'conv1', direction: 'in', body: 'Olá, preciso de ajuda com a fatura.', timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(), type: 'text', status: 'read' },
-  { id: 'm2', conversationId: 'conv1', direction: 'out', body: 'Olá Carlos. Claro, qual é o número da fatura?', timestamp: new Date(Date.now() - 1000 * 60 * 28).toISOString(), type: 'text', status: 'read' },
-  { id: 'm3', conversationId: 'conv1', direction: 'in', body: 'É a FT 2023/450.', timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString(), type: 'text', status: 'read' },
-  { id: 'm4', conversationId: 'conv3', direction: 'in', body: 'Boa tarde, gostaria de saber preços.', timestamp: new Date(Date.now() - 7200000).toISOString(), type: 'text', status: 'read' },
-];
-
-const INITIAL_TASKS: Task[] = [
-  { id: 't1', conversationId: 'conv1', title: 'Verificar fatura no ERP', status: TaskStatus.OPEN, priority: TaskPriority.URGENT, dueDate: new Date(Date.now() + 86400000).toISOString(), assignedUserId: 'u1', notes: 'Verificar se o IVA está a 23%' },
-  { id: 't2', conversationId: 'conv2', title: 'Agendar reunião', status: TaskStatus.DONE, priority: TaskPriority.NORMAL, dueDate: new Date().toISOString(), assignedUserId: 'u2' },
-];
-
-const INITIAL_CALLS: Call[] = [
-  { id: 'call1', customerId: 'c1', userId: 'u1', startedAt: new Date(Date.now() - 86400000).toISOString(), durationSeconds: 120, notes: 'Dúvida rápida', source: 'manual' },
-];
-
-const INITIAL_AGENDA_EVENTS: AgendaEvent[] = [
-  {
-    id: 'ag1',
-    title: 'Reunião de fecho mensal',
-    type: 'meeting',
-    customerId: 'c1',
-    assignedUserId: 'u1',
-    startsAt: new Date(Date.now() + 2 * 86400000).toISOString(),
-    endsAt: new Date(Date.now() + 2 * 86400000 + 60 * 60000).toISOString(),
-    location: 'Escritório',
-    notes: 'Validar documentação em falta e próximos prazos.',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'ag2',
-    title: 'Visita ao cliente',
-    type: 'visit',
-    customerId: 'c2',
-    assignedUserId: 'u2',
-    startsAt: new Date(Date.now() + 4 * 86400000 + 2 * 3600000).toISOString(),
-    endsAt: new Date(Date.now() + 4 * 86400000 + 3 * 3600000).toISOString(),
-    location: 'Instalações do cliente',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
-
-// Updated Triggers based on user requirements
-const INITIAL_TRIGGERS: AutoResponseTrigger[] = [
-  // 1. Confirmação de receção (Primeira msg do dia)
-  { 
-      id: 'tr1', 
-      type: 'first_message_today',
-      action: 'send_message',
-      response: 'Olá 👋\nRecebemos a sua mensagem e já estamos a tratar.',
-      isActive: true,
-      audience: 'all',
-      schedule: 'business_hours',
-      level: 'essential'
-  },
-  // 2. Fora de horário
-  { 
-      id: 'tr2', 
-      type: 'outside_hours',
-      action: 'send_message',
-      response: 'Olá, recebemos a sua mensagem fora do nosso horário de atendimento. Retomaremos o contacto no próximo dia útil.', 
-      isActive: true,
-      audience: 'all',
-      schedule: 'outside_hours',
-      level: 'essential'
-  },
-  // 5. Identificação Automática (Keyword -> Task) - IRS
-  { 
-      id: 'tr3', 
-      type: 'keyword',
-      action: 'create_task',
-      keyword: 'irs',
-      matchType: 'contains',
-      taskTitleTemplate: 'IRS - Documentos Pendentes',
-      isActive: true,
-      audience: 'allowed_only',
-      schedule: 'always',
-      level: 'extra'
-  },
-  // 5. Identificação Automática (Keyword -> Task) - IVA
-  { 
-      id: 'tr4', 
-      type: 'keyword',
-      action: 'create_task',
-      keyword: 'iva',
-      matchType: 'contains',
-      taskTitleTemplate: 'IVA - Envio Mensal',
-      isActive: true,
-      audience: 'allowed_only',
-      schedule: 'always',
-      level: 'extra'
-  },
-  // 10. Respostas Rápidas (Keyword -> Reply) - IBAN
-  { 
-      id: 'tr5', 
-      type: 'keyword',
-      action: 'send_message',
-      keyword: 'iban',
-      matchType: 'contains',
-      response: 'O nosso IBAN para pagamentos é PT50 0000 0000 0000 0000 0000 0.',
-      isActive: true,
-      audience: 'allowed_only',
-      schedule: 'always',
-      level: 'essential'
-  },
-  // 6. Mensagem de Encerramento (Task Completed -> Reply)
-  {
-      id: 'tr6',
-      type: 'task_completed',
-      action: 'send_message',
-      response: 'O seu pedido ficou concluído. Se precisar de algo adicional, estamos disponíveis.',
-      isActive: false,
-      audience: 'all',
-      schedule: 'always',
-      level: 'extra'
-  },
-  // NOVO: Gatilho de Contratação
-  {
-      id: 'tr7',
-      type: 'keyword',
-      action: 'create_task',
-      keyword: 'empregar alguem',
-      matchType: 'contains',
-      taskTitleTemplate: 'Novo Funcionário',
-      isActive: true,
-      audience: 'allowed_only',
-      schedule: 'always',
-      level: 'extra'
-  }
-];
-
 // --- Mock Service Class ---
 
 const LOCAL_CUSTOMERS_KEY = 'wa_pro_local_customers_v1';
@@ -237,6 +90,14 @@ class MockService {
   private triggers = [...INITIAL_TRIGGERS];
   private supabaseImportPromise: Promise<void> | null = null;
   private supabaseImportDone = false;
+  private readonly obrigacoesApi = new ObrigacoesApi(
+    () => this.isBrowser(),
+    () => CURRENT_USER_ID,
+  );
+  private readonly customerDocumentsApi = new CustomerDocumentsApi(
+    () => this.isBrowser(),
+    () => CURRENT_USER_ID,
+  );
 
   constructor() {
     this.loadLocalEntities();
@@ -347,16 +208,7 @@ class MockService {
   }
 
   private isValidAgendaEvent(value: unknown): value is AgendaEvent {
-    const event = value as Partial<AgendaEvent>;
-    if (!event || typeof event !== 'object') return false;
-    const id = String(event.id || '').trim();
-    const title = String(event.title || '').trim();
-    const assignedUserId = String(event.assignedUserId || '').trim();
-    const startsAt = String(event.startsAt || '').trim();
-    const endsAt = String(event.endsAt || '').trim();
-    const startsTime = Date.parse(startsAt);
-    const endsTime = Date.parse(endsAt);
-    return !!id && !!title && !!assignedUserId && Number.isFinite(startsTime) && Number.isFinite(endsTime);
+    return isValidAgendaEvent(value);
   }
 
   private pruneOrphanConversationData() {
@@ -367,12 +219,6 @@ class MockService {
     this.conversations = validConversations;
     this.messages = this.messages.filter((message) => validConversationIds.has(message.conversationId));
     this.tasks = this.tasks.filter((task) => validConversationIds.has(task.conversationId));
-  }
-
-  private normalizePhone(value: string): string {
-    const digits = value.replace(/\D/g, '');
-    if (!digits) return '';
-    return value.trim().startsWith('+') ? `+${digits}` : `+${digits}`;
   }
 
   private isInternalChatPlaceholderUser(user: Pick<User, 'id' | 'name' | 'email'>): boolean {
@@ -483,25 +329,7 @@ class MockService {
   }
 
   private parseTimestampToIso(value: string): string {
-    if (!value) return new Date().toISOString();
-
-    const raw = String(value || '').trim();
-    if (!raw) return new Date().toISOString();
-
-    // SQLite CURRENT_TIMESTAMP vem tipicamente como "YYYY-MM-DD HH:mm:ss" em UTC.
-    // Forçamos parse UTC para não deslocar 1h no fuso local (ex.: Europe/Lisbon).
-    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)) {
-      const sqliteUtc = new Date(raw.replace(' ', 'T') + 'Z');
-      if (!Number.isNaN(sqliteUtc.getTime())) return sqliteUtc.toISOString();
-    }
-
-    const direct = new Date(raw);
-    if (!Number.isNaN(direct.getTime())) return direct.toISOString();
-
-    const fallback = new Date(raw.replace(' ', 'T') + 'Z');
-    if (!Number.isNaN(fallback.getTime())) return fallback.toISOString();
-
-    return new Date().toISOString();
+    return parseTimestampToIso(value);
   }
 
   private mapDbStatus(status: string): 'sent' | 'delivered' | 'read' {
@@ -829,7 +657,7 @@ class MockService {
             id: backendConversationId || `wa_conv_${customer.id}`,
             customerId: customer.id,
             ownerId: customer.ownerId || CURRENT_USER_ID || null,
-            status: contact.status || ConversationStatus.OPEN,
+            status: (contact.status as ConversationStatus) || ConversationStatus.OPEN,
             lastMessageAt,
             unreadCount: Math.max(0, Number(contact.unread_count || 0)),
           };
@@ -850,7 +678,7 @@ class MockService {
           conversation.ownerId = customer.ownerId || CURRENT_USER_ID || null;
         }
         if (contact.status) {
-          conversation.status = contact.status;
+          conversation.status = contact.status as ConversationStatus;
         }
         if (typeof contact.unread_count === 'number') {
           conversation.unreadCount = Math.max(0, contact.unread_count);
@@ -907,98 +735,15 @@ class MockService {
   }
 
   private normalizeDigits(value: string): string {
-    return String(value || '').replace(/\D/g, '');
+    return normalizeDigits(value);
   }
 
   private isFilledValue(value: unknown): boolean {
-    if (value === undefined || value === null) return false;
-    if (typeof value === 'string') return value.trim() !== '';
-    if (Array.isArray(value)) return value.length > 0;
-    if (typeof value === 'object') return Object.keys(value).length > 0;
-    return typeof value === 'boolean' || typeof value === 'number';
+    return isFilledValue(value);
   }
 
   private mergeImportedCustomers(importedCustomers: Customer[]) {
-    const existingById = new Map<string, number>();
-    this.customers.forEach((customer, index) => {
-      if (customer.id) {
-        existingById.set(customer.id, index);
-      }
-    });
-
-    importedCustomers.forEach((customer) => {
-      const normalizedPhone = this.normalizeDigits(String(customer.phone || ''));
-      const normalizedEmail = String(customer.email || '').trim().toLowerCase();
-      const normalizedNif = this.normalizeDigits(String(customer.nif || '')).slice(-9);
-      const incomingSourceId = String((customer as Customer & { sourceId?: string }).sourceId || '').trim();
-      const allowWeakIdentityMatch = !incomingSourceId && !normalizedNif;
-
-      let existingIndex = existingById.get(customer.id);
-      if (existingIndex === undefined) {
-        existingIndex = this.customers.findIndex((existing) => {
-          if (customer.id && existing.id === customer.id) return true;
-          if (normalizedNif) {
-            const existingNif = this.normalizeDigits(String(existing.nif || '')).slice(-9);
-            if (existingNif && existingNif === normalizedNif) return true;
-          }
-          if (!allowWeakIdentityMatch) return false;
-          if (normalizedPhone) {
-            const existingPhone = this.normalizeDigits(String(existing.phone || ''));
-            const existingNif = this.normalizeDigits(String(existing.nif || '')).slice(-9);
-            const existingSourceId = String((existing as Customer & { sourceId?: string }).sourceId || '').trim();
-            if (!existingNif && !existingSourceId && existingPhone && existingPhone === normalizedPhone) return true;
-          }
-          if (normalizedEmail) {
-            const existingEmail = String(existing.email || '').trim().toLowerCase();
-            const existingNif = this.normalizeDigits(String(existing.nif || '')).slice(-9);
-            const existingSourceId = String((existing as Customer & { sourceId?: string }).sourceId || '').trim();
-            if (!existingNif && !existingSourceId && existingEmail && existingEmail === normalizedEmail) return true;
-          }
-          return false;
-        });
-      }
-
-      if (existingIndex !== undefined && existingIndex !== -1) {
-        const existingCustomer = this.customers[existingIndex];
-        const existingIsLocalOnly = String(existingCustomer.id || '').startsWith('local_');
-
-        if (!existingIsLocalOnly) {
-          // Para clientes já sincronizados, o servidor é a fonte de verdade.
-          // A versão antiga mantinha valores "preenchidos" da memória local e podia esconder
-          // senhas/dados acabados de gravar noutro PC até reiniciar a aplicação.
-          const mergedCustomer = {
-            ...existingCustomer,
-            ...customer,
-            id: customer.id || existingCustomer.id,
-          };
-          this.customers[existingIndex] = mergedCustomer;
-          if (mergedCustomer.id) {
-            existingById.set(mergedCustomer.id, existingIndex);
-          }
-          return;
-        }
-
-        const mergedCustomer = { ...customer, ...existingCustomer, id: existingCustomer.id || customer.id };
-
-        Object.keys(existingCustomer).forEach((key) => {
-          const existingValue = existingCustomer[key as keyof Customer];
-          if (this.isFilledValue(existingValue)) {
-            mergedCustomer[key as keyof Customer] = existingValue as never;
-          }
-        });
-
-        this.customers[existingIndex] = mergedCustomer;
-        if (mergedCustomer.id) {
-          existingById.set(mergedCustomer.id, existingIndex);
-        }
-        return;
-      }
-
-      const hasSameId = this.customers.some((existing) => existing.id === customer.id);
-      const nextCustomer = hasSameId ? { ...customer, id: `${customer.id}_${Date.now()}` } : customer;
-      this.customers.push(nextCustomer);
-      existingById.set(nextCustomer.id, this.customers.length - 1);
-    });
+    mergeImportedCustomersInto(this.customers, importedCustomers);
   }
 
   private replaceCustomersFromServer(updatedCustomers: Customer[]) {
@@ -1021,13 +766,11 @@ class MockService {
   }
 
   private isValidUser(data: unknown): data is User {
-    const candidate = data as User;
-    return !!candidate && typeof candidate.id === 'string' && typeof candidate.name === 'string' && typeof candidate.email === 'string';
+    return isValidUser(data);
   }
 
   private isValidCustomer(data: unknown): data is Customer {
-    const candidate = data as Customer;
-    return !!candidate && typeof candidate.id === 'string' && typeof candidate.name === 'string' && typeof candidate.phone === 'string';
+    return isValidCustomer(data);
   }
 
   private async ensureSupabaseImport(): Promise<void> {
@@ -1739,907 +1482,83 @@ class MockService {
       }
   }
 
-  async getCustomerDocuments(customerId: string): Promise<{
-    folderPath: string;
-    storageFolderPath: string;
-    configured: boolean;
-    currentRelativePath: string;
-    canGoUp: boolean;
-    entries: Array<{ type: 'file' | 'directory'; name: string; relativePath: string; size?: number; updatedAt: string }>;
-    files: Array<{ name: string; size: number; updatedAt: string; relativePath: string }>;
-  }> {
-    return this.getCustomerDocumentsAtPath(customerId, '');
+  getCustomerDocuments(
+    ...args: Parameters<CustomerDocumentsApi['getCustomerDocuments']>
+  ): ReturnType<CustomerDocumentsApi['getCustomerDocuments']> {
+    return this.customerDocumentsApi.getCustomerDocuments(...args);
   }
 
-  async getCustomerDocumentsAtPath(customerId: string, relativePath = ''): Promise<{
-    folderPath: string;
-    storageFolderPath: string;
-    configured: boolean;
-    currentRelativePath: string;
-    canGoUp: boolean;
-    entries: Array<{ type: 'file' | 'directory'; name: string; relativePath: string; size?: number; updatedAt: string }>;
-    files: Array<{ name: string; size: number; updatedAt: string; relativePath: string }>;
-  }> {
-    if (!this.isBrowser()) {
-      return { folderPath: '', storageFolderPath: '', configured: false, currentRelativePath: '', canGoUp: false, entries: [], files: [] };
-    }
-
-    const query = new URLSearchParams();
-    if (String(relativePath || '').trim()) query.set('path', String(relativePath || '').trim());
-    const response = await fetch(`/api/customers/${encodeURIComponent(customerId)}/documents${query.toString() ? `?${query.toString()}` : ''}`, {
-      headers: { Accept: 'application/json' },
-    });
-    const payload = await response.json().catch(() => ({})) as {
-      success?: boolean;
-      folderPath?: string;
-      storageFolderPath?: string;
-      configured?: boolean;
-      currentRelativePath?: string;
-      canGoUp?: boolean;
-      entries?: Array<{ type?: string; name?: string; relativePath?: string; size?: number; updatedAt?: string }>;
-      files?: Array<{ name?: string; size?: number; updatedAt?: string; relativePath?: string }>;
-      error?: unknown;
-    };
-
-    if (!response.ok || !payload.success) {
-      const errorText =
-        typeof payload.error === 'string'
-          ? payload.error
-          : payload.error
-            ? JSON.stringify(payload.error)
-            : `Falha ao listar documentos (${response.status}).`;
-      throw new Error(errorText);
-    }
-
-    return {
-      folderPath: String(payload.folderPath || ''),
-      storageFolderPath: String(payload.storageFolderPath || ''),
-      configured: !!payload.configured,
-      currentRelativePath: String(payload.currentRelativePath || ''),
-      canGoUp: !!payload.canGoUp,
-      entries: Array.isArray(payload.entries)
-        ? payload.entries
-            .map((item) => ({
-              type: String(item.type || '').trim() === 'directory' ? 'directory' : 'file',
-              name: String(item.name || '').trim(),
-              relativePath: String(item.relativePath || '').trim(),
-              size: Number(item.size || 0) || undefined,
-              updatedAt: String(item.updatedAt || '').trim() || new Date().toISOString(),
-            }))
-            .filter((item) => item.name && item.relativePath)
-        : [],
-      files: Array.isArray(payload.files)
-        ? payload.files
-            .map((item) => ({
-              name: String(item.name || '').trim(),
-              size: Number(item.size || 0),
-              updatedAt: String(item.updatedAt || '').trim() || new Date().toISOString(),
-              relativePath: String(item.relativePath || item.name || '').trim(),
-            }))
-            .filter((item) => item.name && item.relativePath)
-        : [],
-    };
+  getCustomerDocumentsAtPath(
+    ...args: Parameters<CustomerDocumentsApi['getCustomerDocumentsAtPath']>
+  ): ReturnType<CustomerDocumentsApi['getCustomerDocumentsAtPath']> {
+    return this.customerDocumentsApi.getCustomerDocumentsAtPath(...args);
   }
 
-  async uploadCustomerDocument(customerId: string, file: File, relativePath = ''): Promise<{
-    fileName: string;
-    size: number;
-    folderPath: string;
-    relativePath: string;
-    fullPath: string;
-  }> {
-    if (!this.isBrowser()) {
-      throw new Error('Upload disponível apenas no browser.');
-    }
-
-    const contentBase64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = String(reader.result || '');
-        const base64 = result.includes(',') ? result.split(',')[1] : result;
-        resolve(base64);
-      };
-      reader.onerror = () => reject(new Error('Falha ao ler ficheiro local.'));
-      reader.readAsDataURL(file);
-    });
-
-    const response = await fetch(`/api/customers/${encodeURIComponent(customerId)}/documents/upload`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fileName: file.name,
-        contentBase64,
-        path: String(relativePath || '').trim(),
-      }),
-    });
-
-    const payload = await response.json().catch(() => ({})) as {
-      success?: boolean;
-      fileName?: string;
-      size?: number;
-      folderPath?: string;
-      relativePath?: string;
-      fullPath?: string;
-      error?: unknown;
-    };
-
-    if (!response.ok || !payload.success) {
-      const errorText =
-        typeof payload.error === 'string'
-          ? payload.error
-          : payload.error
-            ? JSON.stringify(payload.error)
-            : `Falha ao guardar documento (${response.status}).`;
-      throw new Error(errorText);
-    }
-
-    return {
-      fileName: String(payload.fileName || file.name),
-      size: Number(payload.size || file.size || 0),
-      folderPath: String(payload.folderPath || ''),
-      relativePath: String(payload.relativePath || file.name),
-      fullPath: String(payload.fullPath || ''),
-    };
+  uploadCustomerDocument(
+    ...args: Parameters<CustomerDocumentsApi['uploadCustomerDocument']>
+  ): ReturnType<CustomerDocumentsApi['uploadCustomerDocument']> {
+    return this.customerDocumentsApi.uploadCustomerDocument(...args);
   }
 
-  async organizeCustomerDocuments(customerId: string, options: {
-    maxAiDocuments?: number;
-    maxFiles?: number;
-    maxLegacyFolders?: number;
-    maxEmptyFolders?: number;
-    maxFilesPerLegacyFolder?: number;
-    compareExistingDuplicates?: boolean;
-    dryRun?: boolean;
-    renameOnly?: boolean;
-  } = {}): Promise<{
-    dryRun: boolean;
-    scannedCount: number;
-    truncated: boolean;
-    movedCount: number;
-    repeatedCount: number;
-    expiredCount: number;
-    aiReadCount: number;
-    aiCacheHitCount: number;
-    aiRenamedCount: number;
-    movedLegacyFoldersCount: number;
-    movedLegacyFolders: string[];
-    removedEmptyFoldersCount: number;
-    removedEmptyFolders: string[];
-    fiscalUpdates: Array<{ file: string; fields: string[] }>;
-    moved: Array<{ from: string; to: string; reason: string; type: string }>;
-    wouldMove: Array<{ from: string; to: string; reason: string; type: string }>;
-    undoAvailable: boolean;
-    warnings: string[];
-  }> {
-    if (!this.isBrowser()) {
-      throw new Error('Organização disponível apenas no browser.');
-    }
-
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 120000);
-    let response: Response;
-    try {
-      response = await fetch(`/api/customers/${encodeURIComponent(customerId)}/documents/organize`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({
-          maxAiDocuments: Math.max(0, Math.min(25, Number(options.maxAiDocuments ?? 3) || 0)),
-          maxFiles: Math.max(1, Math.min(500, Number(options.maxFiles ?? 40) || 40)),
-          maxLegacyFolders: Math.max(0, Math.min(10, Number(options.maxLegacyFolders ?? 2) || 0)),
-          maxEmptyFolders: Math.max(0, Math.min(200, Number(options.maxEmptyFolders ?? 25) || 0)),
-          maxFilesPerLegacyFolder: Math.max(1, Math.min(40, Number(options.maxFilesPerLegacyFolder ?? 10) || 10)),
-          compareExistingDuplicates: options.compareExistingDuplicates !== false,
-          dryRun: options.dryRun === true,
-          renameOnly: options.renameOnly === true,
-        }),
-        signal: controller.signal,
-      });
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        throw new Error('A organização demorou demasiado e foi interrompida. Tenta novamente; os documentos já analisados ficam em cache.');
-      }
-      throw error;
-    } finally {
-      window.clearTimeout(timeout);
-    }
-    const payload = await response.json().catch(() => ({})) as {
-      success?: boolean;
-      dryRun?: boolean;
-      scannedCount?: number;
-      truncated?: boolean;
-      movedCount?: number;
-      wouldMoveCount?: number;
-      repeatedCount?: number;
-      expiredCount?: number;
-      aiReadCount?: number;
-      aiCacheHitCount?: number;
-      aiRenamedCount?: number;
-      movedLegacyFoldersCount?: number;
-      movedLegacyFolders?: Array<{ from?: string; to?: string; reason?: string } | string>;
-      removedEmptyFoldersCount?: number;
-      removedEmptyFolders?: string[];
-      fiscalUpdates?: Array<{ file?: string; fields?: string[] }>;
-      moved?: Array<{ from?: string; to?: string; reason?: string; type?: string }>;
-      wouldMove?: Array<{ from?: string; to?: string; reason?: string; type?: string }>;
-      undoAvailable?: boolean;
-      warnings?: string[];
-      error?: unknown;
-    };
-
-    if (!response.ok || !payload.success) {
-      const errorText =
-        typeof payload.error === 'string'
-          ? payload.error
-          : payload.error
-            ? JSON.stringify(payload.error)
-            : `Falha ao organizar documentos (${response.status}).`;
-      throw new Error(errorText);
-    }
-
-    const normalizeMovements = (arr: unknown): Array<{ from: string; to: string; reason: string; type: string }> =>
-      Array.isArray(arr)
-        ? arr.map((item) => ({
-            from: String((item as { from?: string }).from || ''),
-            to: String((item as { to?: string }).to || ''),
-            reason: String((item as { reason?: string }).reason || ''),
-            type: String((item as { type?: string }).type || ''),
-          })).filter((m) => m.from || m.to)
-        : [];
-
-    return {
-      dryRun: Boolean(payload.dryRun),
-      scannedCount: Number(payload.scannedCount || 0),
-      truncated: Boolean(payload.truncated),
-      movedCount: Number(payload.movedCount ?? payload.wouldMoveCount ?? 0),
-      repeatedCount: Number(payload.repeatedCount || 0),
-      expiredCount: Number(payload.expiredCount || 0),
-      aiReadCount: Number(payload.aiReadCount || 0),
-      aiCacheHitCount: Number(payload.aiCacheHitCount || 0),
-      aiRenamedCount: Number(payload.aiRenamedCount || 0),
-      movedLegacyFoldersCount: Number(payload.movedLegacyFoldersCount || 0),
-      movedLegacyFolders: Array.isArray(payload.movedLegacyFolders)
-        ? payload.movedLegacyFolders.map((item) => {
-            if (typeof item === 'string') return item;
-            return `${String(item.from || '')} → ${String(item.to || '')}`.trim();
-          }).filter(Boolean)
-        : [],
-      removedEmptyFoldersCount: Number(payload.removedEmptyFoldersCount || 0),
-      removedEmptyFolders: Array.isArray(payload.removedEmptyFolders) ? payload.removedEmptyFolders.map((item) => String(item || '')).filter(Boolean) : [],
-      fiscalUpdates: Array.isArray(payload.fiscalUpdates)
-        ? payload.fiscalUpdates.map((item) => ({
-            file: String(item.file || ''),
-            fields: Array.isArray(item.fields) ? item.fields.map((field) => String(field || '')).filter(Boolean) : [],
-          }))
-        : [],
-      moved: normalizeMovements(payload.moved),
-      wouldMove: normalizeMovements(payload.wouldMove ?? payload.moved),
-      undoAvailable: Boolean(payload.undoAvailable),
-      warnings: Array.isArray(payload.warnings) ? payload.warnings.map((item) => String(item || '')).filter(Boolean) : [],
-    };
+  organizeCustomerDocuments(
+    ...args: Parameters<CustomerDocumentsApi['organizeCustomerDocuments']>
+  ): ReturnType<CustomerDocumentsApi['organizeCustomerDocuments']> {
+    return this.customerDocumentsApi.organizeCustomerDocuments(...args);
   }
 
-  async undoOrganizeCustomerDocuments(customerId: string): Promise<{
-    revertedCount: number;
-    skippedCount: number;
-    reverted: Array<{ from: string; to: string }>;
-    skipped: Array<{ from?: string; to?: string; reason: string }>;
-    warnings: string[];
-  }> {
-    if (!this.isBrowser()) {
-      throw new Error('Anulação disponível apenas no browser.');
-    }
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 60000);
-    let response: Response;
-    try {
-      response = await fetch(`/api/customers/${encodeURIComponent(customerId)}/documents/organize/undo`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({}),
-        signal: controller.signal,
-      });
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        throw new Error('A anulação demorou demasiado e foi interrompida.');
-      }
-      throw error;
-    } finally {
-      window.clearTimeout(timeout);
-    }
-    const payload = await response.json().catch(() => ({})) as {
-      success?: boolean;
-      revertedCount?: number;
-      skippedCount?: number;
-      reverted?: Array<{ from?: string; to?: string }>;
-      skipped?: Array<{ from?: string; to?: string; reason?: string }>;
-      warnings?: string[];
-      error?: unknown;
-    };
-    if (!response.ok || !payload.success) {
-      const errorText =
-        typeof payload.error === 'string'
-          ? payload.error
-          : payload.error
-            ? JSON.stringify(payload.error)
-            : `Falha ao anular organização (${response.status}).`;
-      throw new Error(errorText);
-    }
-    return {
-      revertedCount: Number(payload.revertedCount || 0),
-      skippedCount: Number(payload.skippedCount || 0),
-      reverted: Array.isArray(payload.reverted)
-        ? payload.reverted.map((r) => ({ from: String(r.from || ''), to: String(r.to || '') }))
-        : [],
-      skipped: Array.isArray(payload.skipped)
-        ? payload.skipped.map((s) => ({ from: String(s.from || ''), to: String(s.to || ''), reason: String(s.reason || '') }))
-        : [],
-      warnings: Array.isArray(payload.warnings) ? payload.warnings.map((w) => String(w || '')).filter(Boolean) : [],
-    };
+  undoOrganizeCustomerDocuments(
+    ...args: Parameters<CustomerDocumentsApi['undoOrganizeCustomerDocuments']>
+  ): ReturnType<CustomerDocumentsApi['undoOrganizeCustomerDocuments']> {
+    return this.customerDocumentsApi.undoOrganizeCustomerDocuments(...args);
   }
 
-  async uploadTemporaryChatMedia(
-    file: File,
-    mediaKind: 'image' | 'document' = 'document'
-  ): Promise<{
-    fileName: string;
-    storedFileName: string;
-    size: number;
-    mimeType: string;
-    fullPath: string;
-  }> {
-    if (!this.isBrowser()) {
-      throw new Error('Upload disponível apenas no browser.');
-    }
-
-    const contentBase64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = String(reader.result || '');
-        const base64 = result.includes(',') ? result.split(',')[1] : result;
-        resolve(base64);
-      };
-      reader.onerror = () => reject(new Error('Falha ao ler ficheiro local.'));
-      reader.readAsDataURL(file);
-    });
-
-    const uploaded = await uploadChatTempMedia({
-      fileName: file.name,
-      contentBase64,
-      mimeType: file.type || undefined,
-      mediaKind,
-      actorUserId: CURRENT_USER_ID || null,
-    });
-
-    if (!String(uploaded.fullPath || '').trim()) {
-      throw new Error('O servidor não devolveu caminho válido para o anexo.');
-    }
-
-    return uploaded;
+  uploadTemporaryChatMedia(
+    ...args: Parameters<CustomerDocumentsApi['uploadTemporaryChatMedia']>
+  ): ReturnType<CustomerDocumentsApi['uploadTemporaryChatMedia']> {
+    return this.customerDocumentsApi.uploadTemporaryChatMedia(...args);
   }
 
-  async ingestCustomerDocumentWithAI(
-    customerId: string,
-    file: File,
-    documentType:
-      | 'certidao_permanente'
-      | 'pacto_social'
-      | 'inicio_atividade'
-      | 'rcbe'
-      | 'cartao_cidadao'
-      | 'outros'
-  ): Promise<{
-    success: boolean;
-    code?: string;
-    error?: string;
-    warnings?: string[];
-    updatedFields?: string[];
-    extraction?: Record<string, unknown>;
-    savedDocument?: {
-      fileName: string;
-      relativePath: string;
-      fullPath: string;
-      folderPath: string;
-    };
-    customer?: Customer;
-    existingCustomer?: { id: string; name: string; company?: string; nif?: string };
-    suggestedCustomer?: Partial<Customer> & { nif?: string };
-  }> {
-    if (!this.isBrowser()) {
-      throw new Error('Ação disponível apenas no browser.');
-    }
-
-    const contentBase64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = String(reader.result || '');
-        const base64 = result.includes(',') ? result.split(',')[1] : result;
-        resolve(base64);
-      };
-      reader.onerror = () => reject(new Error('Falha ao ler ficheiro local.'));
-      reader.readAsDataURL(file);
-    });
-
-    const response = await fetch(`/api/customers/${encodeURIComponent(customerId)}/documents/ingest`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fileName: file.name,
-        mimeType: file.type || '',
-        contentBase64,
-        documentType,
-        actorUserId: CURRENT_USER_ID || null,
-      }),
-    });
-
-    const payload = await response.json().catch(() => ({})) as {
-      success?: boolean;
-      code?: string;
-      error?: unknown;
-      warnings?: unknown;
-      updatedFields?: unknown;
-      extraction?: unknown;
-      customer?: unknown;
-      savedDocument?: unknown;
-      existingCustomer?: unknown;
-      suggestedCustomer?: unknown;
-    };
-
-    const structuredResult = {
-      success: !!payload.success,
-      code: String(payload.code || '').trim() || undefined,
-      error:
-        typeof payload.error === 'string'
-          ? payload.error
-          : payload.error
-            ? JSON.stringify(payload.error)
-            : undefined,
-      warnings: Array.isArray(payload.warnings)
-        ? payload.warnings.map((item) => String(item || '').trim()).filter(Boolean)
-        : [],
-      updatedFields: Array.isArray(payload.updatedFields)
-        ? payload.updatedFields.map((item) => String(item || '').trim()).filter(Boolean)
-        : [],
-      extraction: payload.extraction && typeof payload.extraction === 'object'
-        ? (payload.extraction as Record<string, unknown>)
-        : undefined,
-      customer: payload.customer && this.isValidCustomer(payload.customer)
-        ? (payload.customer as Customer)
-        : undefined,
-      savedDocument: payload.savedDocument && typeof payload.savedDocument === 'object'
-        ? {
-            fileName: String((payload.savedDocument as { fileName?: string }).fileName || '').trim(),
-            relativePath: String((payload.savedDocument as { relativePath?: string }).relativePath || '').trim(),
-            fullPath: String((payload.savedDocument as { fullPath?: string }).fullPath || '').trim(),
-            folderPath: String((payload.savedDocument as { folderPath?: string }).folderPath || '').trim(),
-          }
-        : undefined,
-      existingCustomer: payload.existingCustomer && typeof payload.existingCustomer === 'object'
-        ? {
-            id: String((payload.existingCustomer as { id?: string }).id || '').trim(),
-            name: String((payload.existingCustomer as { name?: string }).name || '').trim(),
-            company: String((payload.existingCustomer as { company?: string }).company || '').trim(),
-            nif: String((payload.existingCustomer as { nif?: string }).nif || '').trim(),
-          }
-        : undefined,
-      suggestedCustomer: payload.suggestedCustomer && typeof payload.suggestedCustomer === 'object'
-        ? (payload.suggestedCustomer as Partial<Customer>)
-        : undefined,
-    };
-
-    if (!response.ok && !structuredResult.code) {
-      throw new Error(
-        structuredResult.error || `Falha ao inserir documento (${response.status}).`
-      );
-    }
-
-    return structuredResult;
+  ingestCustomerDocumentWithAI(
+    ...args: Parameters<CustomerDocumentsApi['ingestCustomerDocumentWithAI']>
+  ): ReturnType<CustomerDocumentsApi['ingestCustomerDocumentWithAI']> {
+    return this.customerDocumentsApi.ingestCustomerDocumentWithAI(...args);
   }
 
-  async detectCustomerByDocumentAI(
-    file: File,
-    documentType:
-      | 'certidao_permanente'
-      | 'pacto_social'
-      | 'inicio_atividade'
-      | 'rcbe'
-      | 'cartao_cidadao'
-      | 'outros'
-  ): Promise<{
-    success: boolean;
-    code?: string;
-    error?: string;
-    nif?: string;
-    extraction?: Record<string, unknown>;
-    customer?: {
-      id: string;
-      name: string;
-      company?: string;
-      nif?: string;
-      documentsFolder?: string;
-    };
-    suggestedCustomer?: Partial<Customer>;
-  }> {
-    if (!this.isBrowser()) {
-      throw new Error('Ação disponível apenas no browser.');
-    }
-
-    const contentBase64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = String(reader.result || '');
-        const base64 = result.includes(',') ? result.split(',')[1] : result;
-        resolve(base64);
-      };
-      reader.onerror = () => reject(new Error('Falha ao ler ficheiro local.'));
-      reader.readAsDataURL(file);
-    });
-
-    const response = await fetch('/api/customers/documents/detect-target', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fileName: file.name,
-        mimeType: file.type || '',
-        contentBase64,
-        documentType,
-      }),
-    });
-
-    const payload = await response.json().catch(() => ({})) as {
-      success?: boolean;
-      code?: string;
-      error?: unknown;
-      nif?: unknown;
-      extraction?: unknown;
-      customer?: unknown;
-      suggestedCustomer?: unknown;
-    };
-
-    const result = {
-      success: !!payload.success,
-      code: String(payload.code || '').trim() || undefined,
-      error:
-        typeof payload.error === 'string'
-          ? payload.error
-          : payload.error
-            ? JSON.stringify(payload.error)
-            : undefined,
-      nif: String(payload.nif || '').trim() || undefined,
-      extraction: payload.extraction && typeof payload.extraction === 'object'
-        ? (payload.extraction as Record<string, unknown>)
-        : undefined,
-      customer: payload.customer && typeof payload.customer === 'object'
-        ? {
-            id: String((payload.customer as { id?: string }).id || '').trim(),
-            name: String((payload.customer as { name?: string }).name || '').trim(),
-            company: String((payload.customer as { company?: string }).company || '').trim(),
-            nif: String((payload.customer as { nif?: string }).nif || '').trim(),
-            documentsFolder: String((payload.customer as { documentsFolder?: string }).documentsFolder || '').trim(),
-          }
-        : undefined,
-      suggestedCustomer: payload.suggestedCustomer && typeof payload.suggestedCustomer === 'object'
-        ? (payload.suggestedCustomer as Partial<Customer>)
-        : undefined,
-    };
-
-    if (!response.ok && !result.code) {
-      throw new Error(result.error || `Falha na deteção automática (${response.status}).`);
-    }
-
-    return result;
+  detectCustomerByDocumentAI(
+    ...args: Parameters<CustomerDocumentsApi['detectCustomerByDocumentAI']>
+  ): ReturnType<CustomerDocumentsApi['detectCustomerByDocumentAI']> {
+    return this.customerDocumentsApi.detectCustomerByDocumentAI(...args);
   }
 
-  async importCustomerDocumentFromUrl(
-    customerId: string,
-    sourceUrl: string,
-    fileName = '',
-    relativePath = ''
-  ): Promise<{
-    fileName: string;
-    size: number;
-    folderPath: string;
-    relativePath: string;
-    fullPath: string;
-  }> {
-    if (!this.isBrowser()) {
-      throw new Error('Importação disponível apenas no browser.');
-    }
-
-    const response = await fetch(`/api/customers/${encodeURIComponent(customerId)}/documents/import-link`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        url: String(sourceUrl || '').trim(),
-        fileName: String(fileName || '').trim(),
-        path: String(relativePath || '').trim(),
-      }),
-    });
-
-    const payload = await response.json().catch(() => ({})) as {
-      success?: boolean;
-      fileName?: string;
-      size?: number;
-      folderPath?: string;
-      relativePath?: string;
-      fullPath?: string;
-      error?: unknown;
-    };
-
-    if (!response.ok || !payload.success) {
-      const errorText =
-        typeof payload.error === 'string'
-          ? payload.error
-          : payload.error
-            ? JSON.stringify(payload.error)
-            : `Falha ao importar documento (${response.status}).`;
-      throw new Error(errorText);
-    }
-
-    return {
-      fileName: String(payload.fileName || fileName || 'documento'),
-      size: Number(payload.size || 0),
-      folderPath: String(payload.folderPath || ''),
-      relativePath: String(payload.relativePath || fileName || 'documento'),
-      fullPath: String(payload.fullPath || ''),
-    };
+  importCustomerDocumentFromUrl(
+    ...args: Parameters<CustomerDocumentsApi['importCustomerDocumentFromUrl']>
+  ): ReturnType<CustomerDocumentsApi['importCustomerDocumentFromUrl']> {
+    return this.customerDocumentsApi.importCustomerDocumentFromUrl(...args);
   }
 
-  async getCustomerDocumentShareLink(customerId: string, relativePath: string): Promise<{ url: string; fileName: string }> {
-    if (!this.isBrowser()) {
-      throw new Error('Ação disponível apenas no browser.');
-    }
-    const query = new URLSearchParams({ path: String(relativePath || '').trim() });
-    const response = await fetch(`/api/customers/${encodeURIComponent(customerId)}/documents/share-link?${query.toString()}`, {
-      headers: { Accept: 'application/json' },
-    });
-    const payload = await response.json().catch(() => ({})) as {
-      success?: boolean;
-      url?: string;
-      fileName?: string;
-      error?: unknown;
-    };
-    if (!response.ok || !payload.success) {
-      const errorText =
-        typeof payload.error === 'string'
-          ? payload.error
-          : payload.error
-            ? JSON.stringify(payload.error)
-            : `Falha ao gerar link de ficheiro (${response.status}).`;
-      throw new Error(errorText);
-    }
-    return {
-      url: String(payload.url || '').trim(),
-      fileName: String(payload.fileName || '').trim(),
-    };
+  getCustomerDocumentShareLink(
+    ...args: Parameters<CustomerDocumentsApi['getCustomerDocumentShareLink']>
+  ): ReturnType<CustomerDocumentsApi['getCustomerDocumentShareLink']> {
+    return this.customerDocumentsApi.getCustomerDocumentShareLink(...args);
   }
 
-  async requestSaftDocument(customerId: string, conversationId: string, documentType: 'declaracao_nao_divida' | 'ies' | 'modelo_22' | 'certidao_permanente' | 'certificado_pme' | 'crc'): Promise<{
-    success: boolean;
-    jobId?: number;
-    status?: string;
-    fileName?: string;
-    message?: string;
-    error?: string;
-  }> {
-    if (!this.isBrowser()) return { success: false, error: 'Ação disponível apenas no browser.' };
-
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 20000);
-
-    try {
-      const response = await fetch('/api/saft/fetch-and-send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customerId,
-          conversationId,
-          documentType,
-          requestedBy: CURRENT_USER_ID || null,
-        }),
-        signal: controller.signal,
-      });
-
-      const payload = await response.json().catch(() => ({})) as {
-        success?: boolean;
-        jobId?: number;
-        status?: string;
-        fileName?: string;
-        message?: string;
-        error?: unknown;
-      };
-
-      if (!response.ok || !payload.success) {
-        const errorText =
-          typeof payload.error === 'string'
-            ? payload.error
-            : payload.error
-              ? JSON.stringify(payload.error)
-              : `Falha no pedido SAFT (${response.status}).`;
-        return {
-          success: false,
-          jobId: payload.jobId,
-          status: typeof payload.status === 'string' ? payload.status : 'error',
-          fileName: typeof payload.fileName === 'string' ? payload.fileName : undefined,
-          message: typeof payload.message === 'string' ? payload.message : undefined,
-          error: errorText,
-        };
-      }
-
-      return {
-        success: true,
-        jobId: payload.jobId,
-        status: payload.status,
-        fileName: payload.fileName,
-        message: typeof payload.message === 'string' ? payload.message : undefined,
-      };
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        return { success: false, error: 'Pedido SAFT demorou demasiado tempo (20s). Verifique o robô/servidor.' };
-      }
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Falha de rede no pedido SAFT.',
-      };
-    } finally {
-      window.clearTimeout(timeoutId);
-    }
+  requestSaftDocument(
+    ...args: Parameters<CustomerDocumentsApi['requestSaftDocument']>
+  ): ReturnType<CustomerDocumentsApi['requestSaftDocument']> {
+    return this.customerDocumentsApi.requestSaftDocument(...args);
   }
 
-  async syncSaftCompanyDocs(customerId: string, options?: {
-    yearsBack?: number;
-    force?: boolean;
-    documentTypes?: Array<'declaracao_nao_divida' | 'ies' | 'modelo_22' | 'certidao_permanente' | 'certificado_pme' | 'crc'>;
-  }): Promise<{
-    success: boolean;
-    syncedFiles?: number;
-    skippedFiles?: number;
-    warnings?: string[];
-    error?: string;
-  }> {
-    if (!this.isBrowser()) return { success: false, error: 'Ação disponível apenas no browser.' };
-
-    const response = await fetch('/api/saft/sync-company-docs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        customerId,
-        yearsBack: Number(options?.yearsBack || 3),
-        force: !!options?.force,
-        documentTypes: Array.isArray(options?.documentTypes) && options?.documentTypes.length > 0 ? options.documentTypes : undefined,
-        requestedBy: CURRENT_USER_ID || null,
-      }),
-    });
-
-    const payload = await response.json().catch(() => ({})) as {
-      success?: boolean;
-      syncedFiles?: number;
-      skippedFiles?: number;
-      warnings?: unknown;
-      error?: unknown;
-    };
-
-    if (!response.ok || !payload.success) {
-      const errorText =
-        typeof payload.error === 'string'
-          ? payload.error
-          : payload.error
-            ? JSON.stringify(payload.error)
-            : `Falha na recolha documental SAFT (${response.status}).`;
-      return { success: false, error: errorText };
-    }
-
-    return {
-      success: true,
-      syncedFiles: Number(payload.syncedFiles || 0),
-      skippedFiles: Number(payload.skippedFiles || 0),
-      warnings: Array.isArray(payload.warnings) ? payload.warnings.map((item) => String(item || '').trim()).filter(Boolean) : [],
-    };
+  syncSaftCompanyDocs(
+    ...args: Parameters<CustomerDocumentsApi['syncSaftCompanyDocs']>
+  ): ReturnType<CustomerDocumentsApi['syncSaftCompanyDocs']> {
+    return this.customerDocumentsApi.syncSaftCompanyDocs(...args);
   }
 
-  async getSaftJobs(customerId: string): Promise<Array<{
-    id: number;
-    documentType: 'declaracao_nao_divida' | 'ies' | 'modelo_22' | 'certidao_permanente' | 'certificado_pme' | 'crc' | string;
-    status: 'pending' | 'processing' | 'sent' | 'error' | string;
-    fileName?: string;
-    error?: string;
-    updatedAt?: string;
-    createdAt?: string;
-  }>> {
-    if (!this.isBrowser()) return [];
-
-    const [jobsResponse, cacheResponse] = await Promise.all([
-      fetch(`/api/saft/jobs/${encodeURIComponent(customerId)}`, {
-        headers: { Accept: 'application/json' },
-      }),
-      fetch(`/api/saft/cache/${encodeURIComponent(customerId)}`, {
-        headers: { Accept: 'application/json' },
-      }).catch(() => null),
-    ]);
-
-    const jobsPayload = await jobsResponse.json().catch(() => ({})) as {
-      success?: boolean;
-      data?: Array<{
-        id?: number;
-        document_type?: string;
-        status?: string;
-        file_name?: string | null;
-        error?: string | null;
-        updated_at?: string;
-        created_at?: string;
-      }>;
-      error?: unknown;
-    };
-
-    if (!jobsResponse.ok || !jobsPayload.success) {
-      return [];
-    }
-
-    const cachePayload = cacheResponse
-      ? await cacheResponse.json().catch(() => ({})) as {
-          success?: boolean;
-          data?: Array<{
-            id?: number;
-            documentType?: string;
-            fileName?: string;
-            fileExists?: boolean;
-            updatedAt?: string;
-          }>;
-        }
-      : { success: false, data: [] as Array<{
-          id?: number;
-          documentType?: string;
-          fileName?: string;
-          fileExists?: boolean;
-          updatedAt?: string;
-        }> };
-
-    const rows = Array.isArray(jobsPayload.data) ? jobsPayload.data : [];
-    const normalizedRows = rows.map((row) => ({
-      id: Number(row.id || 0),
-      documentType: String(row.document_type || '').trim(),
-      status: String(row.status || '').trim(),
-      fileName: String(row.file_name || '').trim() || undefined,
-      error: String(row.error || '').trim() || undefined,
-      updatedAt: String(row.updated_at || '').trim() || undefined,
-      createdAt: String(row.created_at || '').trim() || undefined,
-    }));
-
-    const byType = new Map<string, {
-      id: number;
-      documentType: string;
-      status: string;
-      fileName?: string;
-      error?: string;
-      updatedAt?: string;
-      createdAt?: string;
-    }>();
-
-    normalizedRows.forEach((row) => {
-      const key = String(row.documentType || '').trim();
-      if (!key || byType.has(key)) return;
-      byType.set(key, row);
-    });
-
-    const cacheRows = Array.isArray(cachePayload?.data) ? cachePayload.data : [];
-    cacheRows.forEach((cacheRow) => {
-      const key = String(cacheRow.documentType || '').trim();
-      if (!key || !cacheRow.fileExists) return;
-      const current = byType.get(key);
-      const currentStatus = String(current?.status || '').trim().toLowerCase();
-      const shouldOverride = !current || ['error', 'missing'].includes(currentStatus);
-      if (!shouldOverride) return;
-      byType.set(key, {
-        id: Number(cacheRow.id || 0),
-        documentType: key,
-        status: 'archived',
-        fileName: String(cacheRow.fileName || '').trim() || undefined,
-        updatedAt: String(cacheRow.updatedAt || '').trim() || undefined,
-      });
-    });
-
-    return Array.from(byType.values());
+  getSaftJobs(
+    ...args: Parameters<CustomerDocumentsApi['getSaftJobs']>
+  ): ReturnType<CustomerDocumentsApi['getSaftJobs']> {
+    return this.customerDocumentsApi.getSaftJobs(...args);
   }
-
   // --- Conversations ---
   async getConversations(): Promise<Conversation[]> {
     await this.ensureSupabaseImport();
@@ -3489,22 +2408,9 @@ class MockService {
   // --- Tasks ---
   async getTasks(conversationId?: string): Promise<Task[]> {
     if (this.isBrowser()) {
-      const params: Record<string, string> = {};
-      if (conversationId) params.conversationId = conversationId;
       const uid = String(CURRENT_USER_ID || '').trim();
-      if (uid) params.userId = uid;
-      const query = Object.keys(params).length ? `?${new URLSearchParams(params).toString()}` : '';
-      const response = await fetch(`/api/tasks/local${query}`, {
-        headers: { Accept: 'application/json' },
-      });
-      const payload = await response.json().catch(() => ({})) as {
-        success?: boolean;
-        data?: Task[];
-      };
-
-      if (response.ok && payload.success && Array.isArray(payload.data)) {
-        this.tasks = payload.data;
-      }
+      const remoteTasks = await fetchTasksApi(conversationId, uid);
+      if (remoteTasks) this.tasks = remoteTasks;
     }
 
     if (conversationId) {
@@ -3513,103 +2419,21 @@ class MockService {
     return [...this.tasks];
   }
 
-  async importTasksFromSupabase(input: {
-    force?: boolean;
-    actorUserId?: string;
-    tasksTable?: string;
-    usersTable?: string;
-    customersTable?: string;
-  } = {}): Promise<{
-    success: boolean;
-    summary?: {
-      sourceTasks?: number;
-      imported?: number;
-      updated?: number;
-      skippedExisting?: number;
-      skippedNoTitle?: number;
-      skippedNoCustomer?: number;
-      failed?: number;
-      createdConversations?: number;
-      warnings?: string[];
-    };
-    error?: string;
-  }> {
+  async importTasksFromSupabase(input: TaskImportInput = {}): Promise<TaskImportResult> {
     if (!this.isBrowser()) return { success: false, error: 'Importação disponível apenas no browser.' };
-
-    const response = await fetch('/api/tasks/import/supabase', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        force: !!input.force,
-        actorUserId: input.actorUserId || this.getCurrentUserId(),
-        tasksTable: input.tasksTable || '',
-        usersTable: input.usersTable || '',
-        customersTable: input.customersTable || '',
-      }),
-    });
-
-    const payload = await response.json().catch(() => ({})) as {
-      success?: boolean;
-      summary?: {
-        sourceTasks?: number;
-        imported?: number;
-        updated?: number;
-        skippedExisting?: number;
-        skippedNoTitle?: number;
-        skippedNoCustomer?: number;
-        failed?: number;
-        createdConversations?: number;
-        warnings?: string[];
-      };
-      error?: unknown;
-    };
-
-    if (!response.ok || !payload.success) {
-      const errorText =
-        typeof payload.error === 'string'
-          ? payload.error
-          : payload.error
-            ? JSON.stringify(payload.error)
-            : `Falha ao importar tarefas (${response.status}).`;
-      return { success: false, error: errorText };
-    }
-
-    return {
-      success: true,
-      summary: payload.summary || {},
-    };
+    return importTasksApi(input, this.getCurrentUserId());
   }
 
   async createTask(task: Omit<Task, 'id'>): Promise<Task> {
     const newTask: Task = { ...task, id: `t${Date.now()}` };
 
     if (this.isBrowser()) {
-      const response = await fetch('/api/tasks/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newTask),
-      });
-      const payload = await response.json().catch(() => ({})) as {
-        success?: boolean;
-        task?: Task;
-        error?: unknown;
-      };
-
-      if (!response.ok || !payload.success) {
-        const errorText =
-          typeof payload.error === 'string'
-            ? payload.error
-            : payload.error
-              ? JSON.stringify(payload.error)
-              : `Falha ao guardar tarefa (${response.status}).`;
-        throw new Error(errorText);
-      }
-
-      if (payload.task) {
-        const existingIndex = this.tasks.findIndex(item => item.id === payload.task!.id);
-        if (existingIndex >= 0) this.tasks[existingIndex] = payload.task;
-        else this.tasks.push(payload.task);
-        return payload.task;
+      const savedTask = await saveTaskApi(newTask);
+      if (savedTask) {
+        const existingIndex = this.tasks.findIndex(item => item.id === savedTask.id);
+        if (existingIndex >= 0) this.tasks[existingIndex] = savedTask;
+        else this.tasks.push(savedTask);
+        return savedTask;
       }
     }
 
@@ -3631,28 +2455,7 @@ class MockService {
     }
 
     if (this.isBrowser()) {
-      const response = await fetch('/api/tasks/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(nextTask),
-      });
-      const payload = await response.json().catch(() => ({})) as {
-        success?: boolean;
-        task?: Task;
-        error?: unknown;
-      };
-
-      if (!response.ok || !payload.success) {
-        const errorText =
-          typeof payload.error === 'string'
-            ? payload.error
-            : payload.error
-              ? JSON.stringify(payload.error)
-              : `Falha ao guardar tarefa (${response.status}).`;
-        throw new Error(errorText);
-      }
-
-      const savedTask = payload.task || nextTask;
+      const savedTask = await saveTaskApi(nextTask) || nextTask;
       const existingIndex = this.tasks.findIndex(t => t.id === savedTask.id);
       if (existingIndex >= 0) this.tasks[existingIndex] = savedTask;
       else this.tasks.push(savedTask);
@@ -3670,32 +2473,8 @@ class MockService {
     }
 
     if (this.isBrowser()) {
-      const query = new URLSearchParams();
       const actorUserId = String(options?.actorUserId || this.getCurrentUserId() || '').trim();
-      if (actorUserId) query.set('actorUserId', actorUserId);
-
-      const response = await fetch(
-        `/api/tasks/${encodeURIComponent(targetId)}${query.toString() ? `?${query.toString()}` : ''}`,
-        {
-          method: 'DELETE',
-          headers: { Accept: 'application/json' },
-        }
-      );
-
-      const payload = await response.json().catch(() => ({})) as {
-        success?: boolean;
-        error?: unknown;
-      };
-
-      if (!response.ok || !payload.success) {
-        const errorText =
-          typeof payload.error === 'string'
-            ? payload.error
-            : payload.error
-              ? JSON.stringify(payload.error)
-              : `Falha ao eliminar tarefa (${response.status}).`;
-        throw new Error(errorText);
-      }
+      await deleteTaskApi(targetId, actorUserId);
     }
 
     this.tasks = this.tasks.filter((task) => String(task.id || '').trim() !== targetId);
@@ -3704,19 +2483,8 @@ class MockService {
   // --- Calls ---
   async getCalls(customerId?: string): Promise<Call[]> {
      if (this.isBrowser()) {
-        const query = customerId
-          ? `?${new URLSearchParams({ customerId }).toString()}`
-          : '';
-        const response = await fetch(`/api/calls/local${query}`, {
-          headers: { Accept: 'application/json' },
-        });
-        const payload = await response.json().catch(() => ({})) as {
-          success?: boolean;
-          data?: Call[];
-        };
-        if (response.ok && payload.success && Array.isArray(payload.data)) {
-          this.calls = payload.data;
-        }
+        const remoteCalls = await fetchCallsApi(customerId);
+        if (remoteCalls) this.calls = remoteCalls;
      }
 
      if(customerId) {
@@ -3729,30 +2497,10 @@ class MockService {
     const newCall: Call = { ...call, id: `call${Date.now()}` };
 
     if (this.isBrowser()) {
-      const response = await fetch('/api/calls/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newCall),
-      });
-      const payload = await response.json().catch(() => ({})) as {
-        success?: boolean;
-        call?: Call;
-        error?: unknown;
-      };
-
-      if (!response.ok || !payload.success) {
-        const errorText =
-          typeof payload.error === 'string'
-            ? payload.error
-            : payload.error
-              ? JSON.stringify(payload.error)
-              : `Falha ao guardar chamada (${response.status}).`;
-        throw new Error(errorText);
-      }
-
-      if (payload.call) {
-        this.calls.push(payload.call);
-        return payload.call;
+      const savedCall = await saveCallApi(newCall);
+      if (savedCall) {
+        this.calls.push(savedCall);
+        return savedCall;
       }
     }
 
@@ -3805,17 +2553,8 @@ class MockService {
   async getAgendaEvents(): Promise<AgendaEvent[]> {
     if (this.isBrowser()) {
       const uid = String(CURRENT_USER_ID || '').trim();
-      const qs = uid ? `?userId=${encodeURIComponent(uid)}` : '';
-      const response = await fetch(`/api/agenda/events${qs}`, {
-        headers: { Accept: 'application/json' },
-      });
-      const payload = await response.json().catch(() => ({})) as {
-        success?: boolean;
-        data?: AgendaEvent[];
-      };
-      if (response.ok && payload.success && Array.isArray(payload.data)) {
-        this.agendaEvents = payload.data;
-      }
+      const remoteEvents = await fetchAgendaEventsApi(uid);
+      if (remoteEvents) this.agendaEvents = remoteEvents;
     }
     return [...this.agendaEvents].sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime());
   }
@@ -3829,24 +2568,11 @@ class MockService {
       updatedAt: now,
     };
     if (this.isBrowser()) {
-      const response = await fetch('/api/agenda/events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(normalized),
-      });
-      const payload = await response.json().catch(() => ({})) as {
-        success?: boolean;
-        data?: AgendaEvent;
-        error?: unknown;
-      };
-      if (!response.ok || !payload.success || !payload.data) {
-        const errorText = typeof payload.error === 'string' ? payload.error : `Falha ao guardar evento (${response.status}).`;
-        throw new Error(errorText);
-      }
-      const existingIndex = this.agendaEvents.findIndex((item) => item.id === payload.data!.id);
-      if (existingIndex >= 0) this.agendaEvents[existingIndex] = payload.data;
-      else this.agendaEvents.push(payload.data);
-      return payload.data;
+      const savedEvent = await saveAgendaEventApi(normalized);
+      const existingIndex = this.agendaEvents.findIndex((item) => item.id === savedEvent.id);
+      if (existingIndex >= 0) this.agendaEvents[existingIndex] = savedEvent;
+      else this.agendaEvents.push(savedEvent);
+      return savedEvent;
     }
     this.agendaEvents.push(normalized);
     this.persistLocalEntities();
@@ -3869,22 +2595,9 @@ class MockService {
       throw new Error('Evento da agenda inválido.');
     }
     if (this.isBrowser()) {
-      const response = await fetch('/api/agenda/events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(nextEvent),
-      });
-      const payload = await response.json().catch(() => ({})) as {
-        success?: boolean;
-        data?: AgendaEvent;
-        error?: unknown;
-      };
-      if (!response.ok || !payload.success || !payload.data) {
-        const errorText = typeof payload.error === 'string' ? payload.error : `Falha ao guardar evento (${response.status}).`;
-        throw new Error(errorText);
-      }
-      this.agendaEvents[idx] = payload.data;
-      return payload.data;
+      const savedEvent = await saveAgendaEventApi(nextEvent);
+      this.agendaEvents[idx] = savedEvent;
+      return savedEvent;
     }
     this.agendaEvents[idx] = nextEvent;
     this.persistLocalEntities();
@@ -3894,478 +2607,25 @@ class MockService {
   async deleteAgendaEvent(id: string): Promise<void> {
     const targetId = String(id || '').trim();
     if (this.isBrowser() && targetId) {
-      const response = await fetch(`/api/agenda/events/${encodeURIComponent(targetId)}`, {
-        method: 'DELETE',
-        headers: { Accept: 'application/json' },
-      });
-      const payload = await response.json().catch(() => ({})) as {
-        success?: boolean;
-        error?: unknown;
-      };
-      if (!response.ok || !payload.success) {
-        const errorText = typeof payload.error === 'string' ? payload.error : `Falha ao eliminar evento (${response.status}).`;
-        throw new Error(errorText);
-      }
+      await deleteAgendaEventApi(targetId);
     }
     this.agendaEvents = this.agendaEvents.filter((event) => event.id !== targetId);
     this.persistLocalEntities();
   }
 
-  async collectDriObrigacoes(options?: {
-    obrigacaoType?: 'dri' | 'dmr' | 'goff_dmr' | 'goff_dri' | 'saft' | 'goff_saft' | 'iva' | 'goff_iva' | 'm22' | 'ies' | 'm10' | 'relatorio_unico' | 'goff_m22' | 'goff_ies' | 'goff_m10' | 'goff_inventario' | 'goff_relatorio_unico';
-    year?: number;
-    month?: number;
-    monthOffset?: number;
-    usePreviousMonth?: boolean;
-    dryRun?: boolean;
-    force?: boolean;
-    requestedBy?: string | null;
-  }): Promise<{
-    success: boolean;
-    dryRun?: boolean;
-    period?: { tipo?: string; ano?: number; mes?: number | null; trimestre?: number | null };
-    updatePeriod?: { tipo?: string; ano?: number; mes?: number | null; trimestre?: number | null };
-    obrigacao?: { id?: number; nome?: string; periodicidade?: string };
-    result?: {
-      totalRows?: number;
-      matchedCustomers?: number;
-      missingCustomers?: number;
-      skippedAlreadyCollected?: number;
-      skippedInvalidStatus?: number;
-      skippedTypeUnknown?: number;
-      localSaved?: number;
-      recolhasSyncOk?: number;
-      periodosUpdateOk?: number;
-      syncErrors?: number;
-    };
-    warnings?: string[];
-    missingCustomers?: Array<{ empresa?: string | null; nif?: string | null }>;
-    errors?: Array<{ customerId?: string; nif?: string; step?: string; error?: string }>;
-    error?: string;
-  }> {
-    if (!this.isBrowser()) {
-      return { success: false, error: 'Ação disponível apenas no browser.' };
-    }
-
-    const controller = new AbortController();
-    const obrigacaoType =
-      options?.obrigacaoType === 'dmr'
-        ? 'dmr'
-        : options?.obrigacaoType === 'goff_dmr'
-          ? 'goff/dmr'
-          : options?.obrigacaoType === 'goff_dri'
-            ? 'goff/dri'
-        : options?.obrigacaoType === 'saft'
-          ? 'saft'
-          : options?.obrigacaoType === 'goff_saft'
-            ? 'goff/saft'
-          : options?.obrigacaoType === 'iva'
-            ? 'iva'
-            : options?.obrigacaoType === 'goff_iva'
-              ? 'goff/iva'
-            : options?.obrigacaoType === 'goff_m22'
-              ? 'goff/m22'
-              : options?.obrigacaoType === 'goff_ies'
-                ? 'goff/ies'
-                : options?.obrigacaoType === 'goff_m10'
-                  ? 'goff/m10'
-                  : options?.obrigacaoType === 'goff_inventario'
-                    ? 'goff/inventario'
-                  : options?.obrigacaoType === 'goff_relatorio_unico'
-                    ? 'goff/relatorio-unico'
-            : options?.obrigacaoType === 'm22'
-              ? 'm22'
-              : options?.obrigacaoType === 'ies'
-                ? 'ies'
-                : options?.obrigacaoType === 'm10'
-                  ? 'm10'
-                  : options?.obrigacaoType === 'relatorio_unico'
-                    ? 'relatorio-unico'
-          : 'dri';
-    const timeoutMs = obrigacaoType === 'iva' || obrigacaoType === 'goff/iva' ? 900000 : 240000;
-    const isGoffSaft = obrigacaoType === 'goff/saft';
-    const isGoffMonthly = obrigacaoType === 'goff/saft' || obrigacaoType === 'goff/dmr' || obrigacaoType === 'goff/dri';
-    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
-
-    const normalizeWarnings = (raw: unknown): string[] =>
-      Array.isArray(raw) ? raw.map((item) => String(item || '').trim()).filter(Boolean) : [];
-
-    const normalizeMissingCustomers = (raw: unknown): Array<{ empresa?: string | null; nif?: string | null }> =>
-      Array.isArray(raw) ? raw as Array<{ empresa?: string | null; nif?: string | null }> : [];
-
-    const normalizeErrors = (
-      raw: unknown,
-    ): Array<{ customerId?: string; nif?: string; step?: string; error?: string }> =>
-      Array.isArray(raw)
-        ? raw as Array<{ customerId?: string; nif?: string; step?: string; error?: string }>
-        : [];
-
-    const mapPayloadResult = (
-      payload: {
-        success?: boolean;
-        dryRun?: boolean;
-        period?: { tipo?: string; ano?: number; mes?: number | null; trimestre?: number | null };
-        updatePeriod?: { tipo?: string; ano?: number; mes?: number | null; trimestre?: number | null };
-        obrigacao?: { id?: number; nome?: string; periodicidade?: string };
-        result?: {
-          totalRows?: number;
-          matchedCustomers?: number;
-          missingCustomers?: number;
-          skippedTypeUnknown?: number;
-          localSaved?: number;
-          recolhasSyncOk?: number;
-          periodosUpdateOk?: number;
-          syncErrors?: number;
-        };
-        warnings?: unknown;
-        missingCustomers?: unknown;
-        errors?: unknown;
-        error?: unknown;
-      },
-      statusCode: number,
-      forceError?: string,
-    ) => {
-      const warnings = normalizeWarnings(payload.warnings);
-      const missingCustomers = normalizeMissingCustomers(payload.missingCustomers);
-      const errors = normalizeErrors(payload.errors);
-
-      if (forceError || !payload.success) {
-        const errorText =
-          forceError ||
-          (typeof payload.error === 'string'
-            ? payload.error
-            : payload.error
-              ? JSON.stringify(payload.error)
-              : `Falha na recolha ${obrigacaoType.toUpperCase()} (${statusCode}).`);
-        return {
-          success: false as const,
-          dryRun: payload.dryRun,
-          period: payload.period,
-          updatePeriod: payload.updatePeriod,
-          obrigacao: payload.obrigacao,
-          result: payload.result,
-          warnings,
-          missingCustomers,
-          errors,
-          error: errorText,
-        };
-      }
-
-      return {
-        success: true as const,
-        dryRun: payload.dryRun,
-        period: payload.period,
-        updatePeriod: payload.updatePeriod,
-        obrigacao: payload.obrigacao,
-        result: payload.result,
-        warnings,
-        missingCustomers,
-        errors,
-      };
-    };
-
-    try {
-      const response = await fetch(`/api/import/obrigacoes/${obrigacaoType}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          year: isGoffMonthly ? undefined : options?.year,
-          month: isGoffMonthly ? undefined : options?.month,
-          monthOffset: isGoffMonthly ? undefined : options?.monthOffset,
-          usePreviousMonth: isGoffMonthly ? undefined : options?.usePreviousMonth,
-          dryRun: options?.dryRun,
-          force: isGoffMonthly ? undefined : options?.force,
-          async: obrigacaoType === 'iva',
-          requestedBy: options?.requestedBy ?? CURRENT_USER_ID ?? null,
-        }),
-        signal: controller.signal,
-      });
-
-      const payload = await response.json().catch(() => ({})) as {
-        success?: boolean;
-        dryRun?: boolean;
-        period?: { tipo?: string; ano?: number; mes?: number | null; trimestre?: number | null };
-        updatePeriod?: { tipo?: string; ano?: number; mes?: number | null; trimestre?: number | null };
-        obrigacao?: { id?: number; nome?: string; periodicidade?: string };
-        result?: {
-          totalRows?: number;
-          matchedCustomers?: number;
-          missingCustomers?: number;
-          skippedTypeUnknown?: number;
-          localSaved?: number;
-          recolhasSyncOk?: number;
-          periodosUpdateOk?: number;
-          syncErrors?: number;
-        };
-        warnings?: unknown;
-        missingCustomers?: unknown;
-        errors?: unknown;
-        error?: unknown;
-        async?: boolean;
-        jobId?: string;
-      };
-      if (
-        obrigacaoType === 'iva' &&
-        response.status === 202 &&
-        payload.success &&
-        payload.async === true &&
-        typeof payload.jobId === 'string' &&
-        payload.jobId.trim()
-      ) {
-        const jobId = payload.jobId.trim();
-        while (true) {
-          await new Promise((resolve) => window.setTimeout(resolve, 2000));
-
-          const jobResponse = await fetch(`/api/import/obrigacoes/iva/jobs/${encodeURIComponent(jobId)}`, {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' },
-            signal: controller.signal,
-          });
-          const jobPayload = await jobResponse.json().catch(() => ({})) as {
-            success?: boolean;
-            job?: {
-              status?: string;
-              result?: {
-                success?: boolean;
-                dryRun?: boolean;
-                period?: { tipo?: string; ano?: number; mes?: number | null; trimestre?: number | null };
-                updatePeriod?: { tipo?: string; ano?: number; mes?: number | null; trimestre?: number | null };
-                obrigacao?: { id?: number; nome?: string; periodicidade?: string };
-                result?: {
-                  totalRows?: number;
-                  matchedCustomers?: number;
-                  missingCustomers?: number;
-                  localSaved?: number;
-                  recolhasSyncOk?: number;
-                  periodosUpdateOk?: number;
-                  syncErrors?: number;
-                };
-                warnings?: unknown;
-                missingCustomers?: unknown;
-                errors?: unknown;
-                error?: unknown;
-              };
-              error?: unknown;
-            };
-            error?: unknown;
-          };
-
-          if (!jobResponse.ok || !jobPayload.success || !jobPayload.job) {
-            const endpointError =
-              typeof jobPayload.error === 'string'
-                ? jobPayload.error
-                : `Falha ao consultar estado da recolha IVA (${jobResponse.status}).`;
-            return mapPayloadResult({}, jobResponse.status, endpointError);
-          }
-
-          const jobStatus = String(jobPayload.job.status || '').trim().toLowerCase();
-          if (jobStatus === 'queued' || jobStatus === 'running') {
-            continue;
-          }
-
-          const jobResult = jobPayload.job.result || {};
-          if (jobStatus === 'completed') {
-            return mapPayloadResult(jobResult, 200);
-          }
-
-          const jobError =
-            typeof jobPayload.job.error === 'string'
-              ? jobPayload.job.error
-              : 'Falha no processamento da recolha IVA.';
-          return mapPayloadResult(jobResult, 500, jobError);
-        }
-      }
-
-      return mapPayloadResult(payload, response.status);
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        return {
-          success: false,
-          error: `Recolha ${obrigacaoType.toUpperCase()} demorou demasiado tempo (${Math.round(timeoutMs / 1000)}s).`,
-        };
-      }
-      return {
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : `Falha de rede na recolha ${obrigacaoType.toUpperCase()}.`,
-      };
-    } finally {
-      window.clearTimeout(timeoutId);
-    }
+  collectDriObrigacoes(
+    ...args: Parameters<ObrigacoesApi['collectDriObrigacoes']>
+  ): ReturnType<ObrigacoesApi['collectDriObrigacoes']> {
+    return this.obrigacoesApi.collectDriObrigacoes(...args);
   }
 
-  async getObrigacoesAutoStatus(): Promise<{
-    success: boolean;
-    scheduler?: { enabled?: boolean; hour?: number; minute?: number; timezone?: string | null };
-    state?: {
-      enabled?: boolean;
-      running?: boolean;
-      lastRunAt?: string | null;
-      lastFinishedAt?: string | null;
-      nextRunAt?: string | null;
-      lastError?: string | null;
-      lastSummary?: {
-        startedAt?: string;
-        finishedAt?: string;
-        ok?: number;
-        failed?: number;
-        jobs?: Array<{
-          route?: string;
-          success?: boolean;
-          statusCode?: number | null;
-          startedAt?: string;
-          finishedAt?: string;
-          error?: string | null;
-        }>;
-      } | null;
-    };
-    error?: string;
-  }> {
-    if (!this.isBrowser()) {
-      return { success: false, error: 'Ação disponível apenas no browser.' };
-    }
-
-    try {
-      const response = await fetch('/api/import/obrigacoes/auto/status', {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const payload = await response.json().catch(() => ({})) as {
-        success?: boolean;
-        scheduler?: { enabled?: boolean; hour?: number; minute?: number; timezone?: string | null };
-        state?: {
-          enabled?: boolean;
-          running?: boolean;
-          lastRunAt?: string | null;
-          lastFinishedAt?: string | null;
-          nextRunAt?: string | null;
-          lastError?: string | null;
-          lastSummary?: {
-            startedAt?: string;
-            finishedAt?: string;
-            ok?: number;
-            failed?: number;
-            jobs?: Array<{
-              route?: string;
-              success?: boolean;
-              statusCode?: number | null;
-              startedAt?: string;
-              finishedAt?: string;
-              error?: string | null;
-            }>;
-          } | null;
-        };
-        error?: unknown;
-      };
-
-      if (!response.ok || !payload.success) {
-        const errorText =
-          typeof payload.error === 'string'
-            ? payload.error
-            : payload.error
-              ? JSON.stringify(payload.error)
-              : `Falha ao carregar estado do scheduler (${response.status}).`;
-        return { success: false, error: errorText };
-      }
-
-      return {
-        success: true,
-        scheduler: payload.scheduler,
-        state: payload.state,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Falha de rede ao carregar scheduler automático.',
-      };
-    }
+  getObrigacoesAutoStatus(): ReturnType<ObrigacoesApi['getObrigacoesAutoStatus']> {
+    return this.obrigacoesApi.getObrigacoesAutoStatus();
   }
 
-  async runObrigacoesAutoNow(): Promise<{
-    success: boolean;
-    summary?: {
-      startedAt?: string;
-      finishedAt?: string;
-      ok?: number;
-      failed?: number;
-      jobs?: Array<{
-        route?: string;
-        success?: boolean;
-        statusCode?: number | null;
-        startedAt?: string;
-        finishedAt?: string;
-        error?: string | null;
-      }>;
-    };
-    state?: {
-      running?: boolean;
-      lastRunAt?: string | null;
-      lastFinishedAt?: string | null;
-      nextRunAt?: string | null;
-      lastError?: string | null;
-    };
-    error?: string;
-  }> {
-    if (!this.isBrowser()) {
-      return { success: false, error: 'Ação disponível apenas no browser.' };
-    }
-
-    try {
-      const response = await fetch('/api/import/obrigacoes/auto/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const payload = await response.json().catch(() => ({})) as {
-        success?: boolean;
-        summary?: {
-          startedAt?: string;
-          finishedAt?: string;
-          ok?: number;
-          failed?: number;
-          jobs?: Array<{
-            route?: string;
-            success?: boolean;
-            statusCode?: number | null;
-            startedAt?: string;
-            finishedAt?: string;
-            error?: string | null;
-          }>;
-        };
-        state?: {
-          running?: boolean;
-          lastRunAt?: string | null;
-          lastFinishedAt?: string | null;
-          nextRunAt?: string | null;
-          lastError?: string | null;
-        };
-        error?: unknown;
-      };
-
-      if (!response.ok || !payload.success) {
-        const errorText =
-          typeof payload.error === 'string'
-            ? payload.error
-            : payload.error
-              ? JSON.stringify(payload.error)
-              : `Falha na execução manual (${response.status}).`;
-        return { success: false, error: errorText, state: payload.state };
-      }
-
-      return {
-        success: true,
-        summary: payload.summary,
-        state: payload.state,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Falha de rede ao executar recolha automática.',
-      };
-    }
+  runObrigacoesAutoNow(): ReturnType<ObrigacoesApi['runObrigacoesAutoNow']> {
+    return this.obrigacoesApi.runObrigacoesAutoNow();
   }
-
   // --- Auto Responses (Triggers) ---
   async getTriggers(): Promise<AutoResponseTrigger[]> {
     return new Promise(resolve => setTimeout(() => resolve([...this.triggers]), 200));

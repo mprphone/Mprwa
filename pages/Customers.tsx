@@ -646,7 +646,7 @@ const Customers: React.FC = () => {
     });
 
   const handleIngestFileSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const fileArray = Array.from(event.target.files || []);
+    const fileArray = Array.from<File>(event.target.files ?? []);
     event.target.value = '';
     if (fileArray.length === 0) return;
     setIngestWarnings([]);
@@ -1401,7 +1401,7 @@ const Customers: React.FC = () => {
       const fields = (result.fields || {}) as FinancasAtProfileFields;
       const updates: FinancasAtProfileFields = {};
       const assignIfFilled = <K extends keyof FinancasAtProfileFields>(key: K) => {
-        const value = String(fields[key] || (updatedCustomer as Customer | undefined)?.[key] || '').trim();
+        const value = String(fields[key] || (updatedCustomer as Partial<FinancasAtProfileFields> | undefined)?.[key] || '').trim();
         if (value) updates[key] = value as never;
       };
       assignIfFilled('morada');
@@ -2615,8 +2615,17 @@ const Customers: React.FC = () => {
       }
     }
 
+    // Sem pasta definida numa ficha nova, sugerir a pasta padrão (como nos fluxos de ingestão) —
+    // é o que permite ao backend criar a pasta física + subpastas na gravação.
+    const documentsFolderNext =
+      String(formData.documentsFolder || '').trim() ||
+      (!editingCustomer
+        ? buildSuggestedCustomerFolderPath(String(formData.company || formData.name || '').trim())
+        : '');
+
     const payload = {
       ...formData,
+      documentsFolder: documentsFolderNext,
       contactName: String(formData.contactName || '').trim(),
       nif: nextNif,
       ownerId: formData.ownerId || null,
@@ -3144,7 +3153,7 @@ const Customers: React.FC = () => {
   };
 
   const sortedCustomers = useMemo(() => {
-    const ownerNameById = new Map(users.map((user) => [user.id, user.name]));
+    const ownerNameById = new Map<string, string>(users.map((user): [string, string] => [user.id, user.name]));
     const normalizeText = (value: string) =>
       String(value || '')
         .trim()
@@ -4188,9 +4197,6 @@ const Customers: React.FC = () => {
                     segSocialSubUserBusyCustomerId ||
                     segSocialActivationBusyCustomerId
                   )}
-                  triggerFinancasAutologin={triggerFinancasAutologin}
-                  triggerSegSocialSubUserLogin={triggerSegSocialSubUserLogin}
-                  triggerSegSocialInteroperabilityInfo={triggerSegSocialInteroperabilityInfo}
                 />
               )}
                 </div>
