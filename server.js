@@ -426,7 +426,11 @@ function parseCookies(headerValue) {
         if (index < 0) return;
         const key = part.slice(0, index).trim();
         if (!key) return;
-        cookies[key] = decodeURIComponent(part.slice(index + 1).trim());
+        try {
+            cookies[key] = decodeURIComponent(part.slice(index + 1).trim());
+        } catch (_) {
+            // Cookie malformado não deve derrubar autenticação nem auditoria.
+        }
     });
     return cookies;
 }
@@ -564,34 +568,101 @@ const AUTH_EVENTS_LOG_PATH = path.resolve(
 );
 const AUTH_EVENT_DEDUPE_MS = Math.max(0, Number(process.env.AUTH_EVENTS_DEDUPE_MS || 10 * 60 * 1000));
 const authEventDedupe = new Map();
+const AUTH_DIAGNOSTIC_CLIENT_COOKIE = 'wa_pro_client_user';
+
+function sanitizeAuthLogValue(value, maxLength = 160) {
+    return String(value || '')
+        .trim()
+        .replace(/[^a-zA-Z0-9_.:@+\/-]/g, '_')
+        .slice(0, maxLength) || '-';
+}
+
+function getAuthRequestContext(req, session = null) {
+    const xff = String(req.headers['x-forwarded-for'] || '').trim();
+    const sourceIp = xff.split(',')[0].trim() || String(req.socket?.remoteAddress || req.ip || '').trim();
+    const cookies = parseCookies(req.headers.cookie || '');
+    const clientUserId = sanitizeAuthLogValue(cookies[AUTH_DIAGNOSTIC_CLIENT_COOKIE], 128);
+    const sessionUserId = sanitizeAuthLogValue(session?.userId, 128);
+    const userAgent = String(req.headers['user-agent'] || '').trim();
+    const uaHash = userAgent
+        ? crypto.createHash('sha256').update(userAgent).digest('hex').slice(0, 12)
+        : '-';
+    let originHost = '-';
+    try {
+        const rawOrigin = String(req.headers.origin || req.headers.referer || '').trim();
+        if (rawOrigin) originHost = sanitizeAuthLogValue(new URL(rawOrigin).host, 120);
+    } catch (_) {
+        originHost = 'invalid';
+    }
+    return {
+        xff,
+        sourceIp: sanitizeAuthLogValue(sourceIp, 80),
+        via: xff ? 'external_proxy' : 'local_direct',
+        clientUserId,
+        sessionUserId,
+        uaHash,
+        originHost,
+    };
+}
 
 function normalizeAuthEventPath(rawPath) {
     return String(rawPath || '')
         .split('?')[0]
         .replace(/\/(ext|est)_[a-z]_[^/]+/gi, '/:id')
         .replace(/\/local_[^/]+/gi, '/:id')
+        .replace(/\/wa_c_[^/]+/gi, '/:id')
+        .replace(/\/conv(?:_wa_c)?_[^/]+/gi, '/:id')
+        .replace(/\/ichat(?:_sync)?_[^/]+/gi, '/:id')
         .replace(/\/[0-9a-fA-F]{8,}(?:-[0-9a-fA-F]{4,}){0,4}/g, '/:id')
         .replace(/\/\d+/g, '/:id');
 }
 
-function logAuthEvent(kind, req) {
+function logAuthEvent(kind, req, options = {}) {
     try {
         const method = String(req.method || '');
         const rawPath = String(req.path || req.originalUrl || '');
-        const signature = `${kind} ${method} ${normalizeAuthEventPath(rawPath)}`;
+        const normalizedPath = normalizeAuthEventPath(rawPath);
+        const context = getAuthRequestContext(req, options.session || null);
+        const signature = [
+            kind,
+            method,
+            normalizedPath,
+            context.via,
+            context.sourceIp,
+            context.clientUserId,
+            context.sessionUserId,
+            context.uaHash,
+        ].join(' ');
         const now = Date.now();
         if (now - (authEventDedupe.get(signature) || 0) < AUTH_EVENT_DEDUPE_MS) return;
         if (authEventDedupe.size > 5000) authEventDedupe.clear();
         authEventDedupe.set(signature, now);
 
-        const xff = String(req.headers['x-forwarded-for'] || '').trim();
-        const via = xff ? 'externo(nginx)' : 'interno(local)';
-        const hasInternalKey = Boolean(String(req.headers['x-internal-api-key'] || req.headers['x-api-key'] || '').trim());
+        const providedInternalKey = String(req.headers['x-internal-api-key'] || req.headers['x-api-key'] || '').trim();
+        const internalKeyState = providedInternalKey
+            ? (options.validInternalKey ? 'valid' : 'invalid')
+            : 'absent';
         const hasToken = /(?:^|;\s*)wa_pro_session=/.test(String(req.headers.cookie || ''))
             || /^Bearer\s+/i.test(String(req.headers.authorization || ''));
-        const remote = String(req.socket?.remoteAddress || req.ip || '');
-        const line = `${new Date().toISOString()} [${kind}] ${method} ${rawPath} via=${via} remote=${remote} xff=${xff || '-'} internalKey=${hasInternalKey} sessionToken=${hasToken}\n`;
-        fs.appendFile(AUTH_EVENTS_LOG_PATH, line, () => {});
+        const line = [
+            new Date().toISOString(),
+            `[${kind}]`,
+            method,
+            normalizedPath,
+            `via=${context.via}`,
+            `source=${context.sourceIp}`,
+            `clientUser=${context.clientUserId}`,
+            `sessionUser=${context.sessionUserId}`,
+            `internalKey=${internalKeyState}`,
+            `sessionToken=${hasToken}`,
+            `uaHash=${context.uaHash}`,
+            `origin=${context.originHost}`,
+        ].join(' ') + '\n';
+        fs.mkdirSync(path.dirname(AUTH_EVENTS_LOG_PATH), { recursive: true, mode: 0o700 });
+        try { fs.chmodSync(path.dirname(AUTH_EVENTS_LOG_PATH), 0o700); } catch (_) {}
+        fs.appendFile(AUTH_EVENTS_LOG_PATH, line, { mode: 0o600 }, () => {
+            try { fs.chmodSync(AUTH_EVENTS_LOG_PATH, 0o600); } catch (_) {}
+        });
     } catch (_) {
         // um log nunca pode partir um pedido
     }
@@ -606,12 +677,14 @@ function apiAuthMiddleware(req, res, next) {
     const providedInternalKey = String(req.headers['x-internal-api-key'] || req.headers['x-api-key'] || '').trim();
     if (INTERNAL_API_KEY && providedInternalKey && providedInternalKey === INTERNAL_API_KEY) {
         req.auth = { type: 'internal_key' };
+        logAuthEvent('allow_internal', req, { validInternalKey: true });
         return next();
     }
 
     const session = getSessionFromToken(readAuthToken(req));
     if (session) {
         req.auth = { type: 'session', session };
+        logAuthEvent('allow_session', req, { session });
         return next();
     }
 

@@ -57,13 +57,18 @@ mundo pelo endereço público — a autenticação **só acrescenta o login, nã
   notificações, proxy chat-core, script batch). Enviada no header `x-internal-api-key`
   (helper `src/server/utils/internalApi.js`).
 
-### Fase 1 — CONCLUÍDA (deploy sem impacto)
+### Fase 1 — EM OBSERVAÇÃO (deploy sem impacto)
 - Endpoints `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`.
 - `AUTH_SECRET` e `INTERNAL_API_KEY` no `.env`.
-- Todos os chamadores internos já enviam a `INTERNAL_API_KEY`.
+- Os chamadores internos conhecidos enviam a `INTERNAL_API_KEY`, incluindo os
+  coletores fiscais através de `backend/services/fiscal/collectors/httpPost.js`.
 - `ALLOW_LOCAL_API_WITHOUT_AUTH=true` → nada mudou para os utilizadores; o login **ainda não
   é obrigatório** e o leak anónimo (ex.: `/api/import/supabase` com senhas dos clientes)
   ainda **não está fechado**.
+
+O roteiro completo, critérios de avanço, matriz de testes e rollback estão em
+[`SECURITY_AUTH_MIGRATION.md`](SECURITY_AUTH_MIGRATION.md). Não ativar a Fase 2
+apenas com base nesta secção resumida.
 
 ### Fase 2 — ATIVAR A PROTEÇÃO (só depois de testar a Fase 1)
 1. No `.env`: `ALLOW_LOCAL_API_WITHOUT_AUTH=false`
@@ -80,15 +85,15 @@ correta e que envia o header `x-internal-api-key`.
 
 ### Log de eventos de auth (`logs/auth-events.log`)
 Registado automaticamente pelo middleware. Serve de rede de segurança para a transição:
-- `[bypass] ... via=interno(local) internalKey=false` → chamador interno que **partiria**
+- `[bypass] ... via=local_direct internalKey=absent` → chamador interno que **partiria**
   na Fase 2 (não está a enviar a `INTERNAL_API_KEY`). Corrigir **antes** de avançar.
-- `[bypass] ... via=externo(nginx) sessionToken=false` → utilizador externo que passará a
+- `[bypass] ... via=external_proxy sessionToken=false` → utilizador externo que passará a
   precisar de login (comportamento esperado).
 - Depois do flip da Fase 2, as linhas `[reject]` mostram os 401 reais.
 
 Verificação rápida antes de fechar o bypass (não deve devolver nada):
 ```bash
-grep 'via=interno(local) internalKey=false' logs/auth-events.log
+npm run auth:usage -- --hours=24
 ```
 Se aparecer algum endpoint interno aqui, ainda não está pronto para a Fase 2.
 

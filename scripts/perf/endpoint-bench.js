@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 
+require('dotenv').config();
+
 /**
  * Benchmark de latência dos endpoints "quentes" (polling).
  *
@@ -21,6 +23,7 @@
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
+const { internalApiHeaders } = require('../../src/server/utils/internalApi');
 
 const BASE = process.env.BENCH_BASE || 'http://localhost:3010';
 const ITERATIONS = Number(process.env.BENCH_ITERATIONS || 30);
@@ -41,7 +44,7 @@ function request(urlString) {
     const u = new URL(urlString);
     const lib = u.protocol === 'https:' ? https : http;
     const start = process.hrtime.bigint();
-    const req = lib.get(u, { headers: { Accept: 'application/json' } }, (res) => {
+    const req = lib.get(u, { headers: internalApiHeaders({ Accept: 'application/json' }) }, (res) => {
       let bytes = 0;
       res.on('data', (chunk) => { bytes += chunk.length; });
       res.on('end', () => {

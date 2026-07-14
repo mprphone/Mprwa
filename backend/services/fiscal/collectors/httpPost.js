@@ -1,6 +1,7 @@
 'use strict';
 
 const http = require('http');
+const { internalApiHeaders } = require('../../../../src/server/utils/internalApi');
 
 function postLocalJson(port, path, bodyObj, timeoutMs = 180000) {
     return new Promise((resolve, reject) => {
@@ -11,10 +12,10 @@ function postLocalJson(port, path, bodyObj, timeoutMs = 180000) {
             path,
             method: 'POST',
             timeout: timeoutMs,
-            headers: {
+            headers: internalApiHeaders({
                 'Content-Type': 'application/json',
                 'Content-Length': Buffer.byteLength(bodyStr),
-            },
+            }),
         }, (res) => {
             const chunks = [];
             res.on('data', (chunk) => chunks.push(chunk));

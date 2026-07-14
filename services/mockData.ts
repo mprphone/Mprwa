@@ -78,6 +78,7 @@ const LOCAL_CUSTOMERS_KEY = 'wa_pro_local_customers_v1';
 const LOCAL_USERS_KEY = 'wa_pro_local_users_v1';
 const LOCAL_AGENDA_EVENTS_KEY = 'wa_pro_local_agenda_events_v1';
 const SESSION_USER_KEY = 'wa_pro_session_user_id';
+const SESSION_DIAGNOSTIC_COOKIE = 'wa_pro_client_user';
 
 class MockService {
   private users = USERS;
@@ -101,6 +102,9 @@ class MockService {
 
   constructor() {
     this.loadLocalEntities();
+    // Identificador apenas diagnóstico: ajuda a descobrir que cliente ainda usa
+    // o bypass durante a migração. Nunca é aceite pelo backend como autenticação.
+    this.setSessionUserId(CURRENT_USER_ID);
     void this.ensureSupabaseImport();
   }
 
@@ -114,8 +118,15 @@ class MockService {
 
     if (CURRENT_USER_ID) {
       window.localStorage.setItem(SESSION_USER_KEY, CURRENT_USER_ID);
+      if (typeof document !== 'undefined') {
+        const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+        document.cookie = `${SESSION_DIAGNOSTIC_COOKIE}=${encodeURIComponent(CURRENT_USER_ID)}; Path=/; SameSite=Lax; Max-Age=31536000${secure}`;
+      }
     } else {
       window.localStorage.removeItem(SESSION_USER_KEY);
+      if (typeof document !== 'undefined') {
+        document.cookie = `${SESSION_DIAGNOSTIC_COOKIE}=; Path=/; SameSite=Lax; Max-Age=0`;
+      }
     }
   }
 
