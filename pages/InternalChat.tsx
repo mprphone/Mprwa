@@ -231,6 +231,18 @@ const InternalChat: React.FC = () => {
   const navigate = useNavigate();
   const currentUserId = String(mockService.getCurrentUserId() || CURRENT_USER_ID || '').trim();
   const currentUser = users.find((user) => user.id === currentUserId) || null;
+
+  useEffect(() => {
+    const composer = composerTextareaRef.current;
+    if (!composer || typeof window === 'undefined') return;
+    const minHeight = 38;
+    const maxHeight = Math.max(160, Math.floor(window.innerHeight * 0.4));
+    composer.style.height = 'auto';
+    const nextHeight = Math.min(Math.max(composer.scrollHeight, minHeight), maxHeight);
+    composer.style.height = `${nextHeight}px`;
+    composer.style.overflowY = composer.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  }, [newMessage, selectedConversationId]);
+
   const usersById = useMemo(() => {
     const map = new Map<string, User>();
     users.forEach((user) => {
@@ -1882,7 +1894,8 @@ const InternalChat: React.FC = () => {
                 }}
                 placeholder={selectedConversationId ? 'Escreva uma mensagem interna... (Ctrl+V para colar imagem)' : 'Selecione uma conversa'}
                 disabled={!selectedConversationId || isSending || isUploading}
-                className="min-h-[38px] flex-1 resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-whatsapp-200 disabled:bg-gray-100"
+                title="O campo cresce com o texto. Use Shift+Enter para nova linha ou arraste o canto inferior direito."
+                className="min-h-[38px] max-h-[40vh] flex-1 resize-y overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-whatsapp-200 disabled:bg-gray-100"
               />
 
               <button
