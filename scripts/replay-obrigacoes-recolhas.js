@@ -34,10 +34,10 @@ const syncRecolhas = !hasArg('--periodos-only');
 const onlyUnsynced = hasArg('--only-unsynced');
 const resyncBefore = getArg('--resync-before', '');
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_KEY || process.env.SUPABASE_KEY;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
 if (!dryRun && (!supabaseUrl || !supabaseKey)) {
-  console.error('Faltam VITE_SUPABASE_URL/VITE_SUPABASE_KEY ou SUPABASE_URL/SUPABASE_KEY no .env');
+  console.error('Faltam SUPABASE_URL/SUPABASE_KEY no .env');
   process.exit(1);
 }
 

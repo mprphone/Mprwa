@@ -76,8 +76,10 @@ function loadEnvConfig() {
         ENABLE_WEBHOOK_AUTOREPLY: toBool(process.env.ENABLE_WEBHOOK_AUTOREPLY, false),
         API_PUBLIC_BASE_URL: trim(process.env.API_PUBLIC_BASE_URL).replace(/\/+$/, ''),
 
-        SUPABASE_URL: trim(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL).replace(/\/+$/, ''),
-        SUPABASE_KEY: trim(process.env.SUPABASE_KEY || process.env.VITE_SUPABASE_KEY),
+        // Credenciais privilegiadas nunca podem usar o prefixo VITE_: o Vite
+        // expõe essas variáveis no bundle entregue ao browser.
+        SUPABASE_URL: trim(process.env.SUPABASE_URL).replace(/\/+$/, ''),
+        SUPABASE_KEY: trim(process.env.SUPABASE_KEY),
         SUPABASE_CLIENTS_SOURCE: trim(process.env.SUPABASE_CLIENTS_SOURCE, 'clientes'),
         SUPABASE_CLIENTS_UPDATED_AT_COLUMN: trim(process.env.SUPABASE_CLIENTS_UPDATED_AT_COLUMN, 'updated_at'),
         SUPABASE_FUNCIONARIOS_SOURCE: trim(process.env.SUPABASE_FUNCIONARIOS_SOURCE, 'funcionarios'),

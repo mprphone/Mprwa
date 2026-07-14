@@ -11,7 +11,6 @@ function resolveCustomerSecretsRawKey() {
             process.env.CUSTOMER_CREDENTIALS_KEY ||
             process.env.MPR_CUSTOMER_SECRETS_KEY ||
             process.env.SUPABASE_KEY ||
-            process.env.VITE_SUPABASE_KEY ||
             ''
     ).trim();
 }

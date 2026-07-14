@@ -62,6 +62,10 @@ Regras para estas integrações:
    log.
 4. Antes de alterar a autenticação de `iuc.mpr.pt`, `imi.mpr.pt`, `pri.mpr.pt`
    ou `api.pr.pt`, criar um plano e uma janela de observação próprios.
+5. No `mprWA`, usar apenas `SUPABASE_URL` e `SUPABASE_KEY` no backend. Nunca usar
+   o prefixo `VITE_` para uma chave `service_role`, porque o Vite a incorpora no
+   JavaScript público mesmo quando o acesso ao objeto de ambiente ocorre por
+   causa de outra variável.
 
 ## Modos registados
 
